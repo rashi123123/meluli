@@ -48,7 +48,7 @@
     "@electron/rebuild": "4.2.1",
     "@playwright/test": "^1.54.2",
     "@tailwindcss/vite": "^4.1.11",
-    "@types/better-sqlite3": "^7.6.13",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.2.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
