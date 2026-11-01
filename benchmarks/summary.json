@@ -1,0 +1,677 @@
+{
+  "buzz-mlx-0.4.3": {
+    "speech_clips": 44,
+    "word_errors": 271,
+    "reference_words": 721,
+    "short_wer_percent": 37.586685159500696,
+    "short_cer_percent": 50.18925056775171,
+    "delta_wer_pp": 8.321775312066578,
+    "passes_quality_threshold": false,
+    "warm_clean_p50_seconds": 7.807713333982974,
+    "warm_clean_p95_seconds": 22.1973776249215,
+    "load_seconds": 43.77606174990069,
+    "control_outputs": 4,
+    "peak_process_rss_bytes": 397803520,
+    "complete": false,
+    "groups": {
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 61.83206106870229,
+        "cer_percent": 135.0983358547655,
+        "median_seconds": 7.655629604472779,
+        "p95_seconds_nearest_rank": 77.80490849993657,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 32.20338983050848,
+        "cer_percent": 33.192004845548155,
+        "median_seconds": 7.7074082709732465,
+        "p95_seconds_nearest_rank": 22.1973776249215,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 2.573091540951282,
+        "p95_seconds_nearest_rank": 2.573091540951282,
+        "text_on_silence_or_noise": 1
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 4.3361656670458615,
+        "p95_seconds_nearest_rank": 4.5678917079931125,
+        "text_on_silence_or_noise": 3
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 32.46977547495682,
+        "cer_percent": 33.63131935881628,
+        "median_seconds": 7.807713333982974,
+        "p95_seconds_nearest_rank": 22.1973776249215,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "ct2-1.1.1": {
+    "speech_clips": 44,
+    "word_errors": 211,
+    "reference_words": 721,
+    "short_wer_percent": 29.26490984743412,
+    "short_cer_percent": 17.638152914458743,
+    "delta_wer_pp": 0.0,
+    "passes_quality_threshold": true,
+    "warm_clean_p50_seconds": 13.668252374976873,
+    "warm_clean_p95_seconds": 44.755194375058636,
+    "load_seconds": 52.73482150002383,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 1500758016,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 47.6271186440678,
+        "cer_percent": 38.74737788432724,
+        "median_seconds": 281.98606054100674,
+        "p95_seconds_nearest_rank": 281.98606054100674,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 58.01526717557252,
+        "cer_percent": 44.175491679273826,
+        "median_seconds": 13.01887579151662,
+        "p95_seconds_nearest_rank": 65.62036841700319,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 22.88135593220339,
+        "cer_percent": 12.325863113264688,
+        "median_seconds": 13.66836718749255,
+        "p95_seconds_nearest_rank": 44.755194375058636,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 13.0103513749782,
+        "p95_seconds_nearest_rank": 13.0103513749782,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 14.861373416963033,
+        "p95_seconds_nearest_rank": 23.339084750041366,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 22.9706390328152,
+        "cer_percent": 12.392108508014797,
+        "median_seconds": 13.668252374976873,
+        "p95_seconds_nearest_rank": 44.755194375058636,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "ct2-1.2.1": {
+    "speech_clips": 14,
+    "word_errors": 94,
+    "reference_words": 231,
+    "short_wer_percent": 40.692640692640694,
+    "short_cer_percent": 28.109452736318406,
+    "delta_wer_pp": null,
+    "passes_quality_threshold": null,
+    "warm_clean_p50_seconds": 30.833612957969308,
+    "warm_clean_p95_seconds": 136.91196754202247,
+    "load_seconds": 7.973248541005887,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 1700937728,
+    "complete": false,
+    "groups": {
+      "human_read_speech": {
+        "samples": 14,
+        "wer_percent": 40.692640692640694,
+        "cer_percent": 28.109452736318406,
+        "median_seconds": 30.692887478973716,
+        "p95_seconds_nearest_rank": 136.91196754202247,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 13,
+        "wer_percent": 41.81818181818182,
+        "cer_percent": 29.094076655052266,
+        "median_seconds": 30.833612957969308,
+        "p95_seconds_nearest_rank": 136.91196754202247,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "mlx-0.4.3": {
+    "speech_clips": 44,
+    "word_errors": 213,
+    "reference_words": 721,
+    "short_wer_percent": 29.542302357836338,
+    "short_cer_percent": 17.58768609639162,
+    "delta_wer_pp": 0.277392510402219,
+    "passes_quality_threshold": true,
+    "warm_clean_p50_seconds": 3.9187565840547904,
+    "warm_clean_p95_seconds": 7.770078957895748,
+    "load_seconds": 60.00220849993639,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 527925248,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 46.779661016949156,
+        "cer_percent": 37.968234941564276,
+        "median_seconds": 69.3034115000628,
+        "p95_seconds_nearest_rank": 69.3034115000628,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 57.25190839694657,
+        "cer_percent": 43.11649016641452,
+        "median_seconds": 3.7640535834943876,
+        "p95_seconds_nearest_rank": 5.762569417012855,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 23.389830508474578,
+        "cer_percent": 12.477286493034525,
+        "median_seconds": 4.036337687983178,
+        "p95_seconds_nearest_rank": 7.770078957895748,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 5.74761649989523,
+        "p95_seconds_nearest_rank": 5.74761649989523,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 2.923845416982658,
+        "p95_seconds_nearest_rank": 6.384285207954235,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 23.488773747841105,
+        "cer_percent": 12.546239210850802,
+        "median_seconds": 3.9187565840547904,
+        "p95_seconds_nearest_rank": 7.770078957895748,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "mlx-q8-0.4.3": {
+    "speech_clips": 44,
+    "word_errors": 213,
+    "reference_words": 721,
+    "short_wer_percent": 29.542302357836338,
+    "short_cer_percent": 17.537219278324503,
+    "delta_wer_pp": 0.277392510402219,
+    "passes_quality_threshold": true,
+    "warm_clean_p50_seconds": 2.2361568328924477,
+    "warm_clean_p95_seconds": 7.5188751249806955,
+    "load_seconds": 9.78118612500839,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 554090496,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 46.94915254237288,
+        "cer_percent": 37.968234941564276,
+        "median_seconds": 54.75975633400958,
+        "p95_seconds_nearest_rank": 54.75975633400958,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 57.25190839694657,
+        "cer_percent": 43.11649016641452,
+        "median_seconds": 4.570630104513839,
+        "p95_seconds_nearest_rank": 15.103629208984785,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 23.389830508474578,
+        "cer_percent": 12.41671714112659,
+        "median_seconds": 2.2034748744335957,
+        "p95_seconds_nearest_rank": 7.5188751249806955,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 1.9938842500559986,
+        "p95_seconds_nearest_rank": 1.9938842500559986,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 2.8085075409617275,
+        "p95_seconds_nearest_rank": 6.407049500034191,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 23.488773747841105,
+        "cer_percent": 12.4845869297164,
+        "median_seconds": 2.2361568328924477,
+        "p95_seconds_nearest_rank": 7.5188751249806955,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "parakeet-nemo-0.2.0": {
+    "speech_clips": 44,
+    "word_errors": 248,
+    "reference_words": 721,
+    "short_wer_percent": 34.39667128987517,
+    "short_cer_percent": 19.00075700227101,
+    "delta_wer_pp": 5.131761442441054,
+    "passes_quality_threshold": false,
+    "warm_clean_p50_seconds": 0.304332667,
+    "warm_clean_p95_seconds": 1.20852,
+    "load_seconds": 62.98577908298466,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 849264640,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 39.32203389830509,
+        "cer_percent": 24.932574168414742,
+        "median_seconds": 11.679456917,
+        "p95_seconds_nearest_rank": 11.679456917,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 64.12213740458016,
+        "cer_percent": 45.38577912254161,
+        "median_seconds": 0.3363933545,
+        "p95_seconds_nearest_rank": 0.578486292,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 27.796610169491526,
+        "cer_percent": 13.718958207147184,
+        "median_seconds": 0.318514396,
+        "p95_seconds_nearest_rank": 1.580752917,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 0.271193666,
+        "p95_seconds_nearest_rank": 0.271193666,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 0.157780667,
+        "p95_seconds_nearest_rank": 0.367328792,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 27.806563039723663,
+        "cer_percent": 13.532675709001232,
+        "median_seconds": 0.304332667,
+        "p95_seconds_nearest_rank": 1.20852,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "whispercpp-1.9.5": {
+    "speech_clips": 44,
+    "word_errors": 217,
+    "reference_words": 721,
+    "short_wer_percent": 30.097087378640776,
+    "short_cer_percent": 17.56245268735806,
+    "delta_wer_pp": 0.832177531206657,
+    "passes_quality_threshold": true,
+    "warm_clean_p50_seconds": 3.771012041019276,
+    "warm_clean_p95_seconds": 8.994465084047988,
+    "load_seconds": 29.19643804198131,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 1871233024,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 49.66101694915254,
+        "cer_percent": 38.56757566676656,
+        "median_seconds": 77.8180636659963,
+        "p95_seconds_nearest_rank": 77.8180636659963,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 58.01526717557252,
+        "cer_percent": 43.11649016641452,
+        "median_seconds": 4.505662874958944,
+        "p95_seconds_nearest_rank": 7.264323625015095,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 23.89830508474576,
+        "cer_percent": 12.447001817080558,
+        "median_seconds": 3.8298019370413385,
+        "p95_seconds_nearest_rank": 8.994465084047988,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 2.206946791964583,
+        "p95_seconds_nearest_rank": 2.206946791964583,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 3.3293594169663265,
+        "p95_seconds_nearest_rank": 3.3947909579146653,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 24.006908462867013,
+        "cer_percent": 12.5154130702836,
+        "median_seconds": 3.771012041019276,
+        "p95_seconds_nearest_rank": 8.994465084047988,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "whispercpp-q8-1.9.5": {
+    "speech_clips": 44,
+    "word_errors": 219,
+    "reference_words": 721,
+    "short_wer_percent": 30.374479889042995,
+    "short_cer_percent": 17.89048700479435,
+    "delta_wer_pp": 1.109570041608876,
+    "passes_quality_threshold": true,
+    "warm_clean_p50_seconds": 2.6401828749803826,
+    "warm_clean_p95_seconds": 5.453918416984379,
+    "load_seconds": 2.1674182089045644,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 1089634304,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 48.813559322033896,
+        "cer_percent": 39.017081210668266,
+        "median_seconds": 45.250270291930065,
+        "p95_seconds_nearest_rank": 45.250270291930065,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 58.01526717557252,
+        "cer_percent": 43.267776096823,
+        "median_seconds": 3.0563161454629153,
+        "p95_seconds_nearest_rank": 4.385455665993504,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 24.23728813559322,
+        "cer_percent": 12.810417928528166,
+        "median_seconds": 2.4558026459999382,
+        "p95_seconds_nearest_rank": 5.453918416984379,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 2.2625442919088528,
+        "p95_seconds_nearest_rank": 2.2625442919088528,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 2.203298458014615,
+        "p95_seconds_nearest_rank": 2.294042875058949,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 24.352331606217618,
+        "cer_percent": 12.885326757090013,
+        "median_seconds": 2.6401828749803826,
+        "p95_seconds_nearest_rank": 5.453918416984379,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "whisperkit-1.1.1-gpu": {
+    "speech_clips": 44,
+    "word_errors": 214,
+    "reference_words": 721,
+    "short_wer_percent": 29.68099861303745,
+    "short_cer_percent": 17.789553368660105,
+    "delta_wer_pp": 0.4160887656033303,
+    "passes_quality_threshold": true,
+    "warm_clean_p50_seconds": 9.200920939445496,
+    "warm_clean_p95_seconds": 15.524747967720032,
+    "load_seconds": 94.46363496780396,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 2774220800,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 48.813559322033896,
+        "cer_percent": 41.02487264009589,
+        "median_seconds": 259.9537880420685,
+        "p95_seconds_nearest_rank": 259.9537880420685,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 57.25190839694657,
+        "cer_percent": 43.11649016641452,
+        "median_seconds": 10.443719983100891,
+        "p95_seconds_nearest_rank": 21.587697982788086,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 23.559322033898304,
+        "cer_percent": 12.719563900666262,
+        "median_seconds": 9.47477799654007,
+        "p95_seconds_nearest_rank": 18.131546020507812,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 4.527401924133301,
+        "p95_seconds_nearest_rank": 4.527401924133301,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 5.96717095375061,
+        "p95_seconds_nearest_rank": 6.3106019496917725,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 23.66148531951641,
+        "cer_percent": 12.79284833538841,
+        "median_seconds": 9.200920939445496,
+        "p95_seconds_nearest_rank": 15.524747967720032,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "zipformer-beam4-sherpa-2.0.0": {
+    "speech_clips": 44,
+    "word_errors": 256,
+    "reference_words": 721,
+    "short_wer_percent": 35.50624133148405,
+    "short_cer_percent": 20.23719404491547,
+    "delta_wer_pp": 6.24133148404993,
+    "passes_quality_threshold": false,
+    "warm_clean_p50_seconds": 0.7117033330723643,
+    "warm_clean_p95_seconds": 3.8426723330048844,
+    "load_seconds": 4.696908915997483,
+    "control_outputs": 1,
+    "peak_process_rss_bytes": 224509952,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 33.559322033898304,
+        "cer_percent": 20.49745280191789,
+        "median_seconds": 61.855327749974094,
+        "p95_seconds_nearest_rank": 61.855327749974094,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 65.64885496183206,
+        "cer_percent": 46.74735249621785,
+        "median_seconds": 0.9903547705034725,
+        "p95_seconds_nearest_rank": 2.8160859580384567,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 28.8135593220339,
+        "cer_percent": 14.930345245305876,
+        "median_seconds": 0.7750304375076666,
+        "p95_seconds_nearest_rank": 4.418983791023493,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 0.3546660830033943,
+        "p95_seconds_nearest_rank": 0.3546660830033943,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 0.6816565840272233,
+        "p95_seconds_nearest_rank": 1.459776374977082,
+        "text_on_silence_or_noise": 1
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 28.151986183074268,
+        "cer_percent": 14.580764488286066,
+        "median_seconds": 0.7117033330723643,
+        "p95_seconds_nearest_rank": 3.8426723330048844,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  },
+  "zipformer-sherpa-2.0.0": {
+    "speech_clips": 44,
+    "word_errors": 252,
+    "reference_words": 721,
+    "short_wer_percent": 34.95145631067961,
+    "short_cer_percent": 20.010093363613425,
+    "delta_wer_pp": 5.686546463245492,
+    "passes_quality_threshold": false,
+    "warm_clean_p50_seconds": 0.2892727500293404,
+    "warm_clean_p95_seconds": 0.63064474996645,
+    "load_seconds": 1.394436000031419,
+    "control_outputs": 0,
+    "peak_process_rss_bytes": 282312704,
+    "complete": true,
+    "groups": {
+      "derived_long": {
+        "samples": 1,
+        "wer_percent": 34.57627118644068,
+        "cer_percent": 21.216661672160622,
+        "median_seconds": 89.88210137502756,
+        "p95_seconds_nearest_rank": 89.88210137502756,
+        "text_on_silence_or_noise": 0
+      },
+      "derived_noise": {
+        "samples": 8,
+        "wer_percent": 64.8854961832061,
+        "cer_percent": 46.74735249621785,
+        "median_seconds": 0.37762954155914485,
+        "p95_seconds_nearest_rank": 0.9402067080372944,
+        "text_on_silence_or_noise": 0
+      },
+      "human_read_speech": {
+        "samples": 36,
+        "wer_percent": 28.305084745762713,
+        "cer_percent": 14.65778316172017,
+        "median_seconds": 0.27014097903156653,
+        "p95_seconds_nearest_rank": 0.63064474996645,
+        "text_on_silence_or_noise": 0
+      },
+      "noise_only": {
+        "samples": 1,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 0.28175158402882516,
+        "p95_seconds_nearest_rank": 0.28175158402882516,
+        "text_on_silence_or_noise": 0
+      },
+      "silence": {
+        "samples": 3,
+        "wer_percent": null,
+        "cer_percent": null,
+        "median_seconds": 0.16371966595761478,
+        "p95_seconds_nearest_rank": 0.9503779590595514,
+        "text_on_silence_or_noise": 0
+      },
+      "warm_human": {
+        "samples": 35,
+        "wer_percent": 27.63385146804836,
+        "cer_percent": 14.272503082614056,
+        "median_seconds": 0.2892727500293404,
+        "p95_seconds_nearest_rank": 0.63064474996645,
+        "text_on_silence_or_noise": 0
+      }
+    }
+  }
+}

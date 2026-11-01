@@ -1,0 +1,7 @@
+# Explicit runtime dependencies; no unused metadata embedding or impersonation.
+yt-dlp==2026.10.26
+yt-dlp-ejs==0.8.0
+pycryptodomex==3.24.1
+certifi==2026.10.23
+# Build-only bootloader with its application-distribution exception.
+pyinstaller==6.22.3

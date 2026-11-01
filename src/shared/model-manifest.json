@@ -1,0 +1,11 @@
+{
+  "id": "JoaoZaokk/ivrit-whisper-large-v3-turbo-ggml",
+  "revision": "7caf56da903afb6adf616b56ac4bbe59485e15aa",
+  "files": [
+    {
+      "path": "ggml-ivrit-whisper-large-v3-turbo-q8_0.bin",
+      "bytes": 874188075,
+      "sha256": "123a936e686b06d45b52dc1790251a1418841352ca94079ae643d57893ffc9a6"
+    }
+  ]
+}

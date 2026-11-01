@@ -1,0 +1,40 @@
+name: Validate Meluli
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  app:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - name: Generated npm notices match the lockfile
+        run: pnpm run licenses && git diff --exit-code -- resources/licenses/npm
+      - name: Unit, renderer and prerequisite-gated integration tests
+        run: pnpm test
+      - name: Build the pinned native ASR runtime
+        run: pnpm run build:asr-worker
+      - name: Native protocol smoke test without model weights
+        run: node scripts/check-asr-protocol.mjs
+      - run: bash scripts/build-native-helpers.sh
+      - name: Clipboard private-pasteboard self-test
+        run: resources/bin/meluli-clipboard --self-test
+      - run: pnpm run build:app
+      - name: Electron E2E with isolated profiles and simulated ASR
+        run: pnpm exec playwright test

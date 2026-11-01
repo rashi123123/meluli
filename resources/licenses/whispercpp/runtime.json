@@ -1,0 +1,17 @@
+{
+  "engine": "whisper.cpp",
+  "version": "1.9.5",
+  "revision": "d1be6fde11ac6e0407606b4e42fe72d34add8037",
+  "sourceSha256": "645445da884df6dbd52b30f82d7be7c01d1767c938714e477e786b88d529e9f4",
+  "minimumMacOS": "13.3",
+  "architecture": "arm64",
+  "metalEmbedded": true,
+  "staticLibraries": true,
+  "sourcePathsRedacted": true,
+  "diskIoPolicy": "standard",
+  "binary": {
+    "name": "meluli-asr-worker",
+    "bytes": 7476208,
+    "sha256": "68b17c82181493bdc47c9bac86ecf8de6ddc624127a9f99da541e7c3322da907"
+  }
+}

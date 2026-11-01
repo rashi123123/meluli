@@ -1,0 +1,853 @@
+{
+  "version": "3.14.8",
+  "sourceArchive": "cpython-3.14.8+20261013-aarch64-apple-darwin-pgo+lto-full.tar.zst",
+  "sha256": "5806ddb9d95d73796c87e1aeb45bf7ec984d08ae9eb94f9020436052b32ce498",
+  "scope": "Upstream CPython stdlib/native component license superset; includes optional modules.",
+  "extensions": {
+    "_abc": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_ast": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_asyncio": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_bisect": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_blake2": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_bz2": [
+      {
+        "licenses": [
+          "bzip2-1.0.6"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.bzip2.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_codecs": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_codecs_cn": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_codecs_hk": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_codecs_iso2022": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_codecs_jp": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_codecs_kr": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_codecs_tw": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_collections": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_contextvars": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_csv": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_ctypes": [
+      {
+        "licenses": [
+          "MIT"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.libffi.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_ctypes_test": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_curses": [
+      {
+        "licenses": [
+          "X11"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.ncurses.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_curses_panel": [
+      {
+        "licenses": [
+          "X11"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.ncurses.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_datetime": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_dbm": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_decimal": [
+      {
+        "licenses": [
+          "BSD-2-Clause"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.mpdecimal.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_elementtree": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_functools": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_hashlib": [
+      {
+        "licenses": [
+          "Apache-2.0",
+          "OpenSSL"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.openssl-1.1.txt",
+          "licenses/LICENSE.openssl-3.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_heapq": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_hmac": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_imp": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_interpchannels": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_interpqueues": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_interpreters": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_io": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_json": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_locale": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_lsprof": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_lzma": [
+      {
+        "licenses": [
+          "0BSD"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.liblzma.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_md5": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_multibytecodec": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_multiprocessing": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_opcode": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_operator": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_pickle": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_posixshmem": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_posixsubprocess": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_queue": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_random": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_remote_debugging": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_scproxy": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_sha1": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_sha2": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_sha3": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_signal": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_socket": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_sqlite3": [
+      {
+        "licenses": [
+          "Zlib"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.sqlite.txt",
+          "licenses/LICENSE.zlib-ng.txt",
+          "licenses/LICENSE.zlib.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_sre": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_ssl": [
+      {
+        "licenses": [
+          "Apache-2.0",
+          "OpenSSL"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.openssl-1.1.txt",
+          "licenses/LICENSE.openssl-3.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_stat": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_statistics": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_string": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_struct": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_suggestions": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_symtable": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_sysconfig": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testbuffer": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testcapi": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testimportmultiple": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testinternalcapi": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testlimitedcapi": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testmultiphase": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_testsinglephase": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_thread": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_tkinter": [
+      {
+        "licenses": [
+          "TCL",
+          "Zlib"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.tcl.txt",
+          "licenses/LICENSE.zlib-ng.txt",
+          "licenses/LICENSE.zlib.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_tokenize": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_tracemalloc": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_types": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_typing": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_uuid": [
+      {
+        "licenses": [
+          "BSD-3-Clause"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.libuuid.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "_warnings": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_weakref": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_xxtestfuzz": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_zoneinfo": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "_zstd": [
+      {
+        "licenses": [
+          "BSD-3-Clause"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.zstd.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "array": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "atexit": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "binascii": [
+      {
+        "licenses": [
+          "Zlib"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.zlib-ng.txt",
+          "licenses/LICENSE.zlib.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "builtins": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "cmath": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "errno": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "faulthandler": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "fcntl": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "gc": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "grp": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "itertools": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "marshal": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "math": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "mmap": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "posix": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "pwd": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "pyexpat": [
+      {
+        "licenses": [
+          "MIT"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.expat.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "readline": [
+      {
+        "licenses": [
+          "BSD-3-Clause"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.libedit.txt"
+        ],
+        "public_domain": false
+      }
+    ],
+    "resource": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "select": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "sys": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "syslog": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "termios": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "time": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "unicodedata": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "xxsubtype": [
+      {
+        "licenses": null,
+        "license_paths": null,
+        "public_domain": null
+      }
+    ],
+    "zlib": [
+      {
+        "licenses": [
+          "Zlib"
+        ],
+        "license_paths": [
+          "licenses/LICENSE.zlib-ng.txt",
+          "licenses/LICENSE.zlib.txt"
+        ],
+        "public_domain": false
+      }
+    ]
+  }
+}

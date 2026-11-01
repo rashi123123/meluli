@@ -1,0 +1,27 @@
+name: Bug report / דיווח תקלה
+description: Report a reproducible problem without private recordings or transcripts.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened? / מה קרה?
+      description: Expected and actual behavior; Hebrew or English is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / איך משחזרים?
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Meluli version, macOS version, chip and RAM
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional evidence
+      description: Remove private text, paths and personal information. Do not attach recordings without the speakers' permission.

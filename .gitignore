@@ -1,0 +1,32 @@
+node_modules
+.pnpm-store/
+.cache
+dist
+dist-electron
+release
+.vite
+out
+coverage
+playwright-report
+test-results
+resources/bin/
+resources/models/*
+!resources/models/whispercpp-vad/
+resources/models/whispercpp-vad/*
+!resources/models/whispercpp-vad/.gitkeep
+.venv
+*.log
+.DS_Store
+
+# Rendered from the Mac's SF Symbols by pnpm run symbols; Apple's terms apply.
+src/renderer/assets/sf-symbols/
+
+# Local compiler caches; never part of the release.
+.build/
+
+# Reproducible comparison assets live locally, outside release contents.
+tmp/
+
+# Local Python bytecode from build/report helpers.
+__pycache__/
+benchmarks/v2/.desktop-window

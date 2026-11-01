@@ -1,0 +1,1702 @@
+{
+  "label": "mlx-0.4.3",
+  "engine": "mlx",
+  "versions": {
+    "faster-whisper": "1.1.1",
+    "ctranslate2": "4.7.1",
+    "mlx": "0.31.1",
+    "mlx-whisper": "0.4.3",
+    "numpy": "2.4.3",
+    "av": "17.0.0",
+    "huggingface-hub": "0.36.2"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "created_utc": "2026-10-24T13:34:11Z",
+  "load_sec": 60.00220849993639,
+  "settings": {
+    "language": "he",
+    "task": "transcribe",
+    "beam_size": 1,
+    "condition_on_previous_text": true,
+    "vad": false,
+    "ct2_cpu_threads": 4,
+    "mlx_cache_limit_bytes": 268435456
+  },
+  "samples": [
+    {
+      "id": "he-00",
+      "kind": "human_read_speech",
+      "duration_sec": 7.44,
+      "first_inference": true,
+      "seconds": 7.755481124971993,
+      "cpu_seconds": 1.1548270000000005,
+      "peak_rss_bytes": 527925248,
+      "text": "מרקלי השביע אתמול ועדת בחירות זמנית חדשה בת תשעה חברים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 7.32,
+          "text": " מרקלי השביע אתמול ועדת בחירות זמנית חדשה בת תשעה חברים."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 11,
+      "character_errors": 5,
+      "reference_characters": 58,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139040626,
+      "mlx_cache_bytes": 271736833
+    },
+    {
+      "id": "he-01",
+      "kind": "human_read_speech",
+      "duration_sec": 8.46,
+      "first_inference": false,
+      "seconds": 2.896687874919735,
+      "cpu_seconds": 0.7749000000000006,
+      "peak_rss_bytes": 527925248,
+      "text": "802.11 פועל בסטנדרט של 2.5 גיגה הרץ וגם 5.0 גיגה הרץ.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.18,
+          "text": " 802.11 פועל בסטנדרט של 2.5 גיגה הרץ וגם 5.0 גיגה הרץ."
+        }
+      ],
+      "word_errors": 10,
+      "reference_words": 13,
+      "character_errors": 35,
+      "reference_characters": 51,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139515766,
+      "mlx_cache_bytes": 269225073
+    },
+    {
+      "id": "he-02",
+      "kind": "human_read_speech",
+      "duration_sec": 3.0,
+      "first_inference": false,
+      "seconds": 2.258616083068773,
+      "cpu_seconds": 0.3202959999999999,
+      "peak_rss_bytes": 527925248,
+      "text": "פרשת 11, זה לפני סביבה שוב.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 2.74,
+          "text": " פרשת 11, זה לפני סביבה שוב."
+        }
+      ],
+      "word_errors": 17,
+      "reference_words": 17,
+      "character_errors": 63,
+      "reference_characters": 76,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139515766,
+      "mlx_cache_bytes": 270892653
+    },
+    {
+      "id": "he-03",
+      "kind": "human_read_speech",
+      "duration_sec": 9.78,
+      "first_inference": false,
+      "seconds": 2.382377834059298,
+      "cpu_seconds": 0.46359899999999943,
+      "peak_rss_bytes": 527925248,
+      "text": "הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב לספינת הדגל של האפריקאים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.620000000000001,
+          "text": " הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב לספינת הדגל של האפריקאים."
+        }
+      ],
+      "word_errors": 7,
+      "reference_words": 16,
+      "character_errors": 36,
+      "reference_characters": 101,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139581294,
+      "mlx_cache_bytes": 270652685
+    },
+    {
+      "id": "he-04",
+      "kind": "human_read_speech",
+      "duration_sec": 11.76,
+      "first_inference": false,
+      "seconds": 3.8192955419654027,
+      "cpu_seconds": 0.8674340000000003,
+      "peak_rss_bytes": 527925248,
+      "text": "לחם עם שמן זית, עגבניה וכל תוספת זמינה כגון גבינה, טונה וכו, פעם באולי, ארוחת ערב פופולרית ופשוטה, במיוחד במהלך הקיץ, איהא.",
+      "segments": [
+        {
+          "start": 0.68,
+          "end": 1.58,
+          "text": " לחם עם שמן זית,"
+        },
+        {
+          "start": 1.7,
+          "end": 4.2,
+          "text": " עגבניה וכל תוספת זמינה כגון גבינה,"
+        },
+        {
+          "start": 4.34,
+          "end": 4.96,
+          "text": " טונה וכו,"
+        },
+        {
+          "start": 5.28,
+          "end": 6.22,
+          "text": " פעם באולי,"
+        },
+        {
+          "start": 6.92,
+          "end": 8.82,
+          "text": " ארוחת ערב פופולרית ופשוטה,"
+        },
+        {
+          "start": 8.88,
+          "end": 10.22,
+          "text": " במיוחד במהלך הקיץ,"
+        },
+        {
+          "start": 10.52,
+          "end": 10.78,
+          "text": " איהא."
+        }
+      ],
+      "word_errors": 23,
+      "reference_words": 24,
+      "character_errors": 93,
+      "reference_characters": 119,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139679606,
+      "mlx_cache_bytes": 271981612
+    },
+    {
+      "id": "he-05",
+      "kind": "human_read_speech",
+      "duration_sec": 4.92,
+      "first_inference": false,
+      "seconds": 3.208380834083073,
+      "cpu_seconds": 0.8717780000000008,
+      "peak_rss_bytes": 527925248,
+      "text": "הנוכחות של צוות בלתי נראה אמיתי היא גם מרכיב ייחודי של צוות וירטואלי.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.62,
+          "text": " הנוכחות של צוות בלתי נראה אמיתי היא גם מרכיב ייחודי של צוות וירטואלי."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 18,
+      "character_errors": 29,
+      "reference_characters": 97,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139679606,
+      "mlx_cache_bytes": 220847789
+    },
+    {
+      "id": "he-06",
+      "kind": "human_read_speech",
+      "duration_sec": 14.46,
+      "first_inference": false,
+      "seconds": 2.9114199159666896,
+      "cpu_seconds": 0.5896629999999998,
+      "peak_rss_bytes": 527925248,
+      "text": "הנמל היה האתר של סכסוך ימים מפורסם ב-1889, כאשר שבע אוניות מגרמניה, ארצות הברית ובריטניה סירבו לצאת את הנמל.",
+      "segments": [
+        {
+          "start": 0.2,
+          "end": 6.0,
+          "text": " הנמל היה האתר של סכסוך ימים מפורסם ב-1889,"
+        },
+        {
+          "start": 6.94,
+          "end": 8.82,
+          "text": " כאשר שבע אוניות מגרמניה,"
+        },
+        {
+          "start": 9.200000000000001,
+          "end": 11.78,
+          "text": " ארצות הברית ובריטניה סירבו לצאת את הנמל."
+        }
+      ],
+      "word_errors": 4,
+      "reference_words": 19,
+      "character_errors": 9,
+      "reference_characters": 97,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 268561621
+    },
+    {
+      "id": "he-07",
+      "kind": "human_read_speech",
+      "duration_sec": 7.08,
+      "first_inference": false,
+      "seconds": 2.722304124967195,
+      "cpu_seconds": 0.6210759999999986,
+      "peak_rss_bytes": 527925248,
+      "text": "נראה כי העיזים בויתו לראשונה לפני כעשרת אלפים שנה בהרי זגרוס באיראן.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 5.54,
+          "text": " נראה כי העיזים בויתו לראשונה לפני כעשרת אלפים שנה בהרי זגרוס באיראן."
+        }
+      ],
+      "word_errors": 4,
+      "reference_words": 13,
+      "character_errors": 11,
+      "reference_characters": 62,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 271518305
+    },
+    {
+      "id": "he-08",
+      "kind": "human_read_speech",
+      "duration_sec": 7.32,
+      "first_inference": false,
+      "seconds": 2.8945907920133322,
+      "cpu_seconds": 0.6679320000000004,
+      "peak_rss_bytes": 527925248,
+      "text": "ב-1990 הוא נוסף לרשימת אתרי המורשת העולמיים שבסיכון עקב הסכנה של חולות מדבר.",
+      "segments": [
+        {
+          "start": 0.86,
+          "end": 4.36,
+          "text": " ב-1990 הוא נוסף לרשימת אתרי המורשת העולמיים"
+        },
+        {
+          "start": 4.36,
+          "end": 6.5600000000000005,
+          "text": " שבסיכון עקב הסכנה של חולות מדבר."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 14,
+      "character_errors": 0,
+      "reference_characters": 75,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 270960725
+    },
+    {
+      "id": "he-09",
+      "kind": "human_read_speech",
+      "duration_sec": 4.98,
+      "first_inference": false,
+      "seconds": 2.951743832905777,
+      "cpu_seconds": 0.8421389999999995,
+      "peak_rss_bytes": 527925248,
+      "text": "ב-15 באוגוסט 1940 בעלות הברית פלשו לדרום צרפת, הפלישה נקראה מבצע דראקון.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.5,
+          "text": " ב-15 באוגוסט 1940 בעלות הברית פלשו לדרום צרפת, הפלישה נקראה מבצע דראקון."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 13,
+      "character_errors": 1,
+      "reference_characters": 69,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 227244510
+    },
+    {
+      "id": "he-10",
+      "kind": "human_read_speech",
+      "duration_sec": 7.98,
+      "first_inference": false,
+      "seconds": 5.961134957964532,
+      "cpu_seconds": 1.0124689999999994,
+      "peak_rss_bytes": 527925248,
+      "text": "אם אתם מגיעים לחוף רק באמצעות טיול שיט לא תצטרכו ויזה נפרדת, נכון ל-2009.",
+      "segments": [
+        {
+          "start": 1.0,
+          "end": 2.1,
+          "text": " אם אתם מגיעים לחוף"
+        },
+        {
+          "start": 2.84,
+          "end": 6.08,
+          "text": " רק באמצעות טיול שיט לא תצטרכו ויזה נפרדת,"
+        },
+        {
+          "start": 6.28,
+          "end": 7.16,
+          "text": " נכון ל-2009."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 15,
+      "character_errors": 1,
+      "reference_characters": 72,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 268575629
+    },
+    {
+      "id": "he-11",
+      "kind": "human_read_speech",
+      "duration_sec": 5.46,
+      "first_inference": false,
+      "seconds": 4.153918791911565,
+      "cpu_seconds": 0.9298540000000006,
+      "peak_rss_bytes": 527925248,
+      "text": "שלא אל עבר התארים M16 רונלדו מנדוזה ירה ברופא A.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.54,
+          "text": " שלא אל עבר התארים M16 רונלדו מנדוזה ירה ברופא A."
+        }
+      ],
+      "word_errors": 10,
+      "reference_words": 10,
+      "character_errors": 40,
+      "reference_characters": 48,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 268474444
+    },
+    {
+      "id": "he-12",
+      "kind": "human_read_speech",
+      "duration_sec": 9.84,
+      "first_inference": false,
+      "seconds": 5.469663999974728,
+      "cpu_seconds": 1.100847,
+      "peak_rss_bytes": 527925248,
+      "text": "סולטן מרוקו בנה את העיר מחדש בתור דאר אלביידה וקיבלה את השם קזבלנקה מסוחרים ספרדים שהקימו בה מרכזי סחר.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.92,
+          "text": " סולטן מרוקו בנה את העיר מחדש בתור דאר אלביידה וקיבלה את השם קזבלנקה מסוחרים ספרדים שהקימו בה מרכזי סחר."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 21,
+      "character_errors": 7,
+      "reference_characters": 108,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139810662,
+      "mlx_cache_bytes": 242346236
+    },
+    {
+      "id": "he-13",
+      "kind": "human_read_speech",
+      "duration_sec": 16.8,
+      "first_inference": false,
+      "seconds": 8.620947125018574,
+      "cpu_seconds": 1.431388,
+      "peak_rss_bytes": 527925248,
+      "text": "מועצת ההתעמלות של ארצות הברית והוועד האולימפי שותפים לאותה מטרה, להפוך את עניו ההתעמלות וענפים אחרים לכמה שיותר בטוחים לספורטאים, לשאוף להגשים את חלומותיהם בסביבה בטוחה, חיובית או מועצמת.",
+      "segments": [
+        {
+          "start": 0.8200000000000001,
+          "end": 5.74,
+          "text": " מועצת ההתעמלות של ארצות הברית והוועד האולימפי שותפים לאותה מטרה,"
+        },
+        {
+          "start": 6.18,
+          "end": 11.02,
+          "text": " להפוך את עניו ההתעמלות וענפים אחרים לכמה שיותר בטוחים לספורטאים,"
+        },
+        {
+          "start": 11.5,
+          "end": 13.96,
+          "text": " לשאוף להגשים את חלומותיהם בסביבה בטוחה,"
+        },
+        {
+          "start": 14.32,
+          "end": 15.66,
+          "text": " חיובית או מועצמת."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 27,
+      "character_errors": 11,
+      "reference_characters": 173,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 263588784
+    },
+    {
+      "id": "he-14",
+      "kind": "human_read_speech",
+      "duration_sec": 11.28,
+      "first_inference": false,
+      "seconds": 5.952822625054978,
+      "cpu_seconds": 1.2633539999999996,
+      "peak_rss_bytes": 527925248,
+      "text": "נושאים אחרים העומדים על הפרק בוואלי כוללים הצלת היערות הנותרים בעולם ושיתוף טכנולוגיות שיעזרו למדינות מתפתחות לצמוח בדרכים פחות מזהמות.",
+      "segments": [
+        {
+          "start": 0.52,
+          "end": 2.6,
+          "text": " נושאים אחרים העומדים על הפרק בוואלי"
+        },
+        {
+          "start": 4.12,
+          "end": 7.42,
+          "text": " כוללים הצלת היערות הנותרים בעולם ושיתוף טכנולוגיות"
+        },
+        {
+          "start": 7.42,
+          "end": 10.74,
+          "text": " שיעזרו למדינות מתפתחות לצמוח בדרכים פחות מזהמות."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 20,
+      "character_errors": 2,
+      "reference_characters": 133,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 270137235
+    },
+    {
+      "id": "he-15",
+      "kind": "human_read_speech",
+      "duration_sec": 7.32,
+      "first_inference": false,
+      "seconds": 5.399364499957301,
+      "cpu_seconds": 1.0890149999999998,
+      "peak_rss_bytes": 527925248,
+      "text": "בזמן תקופה זו בהיסטוריה האירופאית, הכנסייה הקתולית שהפכה לעשירה ורבת כוח ספגה ביקורת קפדנית.",
+      "segments": [
+        {
+          "start": 0.58,
+          "end": 2.5,
+          "text": " בזמן תקופה זו בהיסטוריה האירופאית,"
+        },
+        {
+          "start": 2.82,
+          "end": 6.44,
+          "text": " הכנסייה הקתולית שהפכה לעשירה ורבת כוח ספגה ביקורת קפדנית."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 14,
+      "character_errors": 0,
+      "reference_characters": 90,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271858908
+    },
+    {
+      "id": "he-16",
+      "kind": "human_read_speech",
+      "duration_sec": 6.0,
+      "first_inference": false,
+      "seconds": 6.164710707962513,
+      "cpu_seconds": 1.161244,
+      "peak_rss_bytes": 527925248,
+      "text": "ייתכן שיש יותר מדי אימות מזרחיות בצד הקרוב מכיוון שהקרוב דק יותר, ככה היה קל יותר לבה לעלות את פני השטח.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 5.4,
+          "text": " ייתכן שיש יותר מדי אימות מזרחיות בצד הקרוב מכיוון שהקרוב דק יותר, ככה היה קל יותר לבה לעלות את פני השטח."
+        }
+      ],
+      "word_errors": 8,
+      "reference_words": 20,
+      "character_errors": 13,
+      "reference_characters": 95,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 270130930
+    },
+    {
+      "id": "he-17",
+      "kind": "human_read_speech",
+      "duration_sec": 7.98,
+      "first_inference": false,
+      "seconds": 6.630690874997526,
+      "cpu_seconds": 1.2198230000000017,
+      "peak_rss_bytes": 527925248,
+      "text": "השירות לעיתים קרובות משמש כלי שיט כולל את מפינות תענוגות, כמו גם משלוחות מחקר שצריכות תקשורת נתונים מרחוק ותקשורת קולטית.",
+      "segments": [
+        {
+          "start": 0.76,
+          "end": 3.52,
+          "text": " השירות לעיתים קרובות משמש כלי שיט כולל את מפינות תענוגות,"
+        },
+        {
+          "start": 4.04,
+          "end": 8.16,
+          "text": " כמו גם משלוחות מחקר שצריכות תקשורת נתונים מרחוק ותקשורת קולטית."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 19,
+      "character_errors": 7,
+      "reference_characters": 113,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 270468792
+    },
+    {
+      "id": "he-18",
+      "kind": "human_read_speech",
+      "duration_sec": 7.86,
+      "first_inference": false,
+      "seconds": 3.4551193750230595,
+      "cpu_seconds": 1.0076479999999997,
+      "peak_rss_bytes": 527925248,
+      "text": "מרבית האיים הקטנים ביותר הם מדינות עצמאיות או הקשורות לצרפת וידועים כאתרי נופש או קרתיים בחוף.",
+      "segments": [
+        {
+          "start": 0.88,
+          "end": 3.98,
+          "text": " מרבית האיים הקטנים ביותר הם מדינות עצמאיות או"
+        },
+        {
+          "start": 3.98,
+          "end": 7.16,
+          "text": " הקשורות לצרפת וידועים כאתרי נופש או קרתיים בחוף."
+        }
+      ],
+      "word_errors": 3,
+      "reference_words": 15,
+      "character_errors": 3,
+      "reference_characters": 91,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 268556377
+    },
+    {
+      "id": "he-19",
+      "kind": "human_read_speech",
+      "duration_sec": 6.0,
+      "first_inference": false,
+      "seconds": 3.9187565840547904,
+      "cpu_seconds": 0.8377920000000003,
+      "peak_rss_bytes": 527925248,
+      "text": "זמן קצר לאחר שהחלו מעשי האיבה הטילה בריטניה מצור ימי על גרמניה.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 5.26,
+          "text": " זמן קצר לאחר שהחלו מעשי האיבה הטילה בריטניה מצור ימי על גרמניה."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 12,
+      "character_errors": 1,
+      "reference_characters": 62,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 268446447
+    },
+    {
+      "id": "he-20",
+      "kind": "human_read_speech",
+      "duration_sec": 3.96,
+      "first_inference": false,
+      "seconds": 4.272178666898981,
+      "cpu_seconds": 0.9592780000000012,
+      "peak_rss_bytes": 527925248,
+      "text": "הפירמידה הגדולה של גיזה היא היחידה מבין שבעת הפלאים שעדיין קיימת היום.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 3.7,
+          "text": " הפירמידה הגדולה של גיזה היא היחידה מבין שבעת הפלאים שעדיין קיימת היום."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 12,
+      "character_errors": 0,
+      "reference_characters": 69,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 218001849
+    },
+    {
+      "id": "he-21",
+      "kind": "human_read_speech",
+      "duration_sec": 5.04,
+      "first_inference": false,
+      "seconds": 2.7890134579502046,
+      "cpu_seconds": 0.967606,
+      "peak_rss_bytes": 527925248,
+      "text": "מעבר לאירוע של יום רביעי, קרפנדו התחרה בשני מרוצים אינדיבידואליים באליפות.",
+      "segments": [
+        {
+          "start": 0.52,
+          "end": 1.8800000000000001,
+          "text": " מעבר לאירוע של יום רביעי,"
+        },
+        {
+          "start": 2.2,
+          "end": 5.0,
+          "text": " קרפנדו התחרה בשני מרוצים אינדיבידואליים באליפות."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 11,
+      "character_errors": 2,
+      "reference_characters": 72,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271468869
+    },
+    {
+      "id": "he-22",
+      "kind": "human_read_speech",
+      "duration_sec": 5.88,
+      "first_inference": false,
+      "seconds": 3.2080245830584317,
+      "cpu_seconds": 1.1505629999999982,
+      "peak_rss_bytes": 527925248,
+      "text": "בסין העתיקה הייתה דרך משלל להציג תגובות זמן שונות. כל שלב בטובות סין וכל משפחה של תגובות זמן שונות הייתה שושלת ייחודית.",
+      "segments": [
+        {
+          "start": 0.7000000000000001,
+          "end": 2.84,
+          "text": " בסין העתיקה הייתה דרך משלל להציג תגובות זמן שונות."
+        },
+        {
+          "start": 2.96,
+          "end": 5.74,
+          "text": " כל שלב בטובות סין וכל משפחה של תגובות זמן שונות הייתה שושלת ייחודית."
+        }
+      ],
+      "word_errors": 10,
+      "reference_words": 21,
+      "character_errors": 24,
+      "reference_characters": 115,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271889645
+    },
+    {
+      "id": "he-23",
+      "kind": "human_read_speech",
+      "duration_sec": 3.96,
+      "first_inference": false,
+      "seconds": 2.9588308329693973,
+      "cpu_seconds": 0.9623139999999992,
+      "peak_rss_bytes": 527925248,
+      "text": "הסצנות מוצגות על גבי הפירמידות והפירמידות השונות מוהרות.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 3.64,
+          "text": " הסצנות מוצגות על גבי הפירמידות והפירמידות השונות מוהרות."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 8,
+      "character_errors": 1,
+      "reference_characters": 55,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 272124821
+    },
+    {
+      "id": "he-24",
+      "kind": "human_read_speech",
+      "duration_sec": 8.28,
+      "first_inference": false,
+      "seconds": 3.123821833054535,
+      "cpu_seconds": 0.8986869999999989,
+      "peak_rss_bytes": 527925248,
+      "text": "בנוסף, מצפון תוכלו לבקר במשכן הגדול של גבירתנו מפטימה, מקום שבו התרחשו התגלויות של מניעה המפורסמות ברחבי העולם.",
+      "segments": [
+        {
+          "start": 0.84,
+          "end": 1.24,
+          "text": " בנוסף,"
+        },
+        {
+          "start": 1.34,
+          "end": 4.62,
+          "text": " מצפון תוכלו לבקר במשכן הגדול של גבירתנו מפטימה,"
+        },
+        {
+          "start": 5.0200000000000005,
+          "end": 8.16,
+          "text": " מקום שבו התרחשו התגלויות של מניעה המפורסמות ברחבי העולם."
+        }
+      ],
+      "word_errors": 3,
+      "reference_words": 19,
+      "character_errors": 8,
+      "reference_characters": 111,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 222629273
+    },
+    {
+      "id": "he-25",
+      "kind": "human_read_speech",
+      "duration_sec": 8.1,
+      "first_inference": false,
+      "seconds": 3.545963332988322,
+      "cpu_seconds": 1.105397,
+      "peak_rss_bytes": 527925248,
+      "text": "אנג'ל 2006 מסביר את גישת הרצף כשיטה המשמשת כדי לעזור לארגונים להגיע לרמת ביצועים גבוהה יותר.",
+      "segments": [
+        {
+          "start": 0.88,
+          "end": 4.8,
+          "text": " אנג'ל 2006 מסביר את גישת הרצף כשיטה המשמשת כדי לעזור"
+        },
+        {
+          "start": 4.8,
+          "end": 7.140000000000001,
+          "text": " לארגונים להגיע לרמת ביצועים גבוהה יותר."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 16,
+      "character_errors": 0,
+      "reference_characters": 90,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 268491821
+    },
+    {
+      "id": "he-26",
+      "kind": "human_read_speech",
+      "duration_sec": 9.3,
+      "first_inference": false,
+      "seconds": 5.950070959050208,
+      "cpu_seconds": 1.0207140000000017,
+      "peak_rss_bytes": 527925248,
+      "text": "פצצת ההיתוך פועלת על פי העיקרון שצריך אנרגיה כדי להרכיב גרעין עם פרוטונים וניוטרונים רבים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 7.38,
+          "text": " פצצת ההיתוך פועלת על פי העיקרון שצריך אנרגיה כדי להרכיב גרעין עם פרוטונים וניוטרונים רבים."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 15,
+      "character_errors": 0,
+      "reference_characters": 89,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 231656856
+    },
+    {
+      "id": "he-27",
+      "kind": "human_read_speech",
+      "duration_sec": 8.34,
+      "first_inference": false,
+      "seconds": 5.451303375069983,
+      "cpu_seconds": 1.0199950000000015,
+      "peak_rss_bytes": 527925248,
+      "text": "שימוש בספינות לשינוע סחורות הוא הדרך היעילה ביותר בפער גדול להנעת כמויות גדולות של אנשים וסחורות ברחבי האוקיינוסים.",
+      "segments": [
+        {
+          "start": 0.78,
+          "end": 4.0600000000000005,
+          "text": " שימוש בספינות לשינוע סחורות הוא הדרך היעילה ביותר בפער"
+        },
+        {
+          "start": 4.0600000000000005,
+          "end": 7.48,
+          "text": " גדול להנעת כמויות גדולות של אנשים וסחורות ברחבי האוקיינוסים."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 18,
+      "character_errors": 0,
+      "reference_characters": 114,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271797404
+    },
+    {
+      "id": "he-28",
+      "kind": "human_read_speech",
+      "duration_sec": 5.76,
+      "first_inference": false,
+      "seconds": 5.204087167046964,
+      "cpu_seconds": 1.018812999999998,
+      "peak_rss_bytes": 527925248,
+      "text": "נשים, הומלץ לכל מתיילת לומר שהיא נשואה, ללא קשר למצבה המשפחתי בפועל.",
+      "segments": [
+        {
+          "start": 0.8200000000000001,
+          "end": 1.26,
+          "text": " נשים,"
+        },
+        {
+          "start": 1.36,
+          "end": 3.2,
+          "text": " הומלץ לכל מתיילת לומר שהיא נשואה,"
+        },
+        {
+          "start": 3.2600000000000002,
+          "end": 5.22,
+          "text": " ללא קשר למצבה המשפחתי בפועל."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 12,
+      "character_errors": 2,
+      "reference_characters": 65,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 244592905
+    },
+    {
+      "id": "he-29",
+      "kind": "human_read_speech",
+      "duration_sec": 14.7,
+      "first_inference": false,
+      "seconds": 6.194089625030756,
+      "cpu_seconds": 1.1539639999999949,
+      "peak_rss_bytes": 527925248,
+      "text": "הפירמידה הגדולה שנבנתה על ידי המצרים במאה השלישית לפני הספירה היא אחת ממבני פירמידה גדולים ורבים שנבנו כדי לחלוק כבוד לפרעונים מתים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 12.200000000000001,
+          "text": " הפירמידה הגדולה שנבנתה על ידי המצרים במאה השלישית לפני הספירה היא אחת ממבני פירמידה גדולים ורבים שנבנו כדי לחלוק כבוד לפרעונים מתים."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 22,
+      "character_errors": 0,
+      "reference_characters": 131,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 245775728
+    },
+    {
+      "id": "he-30",
+      "kind": "human_read_speech",
+      "duration_sec": 7.02,
+      "first_inference": false,
+      "seconds": 2.474928415962495,
+      "cpu_seconds": 0.937733999999999,
+      "peak_rss_bytes": 527925248,
+      "text": "משקעים אלה היו נחוצים ליצירת סרטונים וחופים ששימשו כבתי גידול לחיות בר.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 6.18,
+          "text": " משקעים אלה היו נחוצים ליצירת סרטונים וחופים ששימשו כבתי גידול לחיות בר."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 12,
+      "character_errors": 1,
+      "reference_characters": 70,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 269605853
+    },
+    {
+      "id": "he-31",
+      "kind": "human_read_speech",
+      "duration_sec": 6.48,
+      "first_inference": false,
+      "seconds": 4.998506417032331,
+      "cpu_seconds": 0.8215719999999962,
+      "peak_rss_bytes": 527925248,
+      "text": "מומלץ בחום למטיילים לשים לב לסכנה של מזג אוויר קשה שפוקד את האזור מכיוון שהוא עלול לפגוע בתוכניות הטיעול.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 6.36,
+          "text": " מומלץ בחום למטיילים לשים לב לסכנה של מזג אוויר קשה שפוקד את האזור מכיוון שהוא עלול לפגוע בתוכניות הטיעול."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 19,
+      "character_errors": 2,
+      "reference_characters": 102,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 270585016
+    },
+    {
+      "id": "he-32",
+      "kind": "human_read_speech",
+      "duration_sec": 4.56,
+      "first_inference": false,
+      "seconds": 3.3883115829667076,
+      "cpu_seconds": 1.1141140000000007,
+      "peak_rss_bytes": 527925248,
+      "text": "עדיין קבלו את עצות הרשויות, צייתו לכל השלטים וקשיבו היטב לאזהרות הבטיחות.",
+      "segments": [
+        {
+          "start": 0.44,
+          "end": 1.7,
+          "text": " עדיין קבלו את עצות הרשויות,"
+        },
+        {
+          "start": 1.8,
+          "end": 4.22,
+          "text": " צייתו לכל השלטים וקשיבו היטב לאזהרות הבטיחות."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 12,
+      "character_errors": 1,
+      "reference_characters": 72,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271412303
+    },
+    {
+      "id": "he-33",
+      "kind": "human_read_speech",
+      "duration_sec": 6.72,
+      "first_inference": false,
+      "seconds": 6.315056250081398,
+      "cpu_seconds": 1.1536039999999943,
+      "peak_rss_bytes": 527925248,
+      "text": "האי הונג קונג נתן לטריטוריה של הונג קונג את שמה והוא המקום שאליו תיירים רבים מתייחסים כמוקד עיקרי.",
+      "segments": [
+        {
+          "start": 0.56,
+          "end": 4.18,
+          "text": " האי הונג קונג נתן לטריטוריה של הונג קונג את שמה והוא המקום שאליו"
+        },
+        {
+          "start": 4.18,
+          "end": 6.16,
+          "text": " תיירים רבים מתייחסים כמוקד עיקרי."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 18,
+      "character_errors": 1,
+      "reference_characters": 97,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271165560
+    },
+    {
+      "id": "he-34",
+      "kind": "human_read_speech",
+      "duration_sec": 11.28,
+      "first_inference": false,
+      "seconds": 7.770078957895748,
+      "cpu_seconds": 1.1772239999999954,
+      "peak_rss_bytes": 527925248,
+      "text": "שיתוף של טיול וירטואלי משותף הוא גם דרך נהדרת להתבונן בטיול ולשתף כיתות עדידיות וחוויות.",
+      "segments": [
+        {
+          "start": 0.96,
+          "end": 7.44,
+          "text": " שיתוף של טיול וירטואלי משותף הוא גם דרך נהדרת להתבונן בטיול ולשתף"
+        },
+        {
+          "start": 8.16,
+          "end": 10.36,
+          "text": " כיתות עדידיות וחוויות."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 15,
+      "character_errors": 2,
+      "reference_characters": 87,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271513868
+    },
+    {
+      "id": "he-35",
+      "kind": "human_read_speech",
+      "duration_sec": 14.28,
+      "first_inference": false,
+      "seconds": 6.316146833007224,
+      "cpu_seconds": 1.318127000000004,
+      "peak_rss_bytes": 527925248,
+      "text": "מאז 1988 קלפיות חייבות להיות שקופות כדי שהמצביעים והמשקיפים יהיו עדים לכך שלא היו מעטפות בקלפי לפני התחלת ההצבעה ושלא נוספות עוד מעטפות חוץ מאלה של המצביעים החוקיים המורשים.",
+      "segments": [
+        {
+          "start": 0.8200000000000001,
+          "end": 4.98,
+          "text": " מאז 1988 קלפיות חייבות להיות שקופות כדי שהמצביעים והמשקיפים"
+        },
+        {
+          "start": 4.98,
+          "end": 9.72,
+          "text": " יהיו עדים לכך שלא היו מעטפות בקלפי לפני התחלת ההצבעה ושלא"
+        },
+        {
+          "start": 9.72,
+          "end": 13.280000000000001,
+          "text": " נוספות עוד מעטפות חוץ מאלה של המצביעים החוקיים המורשים."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 29,
+      "character_errors": 1,
+      "reference_characters": 173,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 250752320
+    },
+    {
+      "id": "noise-00",
+      "kind": "derived_noise",
+      "duration_sec": 7.44,
+      "first_inference": false,
+      "seconds": 5.762569417012855,
+      "cpu_seconds": 1.0262370000000018,
+      "peak_rss_bytes": 527925248,
+      "text": "מרקלי השביע אתמול ועדת בחירות זמנית חדשה בת תשעה חברים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 7.32,
+          "text": " מרקלי השביע אתמול ועדת בחירות זמנית חדשה בת תשעה חברים."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 11,
+      "character_errors": 5,
+      "reference_characters": 58,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 222737133
+    },
+    {
+      "id": "noise-01",
+      "kind": "derived_noise",
+      "duration_sec": 8.46,
+      "first_inference": false,
+      "seconds": 5.140194625011645,
+      "cpu_seconds": 0.989682000000002,
+      "peak_rss_bytes": 527925248,
+      "text": "802.11 פועל בסטנדרט של 2.5 גיגהרס וגם 5.0 גיגהרס",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.040000000000001,
+          "text": " 802.11 פועל בסטנדרט של 2.5 גיגהרס וגם 5.0 גיגהרס"
+        }
+      ],
+      "word_errors": 8,
+      "reference_words": 13,
+      "character_errors": 31,
+      "reference_characters": 51,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 226749624
+    },
+    {
+      "id": "noise-02",
+      "kind": "derived_noise",
+      "duration_sec": 3.0,
+      "first_inference": false,
+      "seconds": 3.085426500067115,
+      "cpu_seconds": 0.8416880000000049,
+      "peak_rss_bytes": 527925248,
+      "text": "מבטחת צהר, זה לפני 20 שנה",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 2.8000000000000003,
+          "text": " מבטחת צהר, זה לפני 20 שנה"
+        }
+      ],
+      "word_errors": 17,
+      "reference_words": 17,
+      "character_errors": 65,
+      "reference_characters": 76,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 268852360
+    },
+    {
+      "id": "noise-03",
+      "kind": "derived_noise",
+      "duration_sec": 9.78,
+      "first_inference": false,
+      "seconds": 2.503713417099789,
+      "cpu_seconds": 0.7430450000000022,
+      "peak_rss_bytes": 527925248,
+      "text": "הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב בספינת הדגל של האפריקאים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.66,
+          "text": " הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב בספינת הדגל של האפריקאים."
+        }
+      ],
+      "word_errors": 8,
+      "reference_words": 16,
+      "character_errors": 37,
+      "reference_characters": 101,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 269908761
+    },
+    {
+      "id": "noise-04",
+      "kind": "derived_noise",
+      "duration_sec": 11.76,
+      "first_inference": false,
+      "seconds": 3.984043041942641,
+      "cpu_seconds": 1.1509940000000043,
+      "peak_rss_bytes": 527925248,
+      "text": "לחם עם שמן זית, עגבניה וכל תוספת זמינה כגון גבינה, טונה וקוף, פעם באולי, ארוחת ערב פופולרית ופשוטה, במיוחד במהלך הקיץ, איהא.",
+      "segments": [
+        {
+          "start": 0.7000000000000001,
+          "end": 1.58,
+          "text": " לחם עם שמן זית,"
+        },
+        {
+          "start": 1.7,
+          "end": 4.18,
+          "text": " עגבניה וכל תוספת זמינה כגון גבינה,"
+        },
+        {
+          "start": 4.3,
+          "end": 4.96,
+          "text": " טונה וקוף,"
+        },
+        {
+          "start": 5.26,
+          "end": 6.22,
+          "text": " פעם באולי,"
+        },
+        {
+          "start": 6.94,
+          "end": 8.82,
+          "text": " ארוחת ערב פופולרית ופשוטה,"
+        },
+        {
+          "start": 8.9,
+          "end": 9.88,
+          "text": " במיוחד במהלך הקיץ,"
+        },
+        {
+          "start": 10.52,
+          "end": 10.84,
+          "text": " איהא."
+        }
+      ],
+      "word_errors": 24,
+      "reference_words": 24,
+      "character_errors": 94,
+      "reference_characters": 119,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 256348633
+    },
+    {
+      "id": "noise-05",
+      "kind": "derived_noise",
+      "duration_sec": 4.92,
+      "first_inference": false,
+      "seconds": 3.970152667025104,
+      "cpu_seconds": 0.9923539999999988,
+      "peak_rss_bytes": 527925248,
+      "text": "הנוכחות של צוות בלתי נראה היא אמיתי, היא גם הרכיב ייחודי של צוות וירטואלי.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.66,
+          "text": " הנוכחות של צוות בלתי נראה היא אמיתי, היא גם הרכיב ייחודי של צוות וירטואלי."
+        }
+      ],
+      "word_errors": 7,
+      "reference_words": 18,
+      "character_errors": 33,
+      "reference_characters": 97,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 271504207
+    },
+    {
+      "id": "noise-06",
+      "kind": "derived_noise",
+      "duration_sec": 14.46,
+      "first_inference": false,
+      "seconds": 3.557954499963671,
+      "cpu_seconds": 0.9995529999999988,
+      "peak_rss_bytes": 527925248,
+      "text": "הנמל היה אתר של סכסוך ימים מפורסם ב-1889, כאשר שבע אוניות מגרמניה, ארצות הברית ובריטניה סירבו לצאת את הנמל.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 6.0,
+          "text": " הנמל היה אתר של סכסוך ימים מפורסם ב-1889,"
+        },
+        {
+          "start": 6.96,
+          "end": 8.9,
+          "text": " כאשר שבע אוניות מגרמניה,"
+        },
+        {
+          "start": 9.22,
+          "end": 11.94,
+          "text": " ארצות הברית ובריטניה סירבו לצאת את הנמל."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 19,
+      "character_errors": 10,
+      "reference_characters": 97,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 222133559
+    },
+    {
+      "id": "noise-07",
+      "kind": "derived_noise",
+      "duration_sec": 7.08,
+      "first_inference": false,
+      "seconds": 3.2015085420571268,
+      "cpu_seconds": 0.8000619999999969,
+      "peak_rss_bytes": 527925248,
+      "text": "נראה כי העזים בויתו לראשונה לפני כעשרת אלפים שנה בהרי זגרוס באיראן.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 5.54,
+          "text": " נראה כי העזים בויתו לראשונה לפני כעשרת אלפים שנה בהרי זגרוס באיראן."
+        }
+      ],
+      "word_errors": 4,
+      "reference_words": 13,
+      "character_errors": 10,
+      "reference_characters": 62,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 269895272
+    },
+    {
+      "id": "silence-2",
+      "kind": "silence",
+      "duration_sec": 2.0,
+      "first_inference": false,
+      "seconds": 2.5113740829983726,
+      "cpu_seconds": 0.5659780000000012,
+      "peak_rss_bytes": 527925248,
+      "text": "",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 0.1,
+          "text": ""
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 0,
+      "character_errors": 0,
+      "reference_characters": 0,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 269476321
+    },
+    {
+      "id": "silence-5",
+      "kind": "silence",
+      "duration_sec": 5.0,
+      "first_inference": false,
+      "seconds": 2.923845416982658,
+      "cpu_seconds": 0.5638949999999952,
+      "peak_rss_bytes": 527925248,
+      "text": "",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 0.1,
+          "text": ""
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 0,
+      "character_errors": 0,
+      "reference_characters": 0,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 270479861
+    },
+    {
+      "id": "silence-15",
+      "kind": "silence",
+      "duration_sec": 15.0,
+      "first_inference": false,
+      "seconds": 6.384285207954235,
+      "cpu_seconds": 0.6499939999999995,
+      "peak_rss_bytes": 527925248,
+      "text": "",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 0.1,
+          "text": ""
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 0,
+      "character_errors": 0,
+      "reference_characters": 0,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 235181492
+    },
+    {
+      "id": "room-noise",
+      "kind": "noise_only",
+      "duration_sec": 5.0,
+      "first_inference": false,
+      "seconds": 5.74761649989523,
+      "cpu_seconds": 0.828046999999998,
+      "peak_rss_bytes": 527925248,
+      "text": "",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 0.1,
+          "text": ""
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 0,
+      "character_errors": 0,
+      "reference_characters": 0,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2139941746,
+      "mlx_cache_bytes": 268558841
+    },
+    {
+      "id": "long-concatenated",
+      "kind": "derived_long",
+      "duration_sec": 307.38,
+      "first_inference": false,
+      "seconds": 69.3034115000628,
+      "cpu_seconds": 17.822706999999994,
+      "peak_rss_bytes": 527925248,
+      "text": "מרקי השביע עצמו ועדת חברות חדשה הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב לספינת הדגל של האפריקאים. לחם עם שמן זית, עגבניה וכל תוספת זמינה כגון גבינה, טונה וכו, פעם באולי, ארוחת ערב פופולרית ופשוטה, במיוחד במהלך הקיץ, איהא. הנמל היה האתר של סכסוך ימים מפורסם ב-1889, כאשר שבע אוניות מגרמניה, ארצות הברית ובריטניה סירבו לצאת את הנמל. נראה כי העיזים בויתו לראשונה לפני כעשרת אלפים שנה בערי זגרוס באיראן. ב-1990 הוא נוסף לרשימת אתרי המורשת העולמיים שבסיכון עקב הסכנה של חולות מדבר. אם אתם מגיעים לחוף, רק באמצעות טיול שיט לא תצטרכו ויזה נפרדת, נכון ל-2009. שלא אל עבר התיירים M16, רונלדו מנדוזה ירה ברופא אה. סולטאן מרוקו בנה את העיר מחדש בתור דאר אל-ביידה והוא קיבלה את השם קזבלנקה מסוחרים ספרדים שהקימו בה מרכזי סחר. מועצת ההתעמלות של ארצות הברית והוועד האולימפי שותפים לאותה מטרה, להפוך את עניו ההתעמלות וענפים אחרים לכמה שיותר בטוחים לספורטאים, לשאוף להגשים את חלומותיהם בסביבה בטוחה, חיובית ומועצמת. נושאים אחרים העומדים על הפרק בוואלי כוללים הצלת היערות הנותרים בעולם ושיתוף טכנולוגיות שיעזרו למדינות מתפתחות לצמוח בדרכים פחות מזהמות. בזמן תקופה זו בהיסטוריה האירופאית, הכנסייה הקתולית שהפכה לעשירה ורבת כוח ספגה ביקורת קפדנית. יצטרכן שיש יותר מדי אמות מבחינות מצד הכוחות, מכיוון שהקרום דאקיטה ככה הקל יותר עולה בלהוטות מהשאלה. אסוריות ביטיביות כאלה מסמסת בסד כוללות, ובבחינות הנוגעות כמונה נוספות מחקר וצריכות תקצורות מחובים הרחוק ותקצורות כוללות. מרבית האיים הקטנים ביותר הם מדינות עצמאיות, או הקשורות לצרפת וידועים כאתרי נופש או קרתיים בחוף. זמן קצר לאחר שהחלו מעשי האיבה הטילה בריטניה מצור ימי על גרמניה. אנג'ל, 2006, מסביר את גישת הרצף כשיטה המשמשת כדי לעזור לארגונים להגיע לרמת ביצועים גבוהה יותר. תצצת ההיתוך פועלת על פי העיקרון שצריך אנרגיה כדי להרכיב גרעין עם פרוטונים וניוטרונים רבים. שימוש בספינות לשינוע סחורות הוא הדרך היעילה ביותר בפער גדול להנעת כמויות גדולות של אנשים וסחורות ברחבי האוקיינוסים. הפירמידה הגדולה שנבנתה על ידי המצרים במאה ה-3 לפנה' היא אחת ממבני פירמידה גדולים ורבים שנבנו כדי לחלוק כבוד לפרעונים מתים. משקעים אלה היו נחוצים ליצירת סרטונים וחופים ששימשו כבתי גידול לחיות בר. האי הונג קונג נתן לטריטוריה של הונג קונג את שמה והוא המקום שאליו תיירים רבים מתייחסים כמוקד עיקרי. שיתוף של טיול וירטואלי משותף הוא גם דרך נהדרת להתבונן בטיול ולשתף כיתות עתידיות וחוויות. מאז 1988 קלפיות חייבות להיות שקופות כדי שהמצביעים והמשקפים יהיו עדים לכך שלא היו מעטפות בקלפי לפני התחלת ההצבעה ושלא נוספות עוד מעטפות חוץ מאלה של המצביעים החוקיים המורשים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 2.8000000000000003,
+          "text": " מרקי השביע עצמו ועדת חברות חדשה"
+        },
+        {
+          "start": 21.7,
+          "end": 29.060000000000002,
+          "text": " הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב לספינת הדגל של האפריקאים."
+        },
+        {
+          "start": 30.18,
+          "end": 34.86,
+          "text": " לחם עם שמן זית, עגבניה וכל תוספת זמינה כגון גבינה,"
+        },
+        {
+          "start": 35.02,
+          "end": 35.62,
+          "text": " טונה וכו,"
+        },
+        {
+          "start": 35.94,
+          "end": 36.88,
+          "text": " פעם באולי,"
+        },
+        {
+          "start": 37.6,
+          "end": 39.46,
+          "text": " ארוחת ערב פופולרית ופשוטה,"
+        },
+        {
+          "start": 39.56,
+          "end": 40.88,
+          "text": " במיוחד במהלך הקיץ,"
+        },
+        {
+          "start": 41.18,
+          "end": 41.42,
+          "text": " איהא."
+        },
+        {
+          "start": 50.32,
+          "end": 53.7,
+          "text": " הנמל היה האתר של סכסוך ימים מפורסם ב-1889,"
+        },
+        {
+          "start": 55.3,
+          "end": 57.16,
+          "text": " כאשר שבע אוניות מגרמניה,"
+        },
+        {
+          "start": 57.559999999999995,
+          "end": 60.13999999999999,
+          "text": " ארצות הברית ובריטניה סירבו לצאת את הנמל."
+        },
+        {
+          "start": 64.2,
+          "end": 68.86,
+          "text": " נראה כי העיזים בויתו לראשונה לפני כעשרת אלפים שנה בערי זגרוס באיראן."
+        },
+        {
+          "start": 71.72,
+          "end": 77.44,
+          "text": " ב-1990 הוא נוסף לרשימת אתרי המורשת העולמיים שבסיכון עקב הסכנה של חולות מדבר."
+        },
+        {
+          "start": 85.06,
+          "end": 86.24,
+          "text": " אם אתם מגיעים לחוף,"
+        },
+        {
+          "start": 87.17999999999999,
+          "end": 91.36,
+          "text": " רק באמצעות טיול שיט לא תצטרכו ויזה נפרדת, נכון ל-2009."
+        },
+        {
+          "start": 93.24,
+          "end": 94.91999999999999,
+          "text": " שלא אל עבר התיירים M16,"
+        },
+        {
+          "start": 95.19999999999999,
+          "end": 97.22,
+          "text": " רונלדו מנדוזה ירה ברופא אה."
+        },
+        {
+          "start": 99.67999999999999,
+          "end": 103.0,
+          "text": " סולטאן מרוקו בנה את העיר מחדש בתור דאר אל-ביידה"
+        },
+        {
+          "start": 103.0,
+          "end": 107.56,
+          "text": " והוא קיבלה את השם קזבלנקה מסוחרים ספרדים שהקימו בה מרכזי סחר."
+        },
+        {
+          "start": 110.69999999999999,
+          "end": 114.72,
+          "text": " מועצת ההתעמלות של ארצות הברית והוועד האולימפי שותפים לאותה מטרה,"
+        },
+        {
+          "start": 115.17999999999999,
+          "end": 120.02,
+          "text": " להפוך את עניו ההתעמלות וענפים אחרים לכמה שיותר בטוחים לספורטאים,"
+        },
+        {
+          "start": 120.5,
+          "end": 122.94,
+          "text": " לשאוף להגשים את חלומותיהם בסביבה בטוחה,"
+        },
+        {
+          "start": 123.3,
+          "end": 124.62,
+          "text": " חיובית ומועצמת."
+        },
+        {
+          "start": 126.8,
+          "end": 128.86,
+          "text": " נושאים אחרים העומדים על הפרק בוואלי"
+        },
+        {
+          "start": 130.4,
+          "end": 133.68,
+          "text": " כוללים הצלת היערות הנותרים בעולם ושיתוף טכנולוגיות"
+        },
+        {
+          "start": 133.68,
+          "end": 137.0,
+          "text": " שיעזרו למדינות מתפתחות לצמוח בדרכים פחות מזהמות."
+        },
+        {
+          "start": 138.64,
+          "end": 140.54,
+          "text": " בזמן תקופה זו בהיסטוריה האירופאית,"
+        },
+        {
+          "start": 140.88,
+          "end": 144.5,
+          "text": " הכנסייה הקתולית שהפכה לעשירה ורבת כוח ספגה ביקורת קפדנית."
+        },
+        {
+          "start": 145.64,
+          "end": 148.78,
+          "text": " יצטרכן שיש יותר מדי אמות מבחינות מצד הכוחות,"
+        },
+        {
+          "start": 148.9,
+          "end": 151.68,
+          "text": " מכיוון שהקרום דאקיטה ככה הקל יותר עולה בלהוטות מהשאלה."
+        },
+        {
+          "start": 153.02,
+          "end": 155.28,
+          "text": " אסוריות ביטיביות כאלה מסמסת בסד כוללות,"
+        },
+        {
+          "start": 155.57999999999998,
+          "end": 157.96,
+          "text": " ובבחינות הנוגעות כמונה נוספות מחקר וצריכות"
+        },
+        {
+          "start": 157.96,
+          "end": 160.44,
+          "text": " תקצורות מחובים הרחוק ותקצורות כוללות."
+        },
+        {
+          "start": 161.72,
+          "end": 164.6,
+          "text": " מרבית האיים הקטנים ביותר הם מדינות עצמאיות,"
+        },
+        {
+          "start": 164.84,
+          "end": 168.02,
+          "text": " או הקשורות לצרפת וידועים כאתרי נופש או קרתיים בחוף."
+        },
+        {
+          "start": 168.02,
+          "end": 174.5,
+          "text": " זמן קצר לאחר שהחלו מעשי האיבה הטילה בריטניה מצור ימי על גרמניה."
+        },
+        {
+          "start": 198.02,
+          "end": 198.62,
+          "text": " אנג'ל,"
+        },
+        {
+          "start": 206.62,
+          "end": 207.10000000000002,
+          "text": " 2006,"
+        },
+        {
+          "start": 207.4,
+          "end": 212.4,
+          "text": " מסביר את גישת הרצף כשיטה המשמשת כדי לעזור לארגונים להגיע לרמת ביצועים גבוהה יותר."
+        },
+        {
+          "start": 215.3,
+          "end": 218.46,
+          "text": " תצצת ההיתוך פועלת על פי העיקרון שצריך אנרגיה כדי"
+        },
+        {
+          "start": 218.46,
+          "end": 221.4,
+          "text": " להרכיב גרעין עם פרוטונים וניוטרונים רבים."
+        },
+        {
+          "start": 224.52,
+          "end": 227.38,
+          "text": " שימוש בספינות לשינוע סחורות הוא הדרך היעילה ביותר"
+        },
+        {
+          "start": 227.38,
+          "end": 231.18,
+          "text": " בפער גדול להנעת כמויות גדולות של אנשים וסחורות ברחבי האוקיינוסים."
+        },
+        {
+          "start": 240.74,
+          "end": 245.3,
+          "text": " הפירמידה הגדולה שנבנתה על ידי המצרים במאה ה-3 לפנה'"
+        },
+        {
+          "start": 245.82,
+          "end": 251.1,
+          "text": " היא אחת ממבני פירמידה גדולים ורבים שנבנו כדי לחלוק כבוד לפרעונים מתים."
+        },
+        {
+          "start": 251.1,
+          "end": 260.2,
+          "text": " משקעים אלה היו נחוצים ליצירת סרטונים וחופים ששימשו כבתי גידול לחיות בר."
+        },
+        {
+          "start": 274.14,
+          "end": 277.08,
+          "text": " האי הונג קונג נתן לטריטוריה של הונג קונג את שמה והוא"
+        },
+        {
+          "start": 277.08,
+          "end": 279.74,
+          "text": " המקום שאליו תיירים רבים מתייחסים כמוקד עיקרי."
+        },
+        {
+          "start": 281.78000000000003,
+          "end": 288.24,
+          "text": " שיתוף של טיול וירטואלי משותף הוא גם דרך נהדרת להתבונן בטיול ולשתף"
+        },
+        {
+          "start": 288.98,
+          "end": 291.18,
+          "text": " כיתות עתידיות וחוויות."
+        },
+        {
+          "start": 293.42,
+          "end": 305.88,
+          "text": " מאז 1988 קלפיות חייבות להיות שקופות כדי שהמצביעים והמשקפים יהיו עדים לכך שלא היו מעטפות בקלפי לפני התחלת ההצבעה ושלא נוספות עוד מעטפות חוץ מאלה של המצביעים החוקיים המורשים."
+        }
+      ],
+      "word_errors": 276,
+      "reference_words": 590,
+      "character_errors": 1267,
+      "reference_characters": 3337,
+      "hallucination_on_silence": false,
+      "mlx_active_bytes": 1618307758,
+      "mlx_peak_bytes": 2249551254,
+      "mlx_cache_bytes": 271724952
+    }
+  ]
+}

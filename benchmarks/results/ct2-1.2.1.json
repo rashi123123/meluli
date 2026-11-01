@@ -1,0 +1,408 @@
+{
+  "label": "ct2-1.2.1",
+  "engine": "ct2",
+  "versions": {
+    "faster-whisper": "1.2.1",
+    "ctranslate2": "4.7.1",
+    "numpy": "2.4.3",
+    "av": "17.0.0",
+    "huggingface-hub": "1.7.1"
+  },
+  "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "created_utc": "2026-10-24T13:04:17Z",
+  "load_sec": 7.973248541005887,
+  "settings": {
+    "language": "he",
+    "task": "transcribe",
+    "beam_size": 1,
+    "condition_on_previous_text": true,
+    "vad": false,
+    "ct2_cpu_threads": 4,
+    "mlx_cache_limit_bytes": 268435456
+  },
+  "samples": [
+    {
+      "id": "he-00",
+      "kind": "human_read_speech",
+      "duration_sec": 7.44,
+      "first_inference": true,
+      "seconds": 18.350474374950863,
+      "cpu_seconds": 36.075908999999996,
+      "peak_rss_bytes": 1700937728,
+      "text": "מרקלי השביע אתמול ועדת בחירות זמנית חדשה בת תשעה חברים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 7.32,
+          "text": " מרקלי השביע אתמול ועדת בחירות זמנית חדשה בת תשעה חברים."
+        }
+      ],
+      "word_errors": 2,
+      "reference_words": 11,
+      "character_errors": 5,
+      "reference_characters": 58,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-01",
+      "kind": "human_read_speech",
+      "duration_sec": 8.46,
+      "first_inference": false,
+      "seconds": 16.752981500001624,
+      "cpu_seconds": 36.925563000000004,
+      "peak_rss_bytes": 1700937728,
+      "text": "802.11 פועל בסטנדרט של 2.5 גיגה הרץ וגם 5.0 גיגה הרץ.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.18,
+          "text": " 802.11 פועל בסטנדרט של 2.5 גיגה הרץ וגם 5.0 גיגה הרץ."
+        }
+      ],
+      "word_errors": 10,
+      "reference_words": 13,
+      "character_errors": 35,
+      "reference_characters": 51,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-02",
+      "kind": "human_read_speech",
+      "duration_sec": 3.0,
+      "first_inference": false,
+      "seconds": 30.552161999978125,
+      "cpu_seconds": 37.575489000000005,
+      "peak_rss_bytes": 1700937728,
+      "text": "רשות אחת צעד, זה לפני סביבה שעברנו",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 2.96,
+          "text": " רשות אחת צעד, זה לפני סביבה שעברנו"
+        }
+      ],
+      "word_errors": 17,
+      "reference_words": 17,
+      "character_errors": 61,
+      "reference_characters": 76,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-03",
+      "kind": "human_read_speech",
+      "duration_sec": 9.78,
+      "first_inference": false,
+      "seconds": 46.251367540913634,
+      "cpu_seconds": 40.00202,
+      "peak_rss_bytes": 1700937728,
+      "text": "הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב לספינת הדגל של האפריקאים.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 8.620000000000001,
+          "text": " הוא אחד האיתרקציות העיקריות בדרום אפריקה ונחשב לספינת הדגל של האפריקאים."
+        }
+      ],
+      "word_errors": 7,
+      "reference_words": 16,
+      "character_errors": 36,
+      "reference_characters": 101,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-04",
+      "kind": "human_read_speech",
+      "duration_sec": 11.76,
+      "first_inference": false,
+      "seconds": 27.10446070902981,
+      "cpu_seconds": 40.247749,
+      "peak_rss_bytes": 1700937728,
+      "text": "לחם עם שמן זית, עגבניה וכל תוספת זמינה כגון גבינה, טונה וכו, פעם באולי, ארוחת ערב פופולרית ופשוטה, במיוחד במהלך הקיץ, איהא.",
+      "segments": [
+        {
+          "start": 0.68,
+          "end": 1.58,
+          "text": " לחם עם שמן זית,"
+        },
+        {
+          "start": 1.7,
+          "end": 4.2,
+          "text": " עגבניה וכל תוספת זמינה כגון גבינה,"
+        },
+        {
+          "start": 4.34,
+          "end": 4.96,
+          "text": " טונה וכו,"
+        },
+        {
+          "start": 5.28,
+          "end": 6.22,
+          "text": " פעם באולי,"
+        },
+        {
+          "start": 6.92,
+          "end": 8.82,
+          "text": " ארוחת ערב פופולרית ופשוטה,"
+        },
+        {
+          "start": 8.88,
+          "end": 10.22,
+          "text": " במיוחד במהלך הקיץ,"
+        },
+        {
+          "start": 10.52,
+          "end": 10.78,
+          "text": " איהא."
+        }
+      ],
+      "word_errors": 23,
+      "reference_words": 24,
+      "character_errors": 93,
+      "reference_characters": 119,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-05",
+      "kind": "human_read_speech",
+      "duration_sec": 4.92,
+      "first_inference": false,
+      "seconds": 30.833612957969308,
+      "cpu_seconds": 37.18102200000001,
+      "peak_rss_bytes": 1700937728,
+      "text": "הנוכחות של צוות בלתי נראה אמיתי היא גם מרכיב ייחודי של צוות וירטואלי.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.6000000000000005,
+          "text": " הנוכחות של צוות בלתי נראה אמיתי היא גם מרכיב ייחודי של צוות וירטואלי."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 18,
+      "character_errors": 29,
+      "reference_characters": 97,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-06",
+      "kind": "human_read_speech",
+      "duration_sec": 14.46,
+      "first_inference": false,
+      "seconds": 136.91196754202247,
+      "cpu_seconds": 43.567365999999964,
+      "peak_rss_bytes": 1700937728,
+      "text": "הנמל היה האתר של סכסוך ימים מפורסם ב-1889, כאשר שבע אוניות מגרמניה, ארצות הברית ובריטניה סירבו לצאת את הנמל.",
+      "segments": [
+        {
+          "start": 0.2,
+          "end": 6.0,
+          "text": " הנמל היה האתר של סכסוך ימים מפורסם ב-1889,"
+        },
+        {
+          "start": 6.94,
+          "end": 8.8,
+          "text": " כאשר שבע אוניות מגרמניה,"
+        },
+        {
+          "start": 9.200000000000001,
+          "end": 11.78,
+          "text": " ארצות הברית ובריטניה סירבו לצאת את הנמל."
+        }
+      ],
+      "word_errors": 4,
+      "reference_words": 19,
+      "character_errors": 9,
+      "reference_characters": 97,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-07",
+      "kind": "human_read_speech",
+      "duration_sec": 7.08,
+      "first_inference": false,
+      "seconds": 91.59101420803927,
+      "cpu_seconds": 40.379008,
+      "peak_rss_bytes": 1700937728,
+      "text": "נראה כי העיזים בויתו לראשונה לפני כעשרת אלפים שנה בהרי זגרוס באיראן.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 5.54,
+          "text": " נראה כי העיזים בויתו לראשונה לפני כעשרת אלפים שנה בהרי זגרוס באיראן."
+        }
+      ],
+      "word_errors": 4,
+      "reference_words": 13,
+      "character_errors": 11,
+      "reference_characters": 62,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-08",
+      "kind": "human_read_speech",
+      "duration_sec": 7.32,
+      "first_inference": false,
+      "seconds": 27.13712237495929,
+      "cpu_seconds": 38.72702499999997,
+      "peak_rss_bytes": 1700937728,
+      "text": "ב-1990 הוא נוסף לרשימת אתרי המורשת העולמיים שבסיכון עקב הסכנה של חולות מדבר.",
+      "segments": [
+        {
+          "start": 0.86,
+          "end": 4.36,
+          "text": " ב-1990 הוא נוסף לרשימת אתרי המורשת העולמיים"
+        },
+        {
+          "start": 4.36,
+          "end": 6.5600000000000005,
+          "text": " שבסיכון עקב הסכנה של חולות מדבר."
+        }
+      ],
+      "word_errors": 0,
+      "reference_words": 14,
+      "character_errors": 0,
+      "reference_characters": 75,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-09",
+      "kind": "human_read_speech",
+      "duration_sec": 4.98,
+      "first_inference": false,
+      "seconds": 47.4179726250004,
+      "cpu_seconds": 39.955854000000045,
+      "peak_rss_bytes": 1700937728,
+      "text": "ב-15 באוגוסט 1940 בעלות הברית פלשו לדרום צרפת, הפלישה נקראה מבצע דראקון.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.5,
+          "text": " ב-15 באוגוסט 1940 בעלות הברית פלשו לדרום צרפת, הפלישה נקראה מבצע דראקון."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 13,
+      "character_errors": 1,
+      "reference_characters": 69,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-10",
+      "kind": "human_read_speech",
+      "duration_sec": 7.98,
+      "first_inference": false,
+      "seconds": 31.346550624934025,
+      "cpu_seconds": 38.94909799999999,
+      "peak_rss_bytes": 1700937728,
+      "text": "אם אתם מגיעים לחוף רק באמצעות טיול שיט לא תצטרכו ויזה נפרדת, נכון ל-2009.",
+      "segments": [
+        {
+          "start": 1.0,
+          "end": 2.1,
+          "text": " אם אתם מגיעים לחוף"
+        },
+        {
+          "start": 2.84,
+          "end": 6.08,
+          "text": " רק באמצעות טיול שיט לא תצטרכו ויזה נפרדת,"
+        },
+        {
+          "start": 6.28,
+          "end": 7.16,
+          "text": " נכון ל-2009."
+        }
+      ],
+      "word_errors": 1,
+      "reference_words": 15,
+      "character_errors": 1,
+      "reference_characters": 72,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-11",
+      "kind": "human_read_speech",
+      "duration_sec": 5.46,
+      "first_inference": false,
+      "seconds": 23.67507374996785,
+      "cpu_seconds": 36.00276199999996,
+      "peak_rss_bytes": 1700937728,
+      "text": "שלא אל עבר התארים M16 רונלדו מנדוזה ירה ברופא A.",
+      "segments": [
+        {
+          "start": 0.0,
+          "end": 4.54,
+          "text": " שלא אל עבר התארים M16 רונלדו מנדוזה ירה ברופא A."
+        }
+      ],
+      "word_errors": 10,
+      "reference_words": 10,
+      "character_errors": 40,
+      "reference_characters": 48,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-12",
+      "kind": "human_read_speech",
+      "duration_sec": 9.84,
+      "first_inference": false,
+      "seconds": 25.799528375035152,
+      "cpu_seconds": 39.364716999999985,
+      "peak_rss_bytes": 1700937728,
+      "text": "סולטן מרוקו בנה את העיר מחדש בתור דאר אלביידה וקיבלה את השם קזבלנקה מסוחרים ספרדים שהקימו בה מרכזי סחר.",
+      "segments": [
+        {
+          "start": 1.0,
+          "end": 5.3,
+          "text": " סולטן מרוקו בנה את העיר מחדש בתור דאר אלביידה וקיבלה את"
+        },
+        {
+          "start": 5.3,
+          "end": 8.94,
+          "text": " השם קזבלנקה מסוחרים ספרדים שהקימו בה מרכזי סחר."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 21,
+      "character_errors": 7,
+      "reference_characters": 108,
+      "hallucination_on_silence": false
+    },
+    {
+      "id": "he-13",
+      "kind": "human_read_speech",
+      "duration_sec": 16.8,
+      "first_inference": false,
+      "seconds": 83.283768333029,
+      "cpu_seconds": 46.790187999999944,
+      "peak_rss_bytes": 1700937728,
+      "text": "מועצת ההתעמלות של ארצות הברית והוועד האולימפי שותפים לאותה מטרה, להפוך את עניו ההתעמלות וענפים אחרים לכמה שיותר בטוחים לספורטאים, לשאוף להגשים את חלומותיהם בסביבה בטוחה, חיובית או מועצמת.",
+      "segments": [
+        {
+          "start": 0.8200000000000001,
+          "end": 5.74,
+          "text": " מועצת ההתעמלות של ארצות הברית והוועד האולימפי שותפים לאותה מטרה,"
+        },
+        {
+          "start": 6.18,
+          "end": 11.02,
+          "text": " להפוך את עניו ההתעמלות וענפים אחרים לכמה שיותר בטוחים לספורטאים,"
+        },
+        {
+          "start": 11.5,
+          "end": 13.96,
+          "text": " לשאוף להגשים את חלומותיהם בסביבה בטוחה,"
+        },
+        {
+          "start": 14.32,
+          "end": 15.64,
+          "text": " חיובית או מועצמת."
+        }
+      ],
+      "word_errors": 5,
+      "reference_words": 27,
+      "character_errors": 11,
+      "reference_characters": 173,
+      "hallucination_on_silence": false
+    }
+  ]
+}

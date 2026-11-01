@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./instrument.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Only the weights the design system uses: 400 for text, 500 for controls, 600 for titles. */
+@font-face { font-family: "Meluli Rounded"; src: local("SFProRounded-Regular"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Meluli Rounded"; src: local("SFProRounded-Medium"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Meluli Rounded"; src: local("SFProRounded-Semibold"); font-weight: 600; font-display: swap; }
+/* The Hebrew face complements SF Pro Rounded inside one UI family. */
+@font-face {
+  font-family: "Meluli Rounded";
+  src: local("SF Hebrew Rounded"), local("SFHebrewRounded-Regular");
+  font-weight: 100 1000;
+  font-display: swap;
+  unicode-range: U+0590-05FF, U+FB1D-FB4F;
+}
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-sans);
+}

@@ -1,0 +1,51 @@
+{
+  "sdk": "NVIDIA/NeMo-Speech.cpp v0.2.0 macos-aarch64-metal",
+  "minimumMacOS": "13.3",
+  "libraries": [
+    {
+      "name": "libggml-base.0.dylib",
+      "bytes": 703040,
+      "sha256": "2b9d2c89c391c7f7f181073881b3d848f548581ec4af759ba95d824813be459d"
+    },
+    {
+      "name": "libggml-blas.0.dylib",
+      "bytes": 54592,
+      "sha256": "0eb81dd93e5df88c7df207fddb46b9c23568e55a334228ae0d23c098426e5ec4"
+    },
+    {
+      "name": "libggml-cpu.0.dylib",
+      "bytes": 944288,
+      "sha256": "d8fc8d0e377faf1b2ccebb2f226edfc08175ce19ad0c6c11769d281a19b31e17"
+    },
+    {
+      "name": "libggml-metal.0.dylib",
+      "bytes": 2148000,
+      "sha256": "79cc350613b69d8ab4fca272c45af4e682eb8c9f2be55229d59412e8a385de2f"
+    },
+    {
+      "name": "libggml.0.dylib",
+      "bytes": 56720,
+      "sha256": "2c5573a7701674ffc222e8c27220c44a2a8e1873b57676bf4f33f3e8f624a15b"
+    },
+    {
+      "name": "libnemo_speech_asr.dylib",
+      "bytes": 1469536,
+      "sha256": "e1ff182c69813aa2b62c548dfae659377bba3664fc8d4bf9b272a9e2cb5d3a64"
+    },
+    {
+      "name": "libnemo_speech_asr_c.1.dylib",
+      "bytes": 92400,
+      "sha256": "3173c84414c3afb0c34ef9c657eee0447f034e598f17cfe9c9d1b2a0f1c0feed"
+    },
+    {
+      "name": "libnemo_speech_text_normalization.dylib",
+      "bytes": 3071936,
+      "sha256": "8d3335c434b4af2af71d89692e5ba5d7c9f90ef1e2629812a847443efcc2fb93"
+    },
+    {
+      "name": "meluli-asr-worker",
+      "bytes": 254880,
+      "sha256": "d83635076794dd5b3e70be64b4b5c06b3d9505d14ebf9d360d127d84d1d53d52"
+    }
+  ]
+}

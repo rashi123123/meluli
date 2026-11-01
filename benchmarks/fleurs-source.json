@@ -1,0 +1,19 @@
+{
+  "revision": "168de341b3db6859a9bac1c50a2ef5e3b47647e0",
+  "files": [
+    {
+      "type": "file",
+      "oid": "08688afdccddcbc35887dabdd083b536a86d7519",
+      "size": 470284545,
+      "lfs": {
+        "oid": "a02a744c016aa48289cfc50368e88ed3762df12ccfb330a3b53668db718fdace",
+        "size": 470284545,
+        "pointerSize": 134
+      },
+      "xetHash": "c07cd7518e6eacfcf277fc6542857eaca4d1869bf9142349790bdcd3c88e258f",
+      "path": "he_il/test/0000.parquet"
+    }
+  ],
+  "license": "CC-BY-4.0",
+  "source": "https://huggingface.co/datasets/google/fleurs"
+}

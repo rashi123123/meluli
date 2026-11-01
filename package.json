@@ -1,0 +1,87 @@
+{
+  "name": "meluli",
+  "private": true,
+  "version": "0.1.0-preview.1",
+  "description": "Local Hebrew dictation for Apple Silicon Macs",
+  "productName": "Meluli",
+  "main": "./out/main/index.js",
+  "type": "module",
+  "packageManager": "pnpm@10.6.1",
+  "author": {
+    "name": "Jonathan Rashi"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rashi123123/meluli.git"
+  },
+  "homepage": "https://github.com/rashi123123/meluli",
+  "bugs": "https://github.com/rashi123123/meluli/issues",
+  "scripts": {
+    "setup": "pnpm run prepare:runtime",
+    "dev": "pnpm run symbols && pnpm run rebuild:electron && electron-vite dev",
+    "build:app": "pnpm run typecheck && pnpm run symbols && electron-vite build",
+    "build": "pnpm run prepare:runtime && pnpm run build:app && electron-builder --mac dmg zip --arm64 --publish never",
+    "preview": "pnpm run symbols && pnpm run rebuild:electron && electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "lint": "eslint src",
+    "test": "node scripts/run-tests.mjs",
+    "test:watch": "node scripts/run-tests.mjs --watch",
+    "test:e2e": "pnpm run build:app && playwright test",
+    "clean": "rm -rf dist dist-electron release coverage .vite",
+    "build:asr-worker": "node scripts/build-cpp-worker.mjs",
+    "fetch:model": "node --experimental-strip-types scripts/fetch-model.mjs",
+    "fetch:yt-dlp": "bash scripts/build-youtube-helper.sh",
+    "rebuild:native": "pnpm rebuild better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "pnpm run rebuild:electron",
+    "build:native-helpers": "bash scripts/build-native-helpers.sh",
+    "symbols": "swift -module-cache-path .build/swift-cache scripts/export-sf-symbols.swift",
+    "licenses": "node scripts/collect-notices.mjs",
+    "prepare:runtime": "pnpm run build:asr-worker && pnpm run build:native-helpers && pnpm run licenses"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@base-ui/react": "^1.3.0",
+    "@electron/rebuild": "4.2.1",
+    "@playwright/test": "^1.54.2",
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.2.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "clsx": "^2.1.1",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "electron-vite": "^4.0.0",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "jsdom": "^26.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "shadcn": "^4.0.6",
+    "tailwind-merge": "^3.3.0",
+    "tailwindcss": "^4.1.11",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "8.72.1",
+    "vite": "^7.0.6",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "electron"
+    ],
+    "overrides": {
+      "@electron/rebuild>node-abi": "4.40.0"
+    }
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

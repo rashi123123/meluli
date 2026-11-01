@@ -1,0 +1,449 @@
+import { z } from "zod";
+import { DEFAULT_THEME, THEME_IDS } from "./themes";
+import {
+  AUDIO_IMPORT_EXTENSIONS,
+  DEFAULT_MODEL_FILENAME,
+  DEFAULT_MODEL_ID,
+  DEFAULT_MODEL_URL,
+  DEFAULT_OVERLAY_SHORTCUT,
+  DEFAULT_SHORTCUT,
+  DICTIONARY_MAX_ENTRIES,
+  DICTIONARY_MAX_LENGTH
+} from "./constants";
+import { he } from "./locale";
+import { createDefaultOnboardingState, createDefaultOnboardingTrackingState } from "./onboarding-defaults";
+
+export const transcriptSourceSchema = z.enum(["microphone", "imported_file", "youtube", "call"]);
+export const transcriptionBackendSchema = z.enum(["ct2", "whispercpp", "nemo"]);
+export const speedPreferenceSchema = z.enum(["accurate", "balanced"]);
+export const themeSchema = z.enum(THEME_IDS);
+export const appRuntimeStatusSchema = z.enum(["idle", "recording", "paused", "youtube_downloading", "processing", "error"]);
+export const modelDownloadStateSchema = z.enum(["missing", "downloading", "ready", "error"]);
+export const overlaySessionPhaseSchema = z.enum(["recording", "processing", "paste_failed", "success"]);
+export const overlaySessionErrorCodeSchema = z.enum(["permission", "target_unavailable", "paste_failed"]);
+export const onboardingPhaseSchema = z.enum(["not_started", "needs_mic", "needs_hold_key", "needs_model", "needs_first_transcript", "activated"]);
+export const onboardingSurfaceSchema = z.enum(["flow", "workspace"]);
+export const onboardingStepKeySchema = z.enum(["ready", "microphone", "hold_key", "local_install", "first_transcript", "celebration"]);
+export const onboardingOptionalActionSchema = z.enum(["recording_shortcut", "overlay_accessibility"]);
+export const onboardingTrackingEventNameSchema = z.enum([
+  "onboarding_started",
+  "onboarding_step_viewed",
+  "onboarding_step_completed",
+  "onboarding_step_exited",
+  "first_transcript_started",
+  "first_transcript_completed",
+  "optional_step_completed",
+  "optional_step_dismissed",
+  "secondary_source_selected"
+]);
+export const workerVadModeSchema = z.enum(["ct2_filter", "whispercpp_native", "none"]);
+
+const LOCAL_HOST = /(^localhost$|\.(localhost|local|internal|intranet|lan|home|test)$)/u;
+
+/** A public https page, for yt-dlp to match against its site list. YouTube keeps its single-video rule. */
+export function isSupportedMediaUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+    if (!host.includes(".") || host.includes(":") || /^[\d.]+$/u.test(host) || LOCAL_HOST.test(host)) return false;
+    return /(^|\.)(youtube\.com|youtu\.be)$/u.test(host) ? isSupportedYouTubeUrl(value) : true;
+  } catch {
+    return false;
+  }
+}
+
+export function isSupportedYouTubeUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.replace(/^www\./u, "");
+
+    if (host === "youtu.be") {
+      return url.pathname.length > 1 && !url.searchParams.has("list");
+    }
+
+    if (!["youtube.com", "m.youtube.com"].includes(host)) {
+      return false;
+    }
+
+    if (url.pathname === "/watch") {
+      return url.searchParams.has("v") && !url.searchParams.has("list");
+    }
+
+    if (url.pathname.startsWith("/shorts/")) {
+      const id = url.pathname.split("/").filter(Boolean)[1];
+      return Boolean(id) && !url.searchParams.has("list");
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export const overlayPositionSchema = z.enum(["last", "top", "bottom", "right", "left", "top-right", "top-left", "bottom-right", "bottom-left"]);
+
+export const clipboardTextSchema = z.string().min(1);
+
+export const droppedAudioPathSchema = z.string().refine(
+  path => path.startsWith("/") && AUDIO_IMPORT_EXTENSIONS.some(extension => path.toLowerCase().endsWith(`.${extension}`)),
+  he.importAudioFailed
+);
+
+export const youtubeJobInfoSchema = z.object({
+  url: z.string().url(),
+  title: z.string().nullable().optional()
+});
+
+export const youtubeSubmitInputSchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .url(he.youtubeInvalidUrl)
+    .refine(isSupportedMediaUrl, he.youtubeInvalidUrl)
+});
+
+const processingTelemetryBucketSchema = z.object({
+  sampleCount: z.number().int().nonnegative().prefault(0),
+  averageSetupMs: z.number().nonnegative().prefault(7_000),
+  averageMsPerAudioSecond: z.number().nonnegative().prefault(200)
+});
+
+const processingTelemetrySpeedMapSchema = z.object({
+  balanced: processingTelemetryBucketSchema.prefault({
+    sampleCount: 0,
+    averageSetupMs: 7_000,
+    averageMsPerAudioSecond: 200
+  }),
+  accurate: processingTelemetryBucketSchema.prefault({
+    sampleCount: 0,
+    averageSetupMs: 7_800,
+    averageMsPerAudioSecond: 224
+  })
+});
+
+export const processingTelemetrySchema = z.object({
+  microphone: processingTelemetrySpeedMapSchema.prefault({
+    balanced: {
+      sampleCount: 0,
+      averageSetupMs: 7_000,
+      averageMsPerAudioSecond: 200
+    },
+    accurate: {
+      sampleCount: 0,
+      averageSetupMs: 7_800,
+      averageMsPerAudioSecond: 224
+    }
+  }),
+  imported_file: processingTelemetrySpeedMapSchema.prefault({
+    balanced: {
+      sampleCount: 0,
+      averageSetupMs: 6_500,
+      averageMsPerAudioSecond: 180
+    },
+    accurate: {
+      sampleCount: 0,
+      averageSetupMs: 7_200,
+      averageMsPerAudioSecond: 202
+    }
+  }),
+  youtube: processingTelemetrySpeedMapSchema.prefault({
+    balanced: {
+      sampleCount: 0,
+      averageSetupMs: 6_500,
+      averageMsPerAudioSecond: 180
+    },
+    accurate: {
+      sampleCount: 0,
+      averageSetupMs: 7_200,
+      averageMsPerAudioSecond: 202
+    }
+  })
+});
+
+export const transcriptRecordSchema = z.object({
+  id: z.string(),
+  createdAt: z.number().int(),
+  sourceType: transcriptSourceSchema,
+  text: z.string(),
+  rawText: z.string().nullable().optional(),
+  paragraphs: z.array(z.string()).nullable().optional(),
+  importedFileName: z.string().nullable().optional(),
+  sourceTitle: z.string().nullable().optional(),
+  sourceUrl: z.string().url().nullable().optional(),
+  possibleTerms: z.array(z.string()).nullable().optional(),
+  uncertainSegments: z.array(z.string()).nullable().optional(),
+  durationMs: z.number().int().nullable().optional(),
+  backend: transcriptionBackendSchema.nullable().optional(),
+  modelId: z.string().nullable().optional(),
+  language: z.string().nullable().optional(),
+  segments: z.array(
+    z.object({
+      start: z.number().nonnegative(),
+      end: z.number().nonnegative(),
+      text: z.string(),
+      speaker: z.enum(["me", "others"]).optional()
+    })
+  ).nullable().optional(),
+  editedAt: z.number().int().nullable().optional()
+});
+
+export const transcriptListResultSchema = z.object({
+  items: z.array(transcriptRecordSchema),
+  nextCursor: z.number().int().nullable()
+});
+
+export const modelStateSchema = z.object({
+  id: z.string().prefault(DEFAULT_MODEL_ID),
+  url: z.string().url().prefault(DEFAULT_MODEL_URL),
+  fileName: z.string().prefault(DEFAULT_MODEL_FILENAME),
+  filePath: z.string().nullable(),
+  downloadState: modelDownloadStateSchema.prefault("missing"),
+  bytesDownloaded: z.number().int().nonnegative().prefault(0),
+  totalBytes: z.number().int().positive().nullable().prefault(null),
+  lastError: z.string().nullable().optional()
+});
+
+export const overlaySessionSchema = z.object({
+  manualCopyOnly: z.boolean().optional(),
+  insertionOutcome: z.enum(["confirmed", "not_dispatched", "unknown"]).optional(),
+  deliveredInApp: z.boolean().optional(),
+  id: z.string(),
+  phase: overlaySessionPhaseSchema,
+  transcriptId: z.string().nullable(),
+  transcriptText: z.string().nullable(),
+  targetAppName: z.string().nullable(),
+  lastErrorCode: overlaySessionErrorCodeSchema.nullable()
+});
+
+export const onboardingStateSchema = z.object({
+  phase: onboardingPhaseSchema.prefault("not_started"),
+  surface: onboardingSurfaceSchema.prefault("flow"),
+  activatedAt: z.number().int().nullable().prefault(null),
+  completedOptionalActions: z.array(onboardingOptionalActionSchema).prefault([]),
+  dismissedOptionalActions: z.array(onboardingOptionalActionSchema).prefault([])
+});
+
+export const onboardingTrackingEventSchema = z.object({
+  name: onboardingTrackingEventNameSchema,
+  occurredAt: z.number().int(),
+  phase: onboardingPhaseSchema.nullable(),
+  step: onboardingStepKeySchema.nullable(),
+  sourceType: transcriptSourceSchema.nullable(),
+  optionalAction: onboardingOptionalActionSchema.nullable()
+});
+
+export const onboardingTrackingStateSchema = z.object({
+  events: z.array(onboardingTrackingEventSchema).max(200).prefault([])
+});
+
+const dictionaryEntrySchema = z.object({
+  id: z.string().min(1).max(64),
+  heard: z.string().trim().min(1).max(DICTIONARY_MAX_LENGTH),
+  written: z.string().trim().min(1).max(DICTIONARY_MAX_LENGTH)
+});
+
+const appSettingsInputSchema = z.object({
+  onboardingCompleted: z.boolean().prefault(false),
+  onboarding: onboardingStateSchema.optional(),
+  onboardingTracking: onboardingTrackingStateSchema.prefault(createDefaultOnboardingTrackingState()),
+  shortcut: z.string().prefault(DEFAULT_SHORTCUT),
+  overlayShortcut: z.string().prefault(DEFAULT_OVERLAY_SHORTCUT),
+  overlayPosition: overlayPositionSchema.prefault("last"),
+  microphoneDeviceId: z.string().nullable().prefault(null),
+  completionNotificationsEnabled: z.boolean().prefault(true),
+  metalEnabled: z.boolean().prefault(true),
+  launchAtLogin: z.boolean().prefault(false),
+  theme: themeSchema.prefault(DEFAULT_THEME),
+  speedPreference: speedPreferenceSchema.prefault("balanced"),
+  removeFillerWords: z.boolean().prefault(true),
+  builtInTerms: z.boolean().prefault(true),
+  dictionary: z.array(dictionaryEntrySchema).max(DICTIONARY_MAX_ENTRIES).prefault([]),
+  holdKey: z.enum(["off", "right_option", "right_command"]).prefault("right_option"),
+  spokenCommands: z.boolean().prefault(true),
+  autoUpdate: z.boolean().prefault(true),
+  callDetection: z.boolean().prefault(false),
+  processingTelemetry: processingTelemetrySchema.prefault({
+    microphone: {
+      balanced: {
+        sampleCount: 0,
+        averageSetupMs: 7_000,
+        averageMsPerAudioSecond: 200
+      },
+      accurate: {
+        sampleCount: 0,
+        averageSetupMs: 7_800,
+        averageMsPerAudioSecond: 224
+      }
+    },
+    imported_file: {
+      balanced: {
+        sampleCount: 0,
+        averageSetupMs: 6_500,
+        averageMsPerAudioSecond: 180
+      },
+      accurate: {
+        sampleCount: 0,
+        averageSetupMs: 7_200,
+        averageMsPerAudioSecond: 202
+      }
+    },
+    youtube: {
+      balanced: {
+        sampleCount: 0,
+        averageSetupMs: 6_500,
+        averageMsPerAudioSecond: 180
+      },
+      accurate: {
+        sampleCount: 0,
+        averageSetupMs: 7_200,
+        averageMsPerAudioSecond: 202
+      }
+    }
+  }),
+  modelState: modelStateSchema.prefault({
+    id: DEFAULT_MODEL_ID,
+    url: DEFAULT_MODEL_URL,
+    fileName: DEFAULT_MODEL_FILENAME,
+    filePath: null,
+    downloadState: "missing",
+    bytesDownloaded: 0,
+    totalBytes: null
+  })
+});
+
+export const appSettingsSchema = appSettingsInputSchema.transform((input) => {
+  const phase = input.onboarding?.phase ?? (input.onboardingCompleted ? "activated" : "not_started");
+  const onboarding = onboardingStateSchema.parse({
+    ...createDefaultOnboardingState(phase === "activated"),
+    ...input.onboarding,
+    phase,
+    surface: input.onboarding?.surface ?? (phase === "activated" ? "workspace" : "flow"),
+    activatedAt: phase === "activated" ? input.onboarding?.activatedAt ?? null : null
+  });
+
+  return {
+    ...input,
+    onboardingCompleted: phase === "activated",
+    onboarding,
+    onboardingTracking: onboardingTrackingStateSchema.parse(input.onboardingTracking)
+  };
+});
+
+export const appStateSnapshotSchema = z.object({
+  status: appRuntimeStatusSchema,
+  timerStartedAt: z.number().int().nullable(),
+  processingStartedAt: z.number().int().nullable().optional(),
+  processingEstimateMs: z.number().int().nonnegative().nullable().optional(),
+  processingProgressRatio: z.number().min(0).max(1).nullable().optional(),
+  activeSourceType: transcriptSourceSchema.nullable().optional(),
+  currentYoutubeJob: youtubeJobInfoSchema.nullable().optional(),
+  pendingYoutubeJob: youtubeJobInfoSchema.nullable().optional(),
+  lastError: z.string().nullable().optional(),
+  overlaySession: overlaySessionSchema.nullable().optional()
+});
+
+const isFloat32ArrayLike = (value: unknown): value is Float32Array =>
+  value instanceof Float32Array || Object.prototype.toString.call(value) === "[object Float32Array]";
+const isArrayBufferLike = (value: unknown): value is ArrayBuffer =>
+  value instanceof ArrayBuffer || Object.prototype.toString.call(value) === "[object ArrayBuffer]";
+
+export const recordingAudioPayloadSchema = z.object({
+  pcm: z.custom<number[] | Float32Array | ArrayBuffer>(
+    (value) => Array.isArray(value) || isFloat32ArrayLike(value) || isArrayBufferLike(value),
+    {
+      message: "Expected PCM payload to be a number array, Float32Array, or ArrayBuffer."
+    }
+  ),
+  sampleRate: z.number().positive(),
+  durationMs: z.number().nonnegative(),
+  capturedAt: z.object({ micReady: z.number(), stopped: z.number() }).optional()
+});
+
+export const recordingStartInputSchema = z.object({
+  startedAt: z.number().int()
+});
+
+export const recordingPauseInputSchema = z.object({
+  elapsedMs: z.number().nonnegative()
+});
+
+export const transcriptListQuerySchema = z.object({
+  limit: z.number().int().positive().max(100).prefault(20),
+  cursor: z.number().int().nullable().prefault(null)
+});
+
+export const transcriptSearchQuerySchema = transcriptListQuerySchema.extend({
+  query: z.string().trim().prefault("")
+});
+
+export const transcriptDeleteSchema = z.object({
+  id: z.string()
+});
+
+export const transcriptUpdateSchema = z.union([
+  z.strictObject({ id: z.string(), text: z.string().trim().min(1).max(2_000_000) }),
+  z.strictObject({ id: z.string(), cueTexts: z.array(z.string().max(20_000)).min(1).max(100_000) })
+]);
+
+export const transcriptRestoreSchema = z.object({
+  id: z.string()
+});
+
+export const transcriptExportSchema = z.object({
+  id: z.string()
+});
+
+export const settingUpdateSchema = z.object({
+  key: z.enum([
+    "onboardingCompleted",
+    "onboarding",
+    "onboardingTracking",
+    "shortcut",
+    "overlayShortcut",
+    "overlayPosition",
+    "microphoneDeviceId",
+    "completionNotificationsEnabled",
+    "metalEnabled",
+    "launchAtLogin",
+    "theme",
+    "speedPreference",
+    "removeFillerWords",
+    "builtInTerms",
+    "dictionary",
+    "holdKey",
+    "spokenCommands",
+    "autoUpdate",
+    "callDetection",
+    "processingTelemetry",
+    "modelState"
+  ]),
+  value: z.unknown()
+});
+
+export const microphonePermissionStatusSchema = z.enum([
+  "granted",
+  "denied",
+  "not-determined",
+  "restricted",
+  "unknown"
+]);
+
+export const modelDownloadProgressSchema = z.object({
+  bytesDownloaded: z.number().int().nonnegative(),
+  totalBytes: z.number().int().positive().nullable(),
+  percent: z.number().min(0).max(100).nullable()
+});
+
+export const transcriptionErrorPayloadSchema = z.object({
+  message: z.string()
+});
+
+export const appErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  details: z.record(z.string(), z.unknown()).optional()
+});
+
+export const overlaySizeSchema = z.enum(["compact", "expanded"]);
+export const mainViewSchema = z.enum(["workspace", "history", "dictionary", "settings", "about", "terms", "privacy"]);

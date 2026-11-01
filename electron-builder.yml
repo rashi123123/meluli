@@ -1,0 +1,75 @@
+# Updates and macOS permissions depend on this identifier. Never change it after a release.
+appId: io.github.rashi123123.meluli
+productName: Meluli
+copyright: Copyright © 2026 Jonathan Rashi and Meluli contributors
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - "**/*.node"
+extraResources:
+  - from: resources/bin/whispercpp
+    to: bin/whispercpp
+    filter:
+      - meluli-asr-worker
+  - from: resources/bin
+    to: bin
+    filter:
+      - meluli-clipboard
+      - meluli-insertion
+      - meluli-holdkey
+      - meluli-callaudio
+  - from: resources/bin/youtube
+    to: bin/youtube
+  - from: resources/licenses
+    to: licenses
+    filter:
+      - "**/*"
+      - "!nemo/**"
+      - "!nemo-runtime.json"
+      - "!yt-dlp-LICENSE"
+      - "!yt-dlp-THIRD_PARTY_LICENSES.txt"
+  # Liquid Glass icon for macOS 26 and later. Older systems use mac.icon.
+  - from: resources/icons/Assets.car
+    to: Assets.car
+  - from: LICENSE
+    to: LICENSE
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+  - from: resources/icons
+    to: icons
+    filter:
+      - meluli-dock.png
+      - "tray-idleTemplate*.png"
+      - "tray-pausedTemplate*.png"
+      - "tray-processing*Template*.png"
+      - "tray-readyTemplate*.png"
+mac:
+  category: public.app-category.productivity
+  icon: resources/icons/Meluli.icns
+  minimumSystemVersion: "13.3"
+  identity: "-"
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  hardenedRuntime: true
+  entitlementsInherit: build/entitlements.mac.plist
+  gatekeeperAssess: false
+  extendInfo:
+    CFBundleIconName: Meluli
+    NSMicrophoneUsageDescription: "מלולי משתמשת במיקרופון כדי לתמלל דיבור בעברית מקומית במחשב."
+    NSAudioCaptureUsageDescription: "מלולי מקליטה את שמע השיחה רק כשביקשת, כדי לתמלל אותה מקומית במחשב."
+    NSAppleEventsUsageDescription: "מלולי מפעילה את יישום היעד כדי להדביק את התמלול שביקשת."
+# Meluli holds microphone and Accessibility grants, so local code must not borrow them through Electron's debug paths.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+publish: null

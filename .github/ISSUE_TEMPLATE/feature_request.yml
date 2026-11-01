@@ -1,0 +1,13 @@
+name: Feature request / הצעה לשיפור
+description: Describe a problem and the behavior that would help.
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to do? / מה ניסית לעשות?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior / ההתנהגות הרצויה
