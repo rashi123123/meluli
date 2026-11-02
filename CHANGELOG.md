@@ -20,6 +20,7 @@
 - Pin the Electron framework digest and pnpm by hash, and fail the build and release check on a weakened production state.
 - Publish the Phase 4 latency experiments in `docs/BENCHMARKS.md`.
 - Remove unused code, and run tests with Electron's asar handling off.
+- Update Vitest, Vite and the build tools' vulnerable dependencies. Nothing bundled into the app changes.
 
 ## 0.1.0-preview.1 — 2026-11-01
 

@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
 const executable = require("electron");
 const watch = process.argv.includes("--watch");
 const args = process.argv.slice(2).filter(arg => arg !== "--watch");
-const child = spawn(executable, [require.resolve("vitest/vitest.mjs"), ...(watch ? [] : ["run"]), ...args], {
+const child = spawn(executable, [fileURLToPath(new URL("../node_modules/vitest/vitest.mjs", import.meta.url)), ...(watch ? [] : ["run"]), ...args], {
   stdio: "inherit",
   env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", ELECTRON_NO_ASAR: "1" }
 });

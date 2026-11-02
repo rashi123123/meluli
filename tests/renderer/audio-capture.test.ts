@@ -3,7 +3,7 @@ import { AudioCaptureController } from "@/lib/audio-capture";
 
 let stopped: ReturnType<typeof vi.fn>;
 let getUserMedia: ReturnType<typeof vi.fn>;
-let addModule: ReturnType<typeof vi.fn>;
+let addModule: ReturnType<typeof vi.fn<(...args: unknown[]) => Promise<void>>>;
 let context: MockContext;
 let worklet: MockWorklet;
 let stream: MediaStream;
@@ -35,7 +35,7 @@ beforeEach(() => {
   stopped = vi.fn();
   stream = { getTracks: () => [{ stop: stopped, addEventListener: vi.fn() }] } as unknown as MediaStream;
   getUserMedia = vi.fn().mockResolvedValue(stream);
-  addModule = vi.fn().mockResolvedValue(undefined);
+  addModule = vi.fn<(...args: unknown[]) => Promise<void>>().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
   vi.stubGlobal("AudioContext", MockContext);
   vi.stubGlobal("AudioWorkletNode", MockWorklet);

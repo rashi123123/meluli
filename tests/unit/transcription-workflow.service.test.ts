@@ -164,7 +164,7 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
   it("keeps the stored transcript but dispatches nothing when production is canceled before insertion", async () => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
-    const finish = transcriptionService.transcribe.getMockImplementation()!;
+    const finish = transcriptionService.transcribe.getMockImplementation()! as (...args: unknown[]) => unknown;
     transcriptionService.transcribe.mockImplementationOnce(async (...args: unknown[]) => { await gate; return finish(...args); });
     transcriptionService.cancel.mockReturnValue(false);
     const workflow = new TranscriptionWorkflowService({ database: database as never, runtime, settingsService: settingsService as never,
