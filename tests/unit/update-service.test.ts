@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RejectedFeedError } from "@main/services/update-feed";
 import { UpdateService, type UpdateDriver } from "@main/services/update.service";
 import type { UpdateStatus } from "@shared/types";
 
@@ -9,36 +10,36 @@ class FakeDriver extends EventEmitter {
   quitAndInstall = vi.fn();
 }
 
-function setup(feed = "https://example.test/releases.json", enabled = true) {
+function setup(feed = "https://example.test/releases.json", enabled = true, findUpdate = vi.fn(async (): Promise<string | null> => "1.2.3")) {
   const driver = new FakeDriver();
   const statuses: UpdateStatus[] = [];
   const state = { enabled };
-  const service = new UpdateService(driver as unknown as UpdateDriver, feed, () => state.enabled, (status) => statuses.push(status));
-  return { driver, statuses, service, state };
+  const service = new UpdateService(driver as unknown as UpdateDriver, feed, () => state.enabled, (status) => statuses.push(status), findUpdate);
+  return { driver, statuses, service, state, findUpdate };
 }
 
 describe("UpdateService", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("stays off without a feed or with the setting off", () => {
+  it("stays off without a feed or with the setting off", async () => {
     for (const { service, driver } of [setup(""), setup(undefined, false)]) {
       service.sync();
-      vi.advanceTimersByTime(60_000);
+      await vi.advanceTimersByTimeAsync(60_000);
       expect(driver.setFeedURL).not.toHaveBeenCalled();
       expect(driver.checkForUpdates).not.toHaveBeenCalled();
       service.dispose();
     }
   });
 
-  it("checks after launch and on an interval, and registers listeners once", () => {
+  it("checks after launch and on an interval, and registers listeners once", async () => {
     const { service, driver } = setup();
     service.sync();
     service.sync();
     expect(driver.listenerCount("update-downloaded")).toBe(1);
-    vi.advanceTimersByTime(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
     expect(driver.checkForUpdates).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(6 * 60 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
     expect(driver.checkForUpdates).toHaveBeenCalledTimes(2);
     service.dispose();
   });
@@ -65,6 +66,42 @@ describe("UpdateService", () => {
     state.enabled = false;
     service.sync();
     expect(statuses.at(-1)).toBe("ready");
+  });
+
+  it("leaves Squirrel alone when the feed offers nothing newer", async () => {
+    const { service, driver, statuses } = setup(undefined, true, vi.fn(async () => null));
+    service.sync();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(driver.checkForUpdates).not.toHaveBeenCalled();
+    expect(statuses.at(-1)).toBe("idle");
+    service.dispose();
+  });
+
+  it("reports a feed that fails verification, but not a machine that is offline", async () => {
+    const rejected = setup(undefined, true, vi.fn(async () => { throw new RejectedFeedError("bad"); }));
+    rejected.service.sync();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(rejected.driver.checkForUpdates).not.toHaveBeenCalled();
+    expect(rejected.statuses.at(-1)).toBe("failed");
+    rejected.service.dispose();
+
+    const offline = setup(undefined, true, vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    offline.service.sync();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(offline.driver.checkForUpdates).not.toHaveBeenCalled();
+    expect(offline.statuses.at(-1)).toBe("idle");
+    offline.service.dispose();
+  });
+
+  it("does not start Squirrel when checking was turned off during the feed read", async () => {
+    let answer!: (version: string) => void;
+    const { service, driver } = setup(undefined, true, vi.fn(() => new Promise<string>((resolve) => { answer = resolve; })));
+    service.sync();
+    await vi.advanceTimersByTimeAsync(30_000);
+    service.dispose();
+    answer("1.2.3");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(driver.checkForUpdates).not.toHaveBeenCalled();
   });
 
   it("reports failures and goes off when the feed is refused", () => {

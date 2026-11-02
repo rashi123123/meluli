@@ -22,11 +22,14 @@ const productionConnectSrc = {
 
 // Only a test package, built on purpose with this mode, keeps the debug switches working.
 const DEBUG_SWITCHES_MODE = "debug-switches";
+// Set by scripts/package-release.sh. It turns on the update feed, in the main process and in Settings.
+const OFFICIAL_BUILD = JSON.stringify(process.env.MELULI_OFFICIAL_BUILD === "1");
 
 export default defineConfig(({ mode }) => ({
   main: {
     define: {
-      __MELULI_ALLOW_DEBUG_SWITCHES__: JSON.stringify(mode === DEBUG_SWITCHES_MODE)
+      __MELULI_ALLOW_DEBUG_SWITCHES__: JSON.stringify(mode === DEBUG_SWITCHES_MODE),
+      __MELULI_OFFICIAL_BUILD__: OFFICIAL_BUILD
     },
     build: {
       target: electronNodeTarget
@@ -56,6 +59,9 @@ export default defineConfig(({ mode }) => ({
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
+    define: {
+      __MELULI_OFFICIAL_BUILD__: OFFICIAL_BUILD
+    },
     build: {
       target: electronChromeTarget
     },

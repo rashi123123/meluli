@@ -1,10 +1,12 @@
 export const APP_ID = "io.github.rashi123123.meluli";
 export const APP_NAME = "Meluli";
 // Storage identity is intentionally stable across the Mila → Meluli rename.
-// Empty until a public host is chosen. An empty feed keeps updates off.
-export const UPDATE_FEED_URL = "";
+declare const __MELULI_OFFICIAL_BUILD__: boolean | undefined;
 export const APP_SUPPORT_DIR_NAME = "IvritMenuBar";
 export const REPOSITORY_URL = "https://github.com/rashi123123/meluli";
+// Only the release workflow's build carries the feed. A build from source has no Developer ID, so its update would be refused.
+export const UPDATE_FEED_URL = typeof __MELULI_OFFICIAL_BUILD__ !== "undefined" && __MELULI_OFFICIAL_BUILD__ === true
+  ? `${REPOSITORY_URL}/releases/latest/download/releases.json` : "";
 export const SUPPORTED_SITES_URL = "https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md";
 export const AUDIO_IMPORT_EXTENSIONS = ["m4a", "mp3", "wav", "aiff", "aif", "caf"] as const;
 export const DEFAULT_SHORTCUT = "Control+Shift+R";

@@ -13,6 +13,7 @@ import { CallAudioClient } from "./calls/call-audio.client";
 import { CallService } from "./calls/call.service";
 import { supportsCallCapture } from "@shared/call-apps";
 import { he } from "@shared/locale";
+import { findVerifiedUpdate } from "./update-feed";
 import { UpdateService } from "./update.service";
 import { ModelManager } from "./model-manager.service";
 import { SettingsService } from "./settings.service";
@@ -44,7 +45,7 @@ export interface AppServiceContainer {
 }
 
 export function createAppServiceContainer(dependencies: {
-  app: Pick<App, "getPath" | "isPackaged" | "setLoginItemSettings" | "getLoginItemSettings">;
+  app: Pick<App, "getPath" | "isPackaged" | "setLoginItemSettings" | "getVersion" | "isInApplicationsFolder" | "getLoginItemSettings">;
   showMainWindow: () => void;
 }): AppServiceContainer {
   const database = createAppDatabase(dependencies.app.getPath("userData"));
@@ -81,8 +82,10 @@ export function createAppServiceContainer(dependencies: {
   const updates = new UpdateService(
     autoUpdater,
     UPDATE_FEED_URL,
-    () => dependencies.app.isPackaged && process.platform === "darwin" && !isMockMode() && settingsService.getSettings().autoUpdate,
-    (status, version) => { runtime.updateState({ update: { status, version } }); }
+    // ShipIt cannot replace a copy run from the disk image or a translocated path.
+    () => dependencies.app.isPackaged && process.platform === "darwin" && !isMockMode() && dependencies.app.isInApplicationsFolder() && settingsService.getSettings().autoUpdate,
+    (status, version) => { runtime.updateState({ update: { status, version } }); },
+    () => findVerifiedUpdate(UPDATE_FEED_URL, dependencies.app.getVersion())
   );
   const callTitles = { zoom: he.callTitleZoom, teams: he.callTitleTeams, browser: he.callTitleBrowser };
   const calls = new CallService({

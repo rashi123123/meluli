@@ -1,4 +1,5 @@
 import type { UpdateStatus } from "@shared/types";
+import { RejectedFeedError } from "./update-feed";
 
 const FIRST_CHECK_DELAY_MS = 30_000;
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -18,6 +19,7 @@ export class UpdateService {
   private status: UpdateStatus = "off";
   private version: string | null = null;
   private listening = false;
+  private checking = false;
   private firstCheck: NodeJS.Timeout | null = null;
   private interval: NodeJS.Timeout | null = null;
 
@@ -25,7 +27,9 @@ export class UpdateService {
     private readonly driver: UpdateDriver,
     private readonly feedUrl: string,
     private readonly isEnabled: () => boolean,
-    private readonly onStatus: (status: UpdateStatus, version: string | null) => void
+    private readonly onStatus: (status: UpdateStatus, version: string | null) => void,
+    /** Reads the feed first, so Squirrel only starts on a release this version may move to. */
+    private readonly findUpdate: () => Promise<string | null>
   ) {}
 
   private setStatus(status: UpdateStatus, version: string | null = this.version): void {
@@ -47,9 +51,9 @@ export class UpdateService {
     if (!this.attach()) return;
 
     this.setStatus("idle");
-    this.firstCheck = setTimeout(() => this.check(), FIRST_CHECK_DELAY_MS);
+    this.firstCheck = setTimeout(() => void this.check(), FIRST_CHECK_DELAY_MS);
     this.firstCheck.unref();
-    this.interval = setInterval(() => this.check(), CHECK_INTERVAL_MS);
+    this.interval = setInterval(() => void this.check(), CHECK_INTERVAL_MS);
     this.interval.unref();
   }
 
@@ -77,8 +81,26 @@ export class UpdateService {
     return true;
   }
 
-  private check(): void {
-    if (this.status === "downloading" || this.status === "ready") return;
+  private async check(): Promise<void> {
+    if (this.checking || this.status === "downloading" || this.status === "ready") return;
+    this.checking = true;
+    let update: string | null;
+    try {
+      update = await this.findUpdate();
+    } catch (error) {
+      console.warn("[UpdateService] update feed unavailable", error);
+      // Being offline is normal. A feed that fails verification is not.
+      if (error instanceof RejectedFeedError) this.setStatus("failed");
+      return;
+    } finally {
+      this.checking = false;
+    }
+    // Checking was turned off while the feed was on its way.
+    if (!this.interval) return;
+    if (!update) {
+      this.setStatus("idle");
+      return;
+    }
     try {
       this.driver.checkForUpdates();
     } catch (error) {
