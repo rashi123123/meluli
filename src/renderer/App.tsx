@@ -96,7 +96,7 @@ export default function App() {
   const modelReady = modelState === "ready";
   const modelLabel = modelState === "downloading" ? "מורידים מנוע" : "הגדרת מנוע";
   const settingsArea = activeView === "settings" || isInfoView(activeView);
-  const setupSteps = ["היכרות", "בדיקת המיקרופון", he.stepHoldKey, "מנוע התמלול"];
+  const setupSteps = ["היכרות", "בדיקת המיקרופון", "מנוע התמלול"];
 
   useEffect(() => { document.title = `${title} — מלולי`; }, [title]);
 

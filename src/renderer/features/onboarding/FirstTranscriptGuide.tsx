@@ -17,6 +17,7 @@ export function FirstTranscriptGuide() {
       <strong>{he.onboardingFirstTranscriptTitle}</strong>
       <p>{he.onboardingFirstTranscriptLead} <kbd dir="ltr">{formatShortcut(settings.shortcut)}</kbd> {he.onboardingFirstTranscriptBody}</p>
       {!pasteAllowed && <p>{he.onboardingAccessibilityHint}</p>}
+      <p>{he.onboardingOptionalHint}</p>
     </div>
     <div className="workspace-setup-actions">
       {!pasteAllowed && <Button variant="secondary" size="sm" onClick={() => void allowPaste()}>{he.allowAccessibility}</Button>}

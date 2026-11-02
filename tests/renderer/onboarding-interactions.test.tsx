@@ -51,49 +51,28 @@ beforeEach(() => {
   microphone = { status: "idle", level: 0, error: null, hasDetected: false, start: vi.fn(async () => { if (checking) return; checking = true; try { await microphoneOptions.onRequestPermission(); } finally { checking = false; } }), stop: vi.fn() };
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-describe("hold key step", () => {
-  let pressed: (value: boolean) => void;
-  let permissions: { requestHoldKey: ReturnType<typeof vi.fn>; openHoldKeySettings: ReturnType<typeof vi.fn> };
-  beforeEach(() => {
-    pressed = () => {};
-    permissions = { requestHoldKey: vi.fn().mockResolvedValue("needs_permission"), openHoldKeySettings: vi.fn().mockResolvedValue(true) };
-    Object.assign(window, { ivritMenuBar: { permissions, app: { onHoldKeyPressed: (listener: (value: boolean) => void) => { pressed = listener; return () => {}; } } } });
-    context.permissionStatus = "granted"; setPhase("needs_hold_key");
-  });
-  const setStatus = (status: "off" | "needs_permission" | "ready" | "unavailable") => { context.appState = { ...context.appState!, holdKey: { status } }; };
-
-  it("asks macOS once, then lets setup move on without the permission", async () => {
-    setStatus("needs_permission"); await render();
-    expect(primary().textContent).toContain(he.holdKeyAllow);
-    await act(async () => primary().click());
-    expect(permissions.requestHoldKey).toHaveBeenCalledOnce();
-    expect(context.completeOnboardingStep).not.toHaveBeenCalled();
-    await act(async () => button(he.holdKeyOpenSettings).click());
-    expect(permissions.openHoldKeySettings).toHaveBeenCalledOnce();
-    await act(async () => primary().click());
-    expect(context.completeOnboardingStep).toHaveBeenCalledWith("hold_key");
-    expect(permissions.requestHoldKey).toHaveBeenCalledOnce();
-  });
-  it("proves the key from a real press", async () => {
-    setStatus("ready"); await render();
-    expect(host.textContent).toContain(he.holdKeyTryIt);
-    await act(async () => pressed(true));
-    await act(async () => pressed(false));
-    expect(host.textContent).toContain(he.holdKeyWorks);
-  });
-  it("never blocks setup on a key that is off or cannot run", async () => {
-    context.settings!.holdKey = "off"; setStatus("needs_permission"); await render();
-    expect(primary().textContent).toContain(he.continue);
-    expect(host.textContent).toContain(he.holdKeyOffMessage);
-    context.settings!.holdKey = "right_command"; setStatus("unavailable"); await render();
-    expect(primary().textContent).toContain(he.continue);
-    expect(host.textContent).toContain(he.holdKeyUnavailable);
-  });
-});
-
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("onboarding navigation", () => {
+  it("starts the download from the welcome step and moves on without waiting for it", async () => {
+    setPhase("not_started");
+    const download = deferred();
+    vi.mocked(context.downloadModel).mockReturnValue(download.promise);
+    await render();
+    await act(async () => { primary().click(); primary().click(); });
+    expect(context.downloadModel).toHaveBeenCalledOnce();
+    expect(context.completeOnboardingStep).toHaveBeenCalledOnce();
+    expect(context.completeOnboardingStep).toHaveBeenCalledWith("ready");
+    await act(async () => download.resolve());
+  });
+
+  it.each(["ready", "downloading"] as const)("does not download again from the welcome step when the engine is %s", async state => {
+    setPhase("not_started"); context.settings!.modelState.downloadState = state;
+    await render(); await act(async () => primary().click());
+    expect(context.downloadModel).not.toHaveBeenCalled();
+    expect(context.completeOnboardingStep).toHaveBeenCalledWith("ready");
+  });
+
   it("asks for microphone permission once on arrival without advancing the step or losing focus", async () => {
     setPhase("needs_mic");
     const permission = deferred();

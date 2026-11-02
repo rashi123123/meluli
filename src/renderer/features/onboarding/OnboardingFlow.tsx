@@ -5,7 +5,6 @@ import { getHebrewErrorMessage } from "@shared/error-utils";
 import { he } from "@shared/locale";
 import { WelcomeStep } from "./WelcomeStep";
 import { MicrophoneStep } from "./MicrophoneStep";
-import { HoldKeyStep } from "./HoldKeyStep";
 import { ModelDownloadStep } from "./ModelDownloadStep";
 import { OnboardingBottomBar } from "./OnboardingBottomBar";
 
@@ -14,7 +13,6 @@ export function OnboardingFlow() {
     trackOnboardingStepViewed, completeOnboardingStep, continueOnboardingLater, goBackOnboardingStep,
     requestMicrophonePermission, downloadModel, updateSetting, setErrorMessage } = useAppContext();
   const [pendingNavigation, setPendingNavigation] = useState<"primary" | "secondary" | null>(null);
-  const [holdKeyAsked, setHoldKeyAsked] = useState(false);
   const navigationLock = useRef(false);
   const modelLock = useRef(false);
   const flowRef = useRef<HTMLDivElement>(null);
@@ -40,13 +38,19 @@ export function OnboardingFlow() {
     catch (error) { setErrorMessage(getHebrewErrorMessage(error, "הפעולה לא הושלמה. אפשר לנסות שוב.")); }
     finally { navigationLock.current = false; setPendingNavigation(null); }
   };
+  const startDownload = () => {
+    if (modelLock.current || settings?.modelState.downloadState === "ready" || settings?.modelState.downloadState === "downloading") return;
+    modelLock.current = true;
+    // The provider owns this operation after the setup view unmounts, and Home's status card reports a failure.
+    void downloadModel().catch(() => undefined).finally(() => { modelLock.current = false; });
+  };
+  const beginSetup = async () => {
+    startDownload();
+    await completeOnboardingStep("ready");
+  };
   const beginDownload = async () => {
     if (settings?.modelState.downloadState === "ready") return completeOnboardingStep("local_install");
-    if (!modelLock.current && settings?.modelState.downloadState !== "downloading") {
-      modelLock.current = true;
-      // The provider owns this operation after the setup view unmounts, and Home's status card reports a failure.
-      void downloadModel().catch(() => undefined).finally(() => { modelLock.current = false; });
-    }
+    startDownload();
     await continueOnboardingLater("local_install");
   };
   const lastTrackedStep = useRef<string | null>(null);
@@ -60,20 +64,11 @@ export function OnboardingFlow() {
   if (!settings || !onboarding) return null;
   const phase = onboarding.phase;
   const live = microphone.status === "listening" || microphone.status === "detected";
-  const holdKeyStatus = appState?.holdKey?.status ?? "off";
-  // macOS asks only once. After that the step moves on, and the system pane stays one click away.
-  const askHoldKey = settings.holdKey !== "off" && holdKeyStatus === "needs_permission" && !holdKeyAsked;
-  const askHoldKeyPermission = async () => {
-    await window.ivritMenuBar.permissions.requestHoldKey();
-    setHoldKeyAsked(true);
-  };
-  const action = phase === "not_started" ? () => completeOnboardingStep("ready")
+  const action = phase === "not_started" ? beginSetup
     : phase === "needs_mic" ? live ? async () => { checkStopped.current = true; microphone.stop(); await completeOnboardingStep("microphone"); } : async () => { checkStopped.current = false; await microphone.start(); }
-    : phase === "needs_hold_key" ? askHoldKey ? askHoldKeyPermission : () => completeOnboardingStep("hold_key")
     : beginDownload;
   const label = phase === "not_started" ? he.onboardingStartSetup : phase === "needs_mic"
     ? microphone.status === "requesting" ? "פותחים את המיקרופון…" : live ? he.continue : he.onboardingMicrophoneAction
-    : phase === "needs_hold_key" ? askHoldKey ? he.holdKeyAllow : he.continue
     : settings.modelState.downloadState === "ready" || settings.modelState.downloadState === "downloading" ? "למסך הבית" : settings.modelState.downloadState === "error" ? he.retry : he.onboardingInstallAction;
   const actions = <OnboardingBottomBar primaryContent={label} onPrimary={() => void navigate(action, "primary")}
     primaryDisabled={phase === "needs_mic" && captureBusy} primaryPending={pendingNavigation === "primary"} navigationPending={pendingNavigation !== null}
@@ -86,9 +81,6 @@ export function OnboardingFlow() {
         {phase === "not_started" && <WelcomeStep actions={actions} />}
         {phase === "needs_mic" && <MicrophoneStep permissionStatus={permissionStatus} status={microphone.status} level={microphone.level} error={microphone.error} unavailable={captureBusy}
           deviceId={settings.microphoneDeviceId} onSelectDevice={(deviceId) => void updateSetting("microphoneDeviceId", deviceId).catch(error => setErrorMessage(getHebrewErrorMessage(error, "הפעולה לא הושלמה. אפשר לנסות שוב.")))} onStop={() => { checkStopped.current = true; microphone.stop(); requestAnimationFrame(() => flowRef.current?.querySelector<HTMLButtonElement>('[data-onboarding-action="primary"]')?.focus()); }} onOpenSettings={() => void navigate(() => window.ivritMenuBar.permissions.openMicrophoneSettings())} actions={actions} />}
-        {phase === "needs_hold_key" && <HoldKeyStep choice={settings.holdKey} status={holdKeyStatus} asked={holdKeyAsked} actions={actions}
-          onChoose={(key) => void updateSetting("holdKey", key).catch(error => setErrorMessage(getHebrewErrorMessage(error, "הפעולה לא הושלמה. אפשר לנסות שוב.")))}
-          onOpenSettings={() => void window.ivritMenuBar.permissions.openHoldKeySettings()} />}
         {phase === "needs_model" && <ModelDownloadStep settings={settings} progress={modelProgress} actions={actions} />}
       </div></div>
     </section></div>

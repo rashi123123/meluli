@@ -100,6 +100,9 @@ const settings = () => page.evaluate(() => (globalThis as AppGlobal).ivritMenuBa
 
 test("onboarding handles denied permission, failed model install, retry and first transcription", async ({}, info) => {
   await mockPermissionRequests();
+  const paths = await page.evaluate(() => (globalThis as AppGlobal).ivritMenuBar.files.storagePaths());
+  const blocker = join(paths.modelsDir, DEFAULT_MODEL_FILENAME);
+  writeFileSync(blocker, "Test-only file blocking directory creation");
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await expect(page.locator(".microphone-error")).toBeVisible();
   await assertCardInsets();
@@ -112,14 +115,7 @@ test("onboarding handles denied permission, failed model install, retry and firs
   await screenshot(info, "microphone-live");
   await page.getByRole("button", { name: he.continue, exact: true }).click();
   expect(await page.evaluate(() => (window as unknown as { __microphoneFixture: { stops: number } }).__microphoneFixture.stops)).toBe(1);
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
-  await assertCardInsets();
-  const paths = await page.evaluate(() => (globalThis as AppGlobal).ivritMenuBar.files.storagePaths());
-  const blocker = join(paths.modelsDir, DEFAULT_MODEL_FILENAME);
-  writeFileSync(blocker, "Test-only file blocking directory creation");
-  await page.getByRole("button", { name: he.onboardingInstallAction, exact: true }).click();
+  // The failure surfaces on Home, one screen past the click that started the download.
   await expect(page.getByRole("button", { name: he.retry, exact: true })).toBeVisible();
   expect((await settings()).modelState.downloadState).toBe("error");
   await screenshot(info, "model-error");
@@ -147,9 +143,6 @@ test("the floating recorder finishes setup, and the new keyboard paths work once
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await expect(page.getByText("המיקרופון עובד", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await page.getByRole("button", { name: he.onboardingInstallAction, exact: true }).click();
   await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeEnabled();
   await expect(page.getByText(he.onboardingFirstTranscriptTitle, { exact: true })).toBeVisible();
 
@@ -178,23 +171,27 @@ test("the floating recorder finishes setup, and the new keyboard paths work once
   await expect(search).toBeFocused();
 });
 
-test("back navigation after a granted permission can continue, and skipped setup resumes after reload", async ({}, info) => {
+test("basic setup is two screens, and back navigation after a granted permission can continue", async () => {
   await installTestMicrophone(page);
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await expect(page.getByText("המיקרופון עובד", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.back, exact: true }).click();
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.back, exact: true }).click();
+  await expect(page.getByText(he.onboardingWelcomeTitle)).toBeVisible();
+  await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await expect(page.getByText(he.onboardingMicrophoneTitle, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: he.continue, exact: true })).toBeEnabled();
   await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.continue, exact: true }).click();
+  await expect(page.getByRole("heading", { name: "בית", exact: true })).toBeVisible();
+  await expect(page.getByText(he.onboardingOptionalHint)).toBeVisible();
+});
+
+test("a profile stored on the old hold key step resumes at the engine and can walk back", async ({}, info) => {
+  await page.evaluate(() => (globalThis as AppGlobal).ivritMenuBar.settings.set("onboarding", {
+    phase: "needs_hold_key", surface: "flow", activatedAt: null, completedOptionalActions: [], dismissedOptionalActions: []
+  }));
+  await page.reload();
   await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
+  await assertCardInsets();
   await page.getByRole("button", { name: he.onboardingContinueLater }).click();
   await expect(page.getByRole("button", { name: he.onboardingResumeSetup })).toBeVisible();
   await page.reload();
@@ -202,9 +199,7 @@ test("back navigation after a granted permission can continue, and skipped setup
   await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
   await screenshot(info, "model-resumed");
   await page.getByRole("button", { name: he.back, exact: true }).click();
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await screenshot(info, "hold-key");
-  await page.getByRole("button", { name: he.back, exact: true }).click();
+  await expect(page.getByText(he.onboardingMicrophoneTitle, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.back, exact: true }).click();
   await expect(page.getByText(he.onboardingWelcomeTitle)).toBeVisible();
 });
@@ -214,9 +209,9 @@ test("the welcome step has one way forward, and deferring later is persisted", a
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await page.getByRole("button", { name: he.onboardingContinueLater }).click();
   await page.reload();
-  await page.getByRole("button", { name: he.onboardingResumeSetup }).click();
-  // The mock reports a granted microphone, so setup resumes at the step that is still missing.
-  await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
+  // The mock download finished behind the skipped step, so nothing is left to resume.
+  await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeEnabled();
+  await expect(page.getByText(he.onboardingWelcomeTitle)).not.toBeVisible();
 });
 
 test("microphone failures explain themselves and recover without leaving the step", async ({}, info) => {
@@ -270,8 +265,8 @@ test("onboarding split layout reflows with symmetric preview insets and reachabl
       expect(dimensions.flowRight).toBeLessThanOrEqual(dimensions.headerRight + 1);
       expect(dimensions.overflow).toBe(false);
       await expect(page.locator(".setup-progress-count")).toHaveAttribute("dir", "ltr");
-      await expect(page.locator(".setup-progress-count")).toHaveText("1/4");
-      await expect(page.locator(".onboarding-progress")).toHaveAttribute("aria-label", he.onboardingStepOfTotal.replace("{current}", "1").replace("{total}", "4"));
+      await expect(page.locator(".setup-progress-count")).toHaveText("1/3");
+      await expect(page.locator(".onboarding-progress")).toHaveAttribute("aria-label", he.onboardingStepOfTotal.replace("{current}", "1").replace("{total}", "3"));
       expect(await page.locator(".onboarding-primary-dock").evaluate(el => el.getBoundingClientRect().width)).toBeLessThan(size.width - 24);
       expect(dimensions.actionTop).toBeGreaterThanOrEqual(0);
       expect(dimensions.actionBottom).toBeLessThanOrEqual(dimensions.height);

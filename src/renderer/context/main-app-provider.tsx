@@ -460,10 +460,9 @@ export function MainAppProvider({
       onboarding: step === "ready"
         ? { ...current.onboarding, phase: "needs_mic", surface: "flow" }
         : step === "microphone"
-          ? { ...current.onboarding, phase: "needs_hold_key", surface: "flow" }
-          : step === "hold_key"
-            ? { ...current.onboarding, phase: "needs_model", surface: "flow" }
-            : advanceToNextOnboardingPhase(current),
+          // The download is already running, so setup ends here and Home reports its progress.
+          ? { ...current.onboarding, phase: current.modelState.downloadState === "ready" ? "needs_first_transcript" : "needs_model", surface: "workspace" }
+          : advanceToNextOnboardingPhase(current),
       events: [
         {
           name: "onboarding_step_completed",
@@ -493,13 +492,11 @@ export function MainAppProvider({
     await mutateOnboarding((current) => {
       const phase = current.onboarding.phase;
       const prevPhase =
-        phase === "needs_model"
-          ? ("needs_hold_key" as const)
-          : phase === "needs_hold_key"
-            ? ("needs_mic" as const)
-            : phase === "needs_mic"
-              ? ("not_started" as const)
-              : null;
+        phase === "needs_model" || phase === "needs_hold_key"
+          ? ("needs_mic" as const)
+          : phase === "needs_mic"
+            ? ("not_started" as const)
+            : null;
       if (!prevPhase) return null;
       return {
         onboarding: {

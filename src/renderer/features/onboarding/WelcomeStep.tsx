@@ -4,7 +4,7 @@ import { OnboardingStepShell } from "./OnboardingStepShell";
 import { SpeechDemo } from "./SpeechDemo";
 
 export function WelcomeStep({ actions }: { actions?: ReactNode }) {
-  return <OnboardingStepShell stepLabel={he.stepReady} title={he.onboardingWelcomeTitle} description={he.onboardingWelcomeBody} actions={actions}>
+  return <OnboardingStepShell stepLabel={he.stepReady} title={he.onboardingWelcomeTitle} description={`${he.onboardingWelcomeBody} ${he.onboardingDownloadNotice}`} actions={actions}>
     <SpeechDemo />
   </OnboardingStepShell>;
 }

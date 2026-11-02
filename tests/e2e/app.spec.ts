@@ -44,11 +44,6 @@ test("activation onboarding completes and YouTube transcription appears in histo
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await expect(page.getByText("המיקרופון עובד", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.continue, exact: true }).click();
-  await expect(page.getByText(he.onboardingHoldKeyTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.continue, exact: true }).click();
-
-  await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: he.onboardingInstallAction, exact: true }).click();
 
   await expect(page.getByRole("button", { name: he.startRecording, exact: true }).first()).toBeEnabled();
   await page.getByRole("button", { name: he.startRecording, exact: true }).first().click();

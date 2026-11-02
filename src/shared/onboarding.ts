@@ -39,11 +39,10 @@ export function getOnboardingProgressIndex(step: OnboardingStepKey): number {
     case "microphone":
       return 2;
     case "hold_key":
-      return 3;
     case "local_install":
     case "first_transcript":
     case "celebration":
-      return 4;
+      return 3;
   }
 }
 
@@ -65,6 +64,8 @@ export function resolveOnboardingPhase(input: {
   if (input.currentPhase === "activated" || input.currentPhase === "not_started") {
     return input.currentPhase;
   }
+  // A profile stored this phase while the hold key was a setup step. It lives in Settings now.
+  const currentPhase = input.currentPhase === "needs_hold_key" ? "needs_model" : input.currentPhase;
 
   const naturalPhase: OnboardingPhase =
     input.permissionStatus !== "granted"
@@ -75,9 +76,9 @@ export function resolveOnboardingPhase(input: {
 
   if (
     input.surface === "flow" &&
-    PHASE_ORDER[input.currentPhase] < PHASE_ORDER[naturalPhase]
+    PHASE_ORDER[currentPhase] < PHASE_ORDER[naturalPhase]
   ) {
-    return input.currentPhase;
+    return currentPhase;
   }
 
   return naturalPhase;

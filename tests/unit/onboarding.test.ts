@@ -25,7 +25,12 @@ describe("deriveOnboardingDisplayState", () => {
     expect(settings.onboardingTracking.events).toHaveLength(0);
   });
 
-  it.each(["needs_mic", "needs_hold_key", "needs_model"] as const)("keeps %s in the flow until explicit continuation even with ready prerequisites", phase => {
+  it("moves a profile stored on the old hold key step to the transcription engine", () => {
+    const settings = appSettingsSchema.parse({ onboarding: { phase: "needs_hold_key", surface: "flow" } });
+    expect(deriveOnboardingDisplayState(settings, "granted")).toMatchObject({ phase: "needs_model", step: "local_install", showFlow: true });
+  });
+
+  it.each(["needs_mic", "needs_model"] as const)("keeps %s in the flow until explicit continuation even with ready prerequisites", phase => {
     const settings = appSettingsSchema.parse({ onboarding: { phase, surface: "flow" } });
     settings.modelState.downloadState = "ready";
 
