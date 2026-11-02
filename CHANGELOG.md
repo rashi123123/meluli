@@ -1,6 +1,24 @@
 # Changelog
 
-## 0.1.0-preview.1 — unreleased
+## 0.1.0-preview.2 — unreleased
+
+- Remove deleted transcripts from the database, its search index and its log, and remove their TXT copies. Delete-all also removes migration backups. This is not secure erasure.
+- Write subtitle exports readable by their owner only.
+- Close link import routes to local hosts, and bound its processes and the time and size of audio conversion.
+- Bound history search and stop stray characters from failing it.
+- Keep the paste target and the clipboard intact through a paste that may not have landed, bound clipboard text, and say when a clipboard could not be preserved.
+- Respect a cancel, a later press or a closed window around a recording start, stop or paste retry.
+- Flag a recording whose final audio never arrived.
+- End call capture when its helper misses a deadline, force out a helper that ignores its stop signal, and keep a microphone fault from ending a call at its start.
+- Save a call transcript only once, date a crashed call by the audio it left, and let delete-all and shutdown wait for call work already running.
+- Keep transcripts with equal timestamps whole across pages.
+- Let long transcription jobs run while the worker reports progress.
+- Ignore development and diagnostic flags in packaged builds, and trust only the renderer entry the app loads.
+- Pin the Electron framework digest and pnpm by hash, and fail the build and release check on a weakened production state.
+- Publish the Phase 4 latency experiments in `docs/BENCHMARKS.md`.
+- Remove unused code, and run tests with Electron's asar handling off.
+
+## 0.1.0-preview.1 — 2026-11-01
 
 - Harden packaged builds: hardened runtime on, and Electron's run-as-Node, `NODE_OPTIONS` and inspector paths fused off.
 - Make link import an optional helper, shown only when built. It now runs site scripts in a pinned Deno with no permissions.
