@@ -9,6 +9,7 @@ import {
   assertValidIpcSender,
   createRendererSecurityEnvironment,
   isAllowedOpenExternalUrl,
+  isTrustedRendererUrl,
   resolveDevServerUrl,
   shouldAllowPermissionCheck,
   shouldAllowPermissionRequest
@@ -32,6 +33,12 @@ describe("renderer security environment", () => {
   it("allows only loopback dev server URLs", () => {
     expect(resolveDevServerUrl("http://localhost:5173", false)?.origin).toBe("http://localhost:5173");
     expect(() => resolveDevServerUrl("https://example.com", false)).toThrow(/Rejected non-loopback/);
+  });
+
+  it("refuses a file URL that names a host", () => {
+    const environment = createRendererSecurityEnvironment({ isPackaged: true });
+    expect(isTrustedRendererUrl("file:///app/renderer/index.html?window=main", "main", environment)).toBe(true);
+    expect(isTrustedRendererUrl("file://share.example/renderer/index.html?window=main", "main", environment)).toBe(false);
   });
 });
 

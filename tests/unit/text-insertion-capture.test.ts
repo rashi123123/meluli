@@ -56,6 +56,30 @@ describe("target capture ordering (simulated OS responses)", () => {
     await pending;
     expect(service.getCapturedTargetApplicationName()).toBeNull();
   });
+  it.each([
+    ["a newline before a forged pid", "Evil\norg.evil\n999\norg.real\n12345"],
+    ["a newline that claims Meluli itself", `Evil\nx\n${process.pid}\norg.real\n12345`],
+    ["a carriage return", "Evil\rApp\norg.real\n12345"],
+    ["a line separator", `Evil${String.fromCharCode(0x2028)}App\norg.real\n12345`]
+  ])("refuses a System Events app name with %s", async (_label, stdout) => {
+    const pending = service.captureCurrentTargetApplication();
+    callbacks[0](null, stdout, "");
+    expect(await pending).toBeNull();
+    expect(service.isOwnWindowTarget()).toBe(false);
+  });
+  it("keeps the helper's pid whatever the app calls itself", async () => {
+    const insert = vi.fn(async () => "confirmed" as const);
+    service = new TextInsertionService({} as ClipboardBridgeService, undefined, undefined,
+      { capture: async () => ({ target: { name: `Evil\nx\n${process.pid}`, pid: 12345, bundleId: "org.real" }, token: "t" }), insert });
+    expect(await service.captureCurrentTargetApplication()).toEqual({ name: `Evil\nx\n${process.pid}`, pid: 12345, bundleId: "org.real" });
+    expect(service.isOwnWindowTarget()).toBe(false);
+  });
+  it("keeps the research helper's pid whatever the app calls itself", async () => {
+    service = new TextInsertionService({} as ClipboardBridgeService, undefined, "/research/native-paste");
+    const pending = service.captureCurrentTargetApplication();
+    callbacks[0](null, JSON.stringify({ name: "Evil\nx\n999", bundleId: "org.real", pid: 12345 }), "");
+    expect(await pending).toEqual({ name: "Evil\nx\n999", pid: 12345, bundleId: "org.real" });
+  });
 });
 
 
@@ -168,15 +192,25 @@ describe("production native paste with the AppleScript fallback (simulated respo
   });
 
   it("falls back to the existing capture and paste for a field the helper cannot read", async () => {
-    const { begin, insert, restore } = production({ capture: async () => { throw refused("unsupported_control"); } });
+    const { begin, insert, quarantine, restore } = production({ capture: async () => { throw refused("unsupported_control"); } });
     const capture = service.captureCurrentTargetApplication();
     await answerOsaScript(0); await capture;
     expect(service.getCapturedTargetApplicationName()).toBe("Editor");
     const inserting = service.insertIntoCapturedTarget("שלום");
     await answerOsaScript(1);
     expect(await inserting).toBe(true);
-    expect(insert).not.toHaveBeenCalled(); expect(begin).toHaveBeenCalledOnce(); expect(restore).toHaveBeenCalledOnce();
+    expect(insert).not.toHaveBeenCalled(); expect(begin).toHaveBeenCalledOnce();
+    expect(quarantine).toHaveBeenCalledOnce(); expect(restore).not.toHaveBeenCalled();
     expect(service.getLastInsertionOutcome()).toBe("command_completed_unverified");
+    expect(service.hasUnknownNativeOutcome()).toBe(false);
+  });
+
+  it("refuses a capture a live helper could not frame, rather than guessing with AppleScript", async () => {
+    const { insert } = production({ capture: async () => { throw new NativeInsertionFailure("not_dispatched", "Invalid native response.", true); } });
+    expect(await service.captureCurrentTargetApplication()).toBeNull();
+    expect(callbacks).toHaveLength(0);
+    await expect(service.insertIntoCapturedTarget("שלום")).rejects.toMatchObject({ code: "target_unavailable" });
+    expect(insert).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -211,6 +245,21 @@ describe("production native paste with the AppleScript fallback (simulated respo
     expect(await service.insertIntoCapturedTarget("שלום")).toBe(true);
     expect(service.getLastInsertionOutcome()).toBe("dispatched_unverified");
     expect(service.hasUnknownNativeOutcome()).toBe(false);
+  });
+
+  it("keeps the payload through an unverified paste, so a slow target cannot read the old clipboard", async () => {
+    let release = () => {};
+    const quarantine = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
+    const { begin, overlay, restore } = production({ insert: async () => "unverified" }, quarantine);
+    await service.captureCurrentTargetApplication();
+    expect(await service.insertIntoCapturedTarget("שלום")).toBe(true);
+    expect(quarantine).toHaveBeenCalledOnce(); expect(restore).not.toHaveBeenCalled(); expect(overlay).toHaveBeenCalledOnce();
+    await service.captureCurrentTargetApplication();
+    const next = service.insertIntoCapturedTarget("המשך");
+    await Promise.resolve();
+    expect(begin).toHaveBeenCalledOnce();
+    release();
+    expect(await next).toBe(true); expect(begin).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the held target when Meluli itself is frontmost at a later capture", async () => {

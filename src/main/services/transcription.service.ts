@@ -2,7 +2,6 @@ import { pipelineTrace } from "../pipeline-trace";
 import { EventEmitter } from "node:events";
 import { existsSync, statSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createInterface } from "node:readline";
 import { join } from "node:path";
 import type {
   TranscriptRecord,
@@ -20,6 +19,7 @@ import { SettingsService } from "./settings.service";
 import { applyTerms, termMatcherForSettings } from "./term-replacement";
 import { applySpokenCommands, resolveSpokenBreaks } from "./spoken-commands";
 import { enhanceTranscript } from "./transcript-enhancer.service";
+import { ProcessLines } from "./process-lines";
 
 export interface NormalizedTranscriptionResult {
   text: string;
@@ -89,6 +89,7 @@ interface ActiveJob {
   resolve: (result: NormalizedTranscriptionResult) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
+  extendTimeout: () => void;
   cancelFallbackTimeout: NodeJS.Timeout | null;
   cancelRequested: boolean;
   onProgress?: ((payload: TranscriptionProgressPayload) => void) | undefined;
@@ -208,6 +209,16 @@ export function isWorkerReadyV2(
   );
 }
 
+// The native worker needs no setting from its environment. Anything else, such as DYLD_* or
+// GGML_BACKEND_PATH, could load code into a process that sees everything the user dictates.
+export function buildWorkerEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin" };
+  for (const key of ["HOME", "TMPDIR", "LANG"]) {
+    if (source[key]) env[key] = source[key];
+  }
+  return env;
+}
+
 function buildWorkerProcessError(message?: string | null): Error {
   if (message?.trim()) {
     return new Error(message.trim());
@@ -216,6 +227,7 @@ function buildWorkerProcessError(message?: string | null): Error {
   return new Error(he.transcriptionProcessFailed);
 }
 
+/** How long the worker may stay silent. It reports after every window of audio, so a long job runs for hours. */
 function buildJobTimeoutMs(input: TranscriptionStartInput): number {
   if (!input.durationMs || input.durationMs <= 0) {
     // Large local models can take noticeable time to load on CPU; keep a generous floor.
@@ -235,7 +247,7 @@ export class TranscriptionService extends EventEmitter {
   private transcriptionPending = false;
   private setupCanceled = false;
   private disposed = false;
-  private workerOutput: ReturnType<typeof createInterface> | null = null;
+  private workerOutput: ProcessLines | null = null;
   private worker: ChildProcessWithoutNullStreams | null = null;
   private activeJob: ActiveJob | null = null;
   private pendingWarmupJob: PendingWarmupJob | null = null;
@@ -419,7 +431,7 @@ export class TranscriptionService extends EventEmitter {
     };
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const onSilence = () => {
         const currentJob = this.activeJob;
         if (!currentJob || currentJob.id !== request.jobId) {
           return;
@@ -427,20 +439,26 @@ export class TranscriptionService extends EventEmitter {
 
         const timeoutError = new Error(he.transcriptionProcessFailed);
         void this.restartWorker(timeoutError);
-      }, buildJobTimeoutMs(input));
+      };
+      const timeoutMs = buildJobTimeoutMs(input);
 
-      this.activeJob = {
+      const job: ActiveJob = {
         id: request.jobId,
         startedAt,
         backend,
         modelId,
         resolve,
         reject,
-        timeout,
+        timeout: setTimeout(onSilence, timeoutMs),
+        extendTimeout: () => {
+          clearTimeout(job.timeout);
+          job.timeout = setTimeout(onSilence, timeoutMs);
+        },
         cancelFallbackTimeout: null,
         cancelRequested: false,
         onProgress: options?.onProgress
       };
+      this.activeJob = job;
 
       try {
         this.sendWorkerMessage(request);
@@ -650,10 +668,7 @@ export class TranscriptionService extends EventEmitter {
     });
     const child = spawn(workerCommand.command, [...workerCommand.baseArgs, "serve"], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        ...this.dependencies.workerEnv
-      }
+      env: { ...buildWorkerEnv(process.env), ...this.dependencies.workerEnv }
     });
 
     this.worker = child;
@@ -666,7 +681,7 @@ export class TranscriptionService extends EventEmitter {
       }, 20_000);
     });
 
-    this.workerOutput = createInterface({ input: child.stdout });
+    this.workerOutput = new ProcessLines(child.stdout);
     this.workerOutput.on("line", (line) => {
       if (this.worker === child) this.handleWorkerStdout(line);
     });
@@ -826,7 +841,8 @@ export class TranscriptionService extends EventEmitter {
       return;
     }
 
-    if (!message) {
+    if (typeof message !== "object" || message === null || Array.isArray(message)) {
+      console.error("[TranscriptionService] ignored non-object worker stdout", { byteLength: Buffer.byteLength(line) });
       return;
     }
 
@@ -890,6 +906,7 @@ export class TranscriptionService extends EventEmitter {
     }
 
     if (message.type === "progress") {
+      job.extendTimeout();
       const payload: TranscriptionProgressPayload = {
         stage: message.stage === "processing" ? "processing" : "starting",
         audioDurationMs:

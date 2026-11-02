@@ -25,7 +25,7 @@ CONTENT = {
     'home_path': re.compile(rb'/Users/(?!Shared/|runner/|example/|you/)[A-Za-z0-9._-]+'),
     'volume_path': re.compile(rb'/Volumes/(?!Meluli(?:[ /]|$))[A-Za-z0-9]'),
     'private_key': re.compile(rb'-----BEGIN [A-Z ]*PRIVATE KEY-----'),
-    'token': re.compile(rb'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16})\b'),
+    'token': re.compile(rb'\b(?:gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|hf_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\b'),
 }
 
 

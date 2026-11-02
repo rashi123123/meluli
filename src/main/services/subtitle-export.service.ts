@@ -1,3 +1,4 @@
+import { open } from "node:fs/promises";
 import { speakerLabel } from "./calls/call-transcript";
 import { getTranscriptCues, wrapCueText } from "@shared/transcript-cues";
 import type { TranscriptRecord, TranscriptSegment } from "@shared/types";
@@ -59,4 +60,15 @@ export function buildTranscriptSrtFileName(transcript: TranscriptRecord): string
 
   const safeName = sanitizeFilePart(preferredName) || transcript.id;
   return `${safeName}.srt`;
+}
+
+/** Owner only, as the history is. An overwritten file keeps its mode unless changed, and some disks refuse the change. */
+export async function writeTranscriptSrt(path: string, srt: string): Promise<void> {
+  const file = await open(path, "w", 0o600);
+  try {
+    await file.chmod(0o600).catch(() => {});
+    await file.writeFile(srt, "utf8");
+  } finally {
+    await file.close();
+  }
 }

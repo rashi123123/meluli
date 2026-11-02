@@ -11,8 +11,10 @@ const callRecordSchema = z.object({
   appId: z.enum(CALL_APPS.map((app) => app.id) as [string, ...string[]]),
   startedAt: z.number().int(),
   endedAt: z.number().int().nullable(),
-  /** A file still marked recording was left by a crash. Its audio is usable up to the crash. */
+  /** A file still marked recording with no live owner was left by a crash. Its audio is usable up to the crash. */
   status: z.enum(["recording", "pending", "failed"]),
+  /** The process recording this call. A record without one predates the field. */
+  ownerPid: z.number().int().positive().optional(),
   micOffsetMs: z.number().nonnegative(),
   systemOffsetMs: z.number().nonnegative(),
   systemHeard: z.boolean(),
@@ -24,10 +26,10 @@ const callRecordSchema = z.object({
 export type CallRecord = z.infer<typeof callRecordSchema>;
 export type CallTrack = "mic" | "system";
 
-export function createCallRecord(id: string, appId: string, startedAt: number): CallRecord {
+export function createCallRecord(id: string, appId: string, startedAt: number, ownerPid: number): CallRecord {
   const empty = () => ({ done: 0, segments: [] });
   return {
-    id, appId, startedAt, endedAt: null, status: "recording", micOffsetMs: 0, systemOffsetMs: 0,
+    id, appId, startedAt, endedAt: null, status: "recording", ownerPid, micOffsetMs: 0, systemOffsetMs: 0,
     systemHeard: true, partial: false, mic: empty(), system: empty()
   };
 }

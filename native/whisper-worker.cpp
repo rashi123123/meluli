@@ -28,7 +28,7 @@ constexpr const char* kModelFile = "ggml-ivrit-whisper-large-v3-turbo-q8_0.bin";
 std::mutex outputMutex;
 std::atomic<bool> canceled{false};
 std::atomic<bool> busy{false};
-void emit(const json& value) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << value.dump() << std::endl; }
+void emit(const json& value) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << value.dump(-1, ' ', true) << std::endl; }
 struct Canceled {};
 struct InvalidOutput {};
 void checkCanceled() { if (canceled.load()) throw Canceled{}; }

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { pipelineTrace } from "../pipeline-trace";
+import { ProcessLines } from "./process-lines";
 
 export interface ClipboardLease { restore(): Promise<void>; quarantine?(): Promise<void> }
 
@@ -12,7 +12,7 @@ export class ClipboardBridgeService {
     return new Promise((resolve, reject) => {
       pipelineTrace("clipboard_begin", "start");
       const child = spawn(this.executable, [], { stdio: ["pipe", "pipe", "ignore"] });
-      const lines = createInterface({ input: child.stdout });
+      const lines = new ProcessLines(child.stdout);
       let ready = false;
       let expired = false;
       let startupFailure: Error | null = null;

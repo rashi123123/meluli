@@ -13,8 +13,14 @@ const productionConnectSrc = {
   transformIndexHtml: (html: string) => html.replace(/connect-src [^;]*;/, "connect-src 'self';")
 };
 
-export default defineConfig({
+// Only a test package, built on purpose with this mode, keeps the debug switches working.
+const DEBUG_SWITCHES_MODE = "debug-switches";
+
+export default defineConfig(({ mode }) => ({
   main: {
+    define: {
+      __MELULI_ALLOW_DEBUG_SWITCHES__: JSON.stringify(mode === DEBUG_SWITCHES_MODE)
+    },
     build: {
       target: electronNodeTarget
     },
@@ -69,4 +75,4 @@ export default defineConfig({
     },
     plugins: [react(), tailwindcss(), productionConnectSrc]
   }
-});
+}));

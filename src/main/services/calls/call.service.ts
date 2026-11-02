@@ -12,6 +12,8 @@ const MIN_FREE_WHILE_RECORDING = 200 * 1024 ** 2;
 const DISK_CHECK_MS = 60_000;
 const TICK_MS = 1000;
 const CANCEL_RETRY_MS = 1000;
+/** The time limit ends every call, so an older record has no live owner even if its pid came back. */
+const OWNER_SLACK_MS = 60_000;
 
 export interface CallRuntime {
   getState(): AppStateSnapshot;
@@ -32,6 +34,8 @@ export interface CallServiceDependencies {
   saveTranscript: (record: CallRecord, app: CallApp, segments: TranscriptSegment[]) => Promise<void>;
   freeBytes?: (path: string) => Promise<number>;
   now?: () => number;
+  pid?: number;
+  isProcessAlive?: (pid: number) => boolean;
   cancelRetryMs?: number;
 }
 
@@ -46,6 +50,15 @@ async function diskFreeBytes(path: string): Promise<number> {
   return info.bavail * info.bsize;
 }
 
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 function isModelFree(state: AppStateSnapshot): boolean {
   return state.status === "idle" || state.status === "error";
 }
@@ -56,9 +69,13 @@ export class CallService {
   private readonly detector = new CallDetector();
   private readonly now: () => number;
   private readonly freeBytes: (path: string) => Promise<number>;
+  private readonly pid: number;
+  private readonly isProcessAlive: (pid: number) => boolean;
   private state: CallState;
   private activity: AppActivity[] = [];
   private active: ActiveCall | null = null;
+  /** Calls the disk would not update. The audio stays, and they wait here for a retry instead of looping. */
+  private readonly unsaved = new Map<string, CallRecord>();
   private starting = false;
   private stopping = false;
   private draining = false;
@@ -70,6 +87,8 @@ export class CallService {
     this.store = new CallStore(dependencies.root);
     this.now = dependencies.now ?? Date.now;
     this.freeBytes = dependencies.freeBytes ?? diskFreeBytes;
+    this.pid = dependencies.pid ?? process.pid;
+    this.isProcessAlive = dependencies.isProcessAlive ?? processAlive;
     this.state = {
       available: dependencies.isAvailable(), suggestion: null, recording: null, processing: null, failures: [], notice: null
     };
@@ -90,13 +109,20 @@ export class CallService {
     if (!this.state.available) return;
     const records = await this.store.list();
     for (const record of records) {
-      if (record.status !== "recording") continue;
+      if (record.status !== "recording" || this.hasLiveOwner(record)) continue;
       record.status = "pending";
       record.partial = true;
       await this.store.save(record);
     }
     this.setState({ failures: this.failuresOf(records) });
     void this.drain();
+  }
+
+  /** Another running copy may be writing this folder. This process's own pid means an earlier run that shared it. */
+  private hasLiveOwner(record: CallRecord): boolean {
+    const { ownerPid } = record;
+    if (!ownerPid || ownerPid === this.pid) return false;
+    return this.now() - record.startedAt < MAX_CALL_MS + OWNER_SLACK_MS && this.isProcessAlive(ownerPid);
   }
 
   sync(): void {
@@ -116,7 +142,7 @@ export class CallService {
   }
 
   private failuresOf(records: CallRecord[]): CallState["failures"] {
-    return records.filter((record) => record.status === "failed").flatMap((record) => {
+    return records.filter((record) => record.status === "failed" || this.unsaved.has(record.id)).flatMap((record) => {
       const app = callAppById(record.appId);
       return app ? [{ id: record.id, app: app.kind, startedAt: record.startedAt }] : [];
     });
@@ -165,7 +191,7 @@ export class CallService {
     if (!app || this.active || this.starting) return;
     this.starting = true;
     this.setState({ suggestion: null, notice: null });
-    const record = createCallRecord(crypto.randomUUID(), app.id, this.now());
+    const record = createCallRecord(crypto.randomUUID(), app.id, this.now(), this.pid);
     try {
       if (!(await this.dependencies.requestMicrophone())) {
         this.detector.dismiss(app.id, this.now());
@@ -223,8 +249,20 @@ export class CallService {
     this.setState({ recording: null });
     this.sync();
     if (this.discardRecording) return;
-    await this.store.save(record);
+    await this.store.save(record).catch(() => this.holdUnsaved(record));
     void this.drain();
+  }
+
+  /** A failed save leaves the old record beside the audio, so a later launch also recovers it. */
+  private async holdUnsaved(record: CallRecord): Promise<void> {
+    console.warn("[CallService] could not save a finished call; audio kept for retry");
+    const records = await this.store.list();
+    if (!records.some((candidate) => candidate.id === record.id)) {
+      this.setState({ notice: "partial_audio" });
+      return;
+    }
+    this.unsaved.set(record.id, record);
+    this.setState({ failures: this.failuresOf(records) });
   }
 
   private async waitForTurn(): Promise<void> {
@@ -248,7 +286,7 @@ export class CallService {
     try {
       for (;;) {
         const records = await this.store.list();
-        const record = records.find((candidate) => candidate.status === "pending");
+        const record = records.find((candidate) => candidate.status === "pending" && !this.unsaved.has(candidate.id));
         if (!record || this.disposed) break;
         await this.process(record);
         if (this.disposed) break;
@@ -283,22 +321,25 @@ export class CallService {
       if (this.disposed) return;
       record.status = "failed";
       // After delete-all the folder is gone, and with it this failure.
-      await this.store.save(record).catch(() => undefined);
+      await this.store.save(record).catch(() => this.unsaved.set(record.id, record));
       this.setState({ failures: this.failuresOf(await this.store.list()) });
     }
   }
 
   async retry(id: string): Promise<void> {
-    const record = (await this.store.list()).find((candidate) => candidate.id === id);
-    if (!record) return;
+    const listed = (await this.store.list()).find((candidate) => candidate.id === id);
+    if (!listed) return;
+    const record = this.unsaved.get(id) ?? listed;
     record.status = "pending";
     await this.store.save(record);
+    this.unsaved.delete(id);
     this.setState({ failures: this.state.failures.filter((failure) => failure.id !== id) });
     void this.drain();
   }
 
   async discard(id: string): Promise<void> {
     await this.store.remove(id);
+    this.unsaved.delete(id);
     this.setState({ failures: this.state.failures.filter((failure) => failure.id !== id) });
   }
 
@@ -312,6 +353,7 @@ export class CallService {
     await this.finishRecording();
     this.discardRecording = false;
     await this.store.clear();
+    this.unsaved.clear();
     this.setState({ failures: [], notice: null, processing: null });
   }
 

@@ -23,7 +23,11 @@ func emit(_ fields: [String: Any]) {
     fflush(stdout)
 }
 
-func emitError(_ reason: String) { emit(["type": "error", "reason": reason]) }
+func emitError(_ reason: String, id: Int? = nil) {
+    var fields: [String: Any] = ["type": "error", "reason": reason]
+    if let id { fields["id"] = id }
+    emit(fields)
+}
 
 func audioProcesses() -> [AudioObjectID] {
     var property = address(kAudioHardwarePropertyProcessObjectList)
@@ -292,7 +296,7 @@ final class Recording {
         if status == noErr { targets = current }
     }
 
-    func stop() {
+    func stop(id: Int = 0) {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         stopTap()
@@ -304,7 +308,7 @@ final class Recording {
             guard track.firstHostTime != 0 else { return 0 }
             return (AVAudioTime.seconds(forHostTime: track.firstHostTime) - AVAudioTime.seconds(forHostTime: earliest)) * 1_000
         }
-        emit(["type": "stopped", "micOffsetMs": offset(mic), "systemOffsetMs": offset(system), "systemHeard": system.heard])
+        emit(["type": "stopped", "id": id, "micOffsetMs": offset(mic), "systemOffsetMs": offset(system), "systemHeard": system.heard])
     }
 }
 
@@ -341,18 +345,25 @@ func handle(_ line: String) {
     }
     switch type {
     case "watch":
-        watched = stringList(message["prefixes"])
+        watched = stringList(message["prefixes"]).filter { !$0.isEmpty }
         reportedApps = ""
         reportApps()
     case "start":
-        guard recording == nil, let directory = message["directory"] as? String else {
+        guard let id = message["id"] as? Int else {
             emitError("input")
             return
         }
-        recording = Recording(directory: directory, prefixes: stringList(message["prefixes"]))
-        if recording == nil { emitError("disk") } else { emit(["type": "started"]) }
+        // Every bundle id has the empty prefix, so one empty entry would record all audio on the Mac.
+        let prefixes = stringList(message["prefixes"])
+        guard recording == nil, let directory = message["directory"] as? String,
+              !prefixes.isEmpty, !prefixes.contains(where: \.isEmpty) else {
+            emitError("input", id: id)
+            return
+        }
+        recording = Recording(directory: directory, prefixes: prefixes)
+        if recording == nil { emitError("disk", id: id) } else { emit(["type": "started", "id": id]) }
     case "stop":
-        recording?.stop()
+        recording?.stop(id: message["id"] as? Int ?? 0)
         recording = nil
     default:
         emitError("input")

@@ -1,13 +1,36 @@
 /* @vitest-environment node */
 
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildTranscriptSrt,
   buildTranscriptSrtFileName,
-  hasTranscriptSegments
+  hasTranscriptSegments,
+  writeTranscriptSrt
 } from "@main/services/subtitle-export.service";
 
 describe("subtitle export", () => {
+  it("writes the file for its owner only, also over a file others could read", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "meluli-srt-"));
+    const path = join(directory, "call.srt");
+    try {
+      await writeTranscriptSrt(path, "שלום");
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect(readFileSync(path, "utf8")).toBe("שלום");
+
+      rmSync(path);
+      writeFileSync(path, "older and longer text", { mode: 0o644 });
+      await writeTranscriptSrt(path, "חדש");
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect(readFileSync(path, "utf8")).toBe("חדש");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+
   it("builds stable SRT output from transcript segments", () => {
     expect(
       buildTranscriptSrt({

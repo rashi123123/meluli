@@ -16,9 +16,11 @@ The native clipboard helper's self-test uses a private named pasteboard. It does
 
 Keep these categories apart when reporting: unit, mock E2E, packaged with the real engine, and real macOS interaction. Only the last establishes real-world behaviour, and only for the apps it covered.
 
-Run a package with an isolated `MELULI_USER_DATA` profile and disposable targets. A child of a trusted shell inherits its Accessibility grant, which says nothing about the installed app's grant. `--use-fake-device-for-media-stream` replaces the microphone with a tone; speech reaches the engine by swapping PCM in the `recording:send-audio` handler. That proves the path after capture, not physical capture.
+Run a package with an isolated `MELULI_USER_DATA` profile and disposable targets. The single-instance lock belongs to the profile, so a run with its own profile starts beside the installed app; a run on the same profile, including `pnpm dev`, hands over to the running app and quits. A child of a trusted shell inherits its Accessibility grant, which says nothing about the installed app's grant. `--use-fake-device-for-media-stream` replaces the microphone with a tone; speech reaches the engine by swapping PCM in the `recording:send-audio` handler. That proves the path after capture, not physical capture.
 
-Set `MELULI_DICTATION_TIMING=1` to record stage timing. Engine times, thermal state and clock time are in each line, so compare runs by state, not only by median.
+A packaged app exits at launch on any switch listed in `src/main/launch-switches.ts`, including `--remote-debugging-port` and `--inspect`. The fake-device flags are not listed and keep working. A run that needs a debug port needs a test-only build, set when the bundle is built rather than by anything at launch: run `pnpm exec electron-vite build --mode debug-switches`, then `pnpm exec electron-builder --mac dir --arm64 --publish never --config.electronFuses.enableNodeCliInspectArguments=true --config.directories.output=release-variant`. Never ship that build, and delete `release-variant` afterwards.
+
+Set `MELULI_DICTATION_TIMING=1` to record stage timing. Engine times, thermal state and clock time are in each line, so compare runs by state, not only by median. A packaged app ignores this and `IVRIT_PERF_AUDIT` unless its bundle was built with `--mode debug-switches`, as above.
 
 Manual checks that automation cannot make, on a released build with its own permissions:
 

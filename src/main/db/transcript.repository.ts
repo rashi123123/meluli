@@ -109,12 +109,18 @@ function buildCursorWhere(cursor: number | null): { clause: string; params: unkn
   };
 }
 
+/** A long paste searches for its start, rather than failing or stalling the main process. */
+const MAX_SEARCH_QUERY_CHARS = 1000;
+const MAX_SEARCH_QUERY_TOKENS = 64;
+
 function escapeFtsQuery(query: string): string {
   return query
     .trim()
-    .replace(/["']/g, " ")
+    .slice(0, MAX_SEARCH_QUERY_CHARS)
+    .replace(/["'\u0000]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
+    .slice(0, MAX_SEARCH_QUERY_TOKENS)
     .map((token) => `"${token}"`)
     .join(" ");
 }
@@ -204,8 +210,13 @@ export class TranscriptRepository {
       return this.list(limit, cursor);
     }
 
+    const match = escapeFtsQuery(query);
+    if (!match) {
+      return { items: [], nextCursor: null };
+    }
+
     const cursorFilter = cursor === null ? "" : "AND t.created_at < ?";
-    const params: Array<string | number> = [escapeFtsQuery(query)];
+    const params: Array<string | number> = [match];
     if (cursor !== null) {
       params.push(cursor);
     }
@@ -272,11 +283,23 @@ export class TranscriptRepository {
 
   delete(id: string): boolean {
     const result = this.db.prepare("DELETE FROM transcripts WHERE id = ?").run(id);
+    this.flushDeletes();
     return result.changes > 0;
   }
 
   deleteAll(): boolean {
     this.db.exec("DELETE FROM transcripts");
+    this.flushDeletes();
     return true;
+  }
+
+  /**
+   * secure_delete does not reach the words kept in the search index, which stay until its segments
+   * merge, or the main file and write-ahead log, until those merge. FTS5's own secure-delete option
+   * is left off; a delete merges the index instead.
+   */
+  private flushDeletes(): void {
+    this.db.prepare("INSERT INTO transcripts_fts(transcripts_fts) VALUES ('optimize')").run();
+    this.db.pragma("wal_checkpoint(TRUNCATE)");
   }
 }

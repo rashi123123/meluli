@@ -1,14 +1,14 @@
 /* @vitest-environment node */
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_MODEL_WEIGHT_FILE } from "@shared/constants";
 import { he } from "@shared/locale";
 import { appSettingsSchema } from "@shared/schemas";
-import { MODEL_IDLE_TIMEOUT_MS, TranscriptionService } from "@main/services/transcription.service";
+import { buildWorkerEnv, MODEL_IDLE_TIMEOUT_MS, TranscriptionService } from "@main/services/transcription.service";
 import type { SettingsService } from "@main/services/settings.service";
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
@@ -129,6 +129,114 @@ describe("transcription worker lifecycle (simulated protocol, no ASR)", () => {
     expect(child.kill).not.toHaveBeenCalled();
   });
 
+  it("ignores worker output that is valid JSON but not an object", async () => {
+    const uncaught = vi.fn();
+    process.on("uncaughtException", uncaught);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { task, jobId } = await startWarmup();
+      const lines = ["5", "\"text\"", "true", "null", "[]"];
+      for (const line of lines) child.stdout.write(`${line}\n`);
+      await flush();
+      reply({ type: "warmed", jobId }); await flush(); await task;
+      const transcription = service.transcribe({ wavPath: "/fixture.wav", sourceType: "microphone", durationMs: 1000 });
+      await flush();
+      for (const line of lines) child.stdout.write(`${line}\n`);
+      await flush();
+      reply({ type: "result", jobId: requests.at(-1)?.jobId, result: { text: "שלום", language: "he", segments: [] } });
+      await expect(transcription).resolves.toMatchObject({ text: "שלום" });
+      expect(uncaught).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledTimes(lines.length * 2);
+    } finally {
+      process.off("uncaughtException", uncaught);
+      error.mockRestore();
+    }
+  });
+
+  it("reads text the worker escaped as ASCII", async () => {
+    const { task, jobId } = await startWarmup();
+    reply({ type: "warmed", jobId }); await flush(); await task;
+    const transcription = service.transcribe({ wavPath: "/fixture.wav", sourceType: "microphone", durationMs: 1000 });
+    await flush();
+    child.stdout.write(`{"type":"result","jobId":"${requests.at(-1)?.jobId}","result":{"text":"\\u05e9\\u05dc\\u05d5\\u05dd \\u2028 \\ud83d\\ude00","language":"he","segments":[]}}\n`);
+    await expect(transcription).resolves.toMatchObject({ text: expect.stringMatching(/^שלום\s+😀$/u) });
+  });
+
+  it("has the native worker escape everything past ASCII", () => {
+    expect(readFileSync(join(process.cwd(), "native/whisper-worker.cpp"), "utf8")).toContain("std::cout << value.dump(-1, ' ', true) << std::endl;");
+  });
+
+  it("starts the worker with an allowlisted environment and the research overrides", async () => {
+    const planted = { DYLD_INSERT_LIBRARIES: "/tmp/evil.dylib", DYLD_LIBRARY_PATH: "/tmp", GGML_BACKEND_PATH: "/tmp/evil.so", ANEFORGE_DYLIB: "/tmp/evil.dylib", NODE_OPTIONS: "--require /tmp/evil.js" };
+    Object.assign(process.env, planted);
+    try {
+      expect(buildWorkerEnv({ ...planted, HOME: "/Users/me", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/tmp/evil" }))
+        .toEqual({ HOME: "/Users/me", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin" });
+      const research = new TranscriptionService({
+        binaryPaths: { resourcesBasePath: modelPath, whispercppWorkerBinaryPath: process.execPath, ytDlpBinaryPath: "", denoBinaryPath: "" },
+        workerEnv: { MELULI_RESEARCH_BEAM: "3" }
+      }, { getSettings: () => appSettingsSchema.parse({ modelState: { filePath: modelPath, status: "ready" } }) } as SettingsService);
+      const warmup = research.prewarm();
+      await flush();
+      const { env } = spawnMock.mock.calls.at(-1)![2] as { env: NodeJS.ProcessEnv };
+      expect(env).toMatchObject({ PATH: "/usr/bin:/bin", MELULI_RESEARCH_BEAM: "3" });
+      for (const key of Object.keys(planted)) expect(env).not.toHaveProperty(key);
+      research.dispose();
+      await warmup.catch(() => undefined);
+    } finally {
+      for (const key of Object.keys(planted)) delete process.env[key];
+    }
+  });
+
+  describe("job deadline", () => {
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
+    const minutes = (count: number) => count * 60_000;
+
+    async function startJob(input: { sourceType: "imported_file" | "youtube"; durationMs?: number }) {
+      const job = service.transcribe({ wavPath: "/tmp/long.wav", ...input });
+      reply({ type: "ready", protocolVersion: 2, workerVersion: "test", backend: "whispercpp", capabilities: { vad: { supported: false, mode: "none", requiresModelPath: false } } });
+      await vi.waitFor(() => { expect(requests.some((item) => item.type === "transcribe")).toBe(true); });
+      return { job, jobId: requests.find((item) => item.type === "transcribe")!.jobId! };
+    }
+
+    it.each([
+      ["an imported file, whose length is unknown", { sourceType: "imported_file" as const }, minutes(10)],
+      ["a two hour link", { sourceType: "youtube" as const, durationMs: minutes(120) }, minutes(20)]
+    ])("keeps %s running for as long as the worker reports progress", async (_name, input, limit) => {
+      const { job, jobId } = await startJob(input);
+      for (let round = 0; round < 6; round += 1) {
+        vi.advanceTimersByTime(limit - minutes(1));
+        reply({ type: "progress", jobId, stage: "processing", progressRatio: round / 6 });
+        await settle();
+      }
+      expect(child.kill).not.toHaveBeenCalled();
+      reply({ type: "result", jobId, result: { text: "שלום", language: "he", segments: [] } });
+      await expect(job).resolves.toMatchObject({ text: "שלום" });
+    });
+
+    it.each([
+      ["with no length", { sourceType: "imported_file" as const }, minutes(10)],
+      ["with a long length", { sourceType: "youtube" as const, durationMs: minutes(120) }, minutes(20)]
+    ])("ends a job %s when the worker goes silent", async (_name, input, limit) => {
+      const { job, jobId } = await startJob(input);
+      const failed = expect(job).rejects.toThrow(he.transcriptionProcessFailed);
+      reply({ type: "progress", jobId, stage: "processing", progressRatio: 0.1 });
+      await settle();
+      vi.advanceTimersByTime(limit);
+      await failed;
+      expect(child.kill).toHaveBeenCalled();
+    });
+
+    it("does not count progress from another job", async () => {
+      const { job } = await startJob({ sourceType: "imported_file" });
+      const failed = expect(job).rejects.toThrow(he.transcriptionProcessFailed);
+      vi.advanceTimersByTime(minutes(9));
+      reply({ type: "progress", jobId: "someone-else", stage: "processing" });
+      await settle();
+      vi.advanceTimersByTime(minutes(1));
+      await failed;
+    });
+  });
 
   it("gives a call piece up to dictation that starts recording", async () => {
     const piece = service.transcribeBackground({ wavPath: "/tmp/piece.wav", sourceType: "call", durationMs: 1000 });

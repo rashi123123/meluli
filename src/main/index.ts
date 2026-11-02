@@ -15,6 +15,7 @@ import { TrayManager } from "./tray";
 import { ShortcutManager } from "./shortcuts";
 import { createAppServiceContainer } from "./services/container";
 import { createAppIcon } from "./app-icon";
+import { clearDevelopmentEnv, debugSwitchesAllowed, findRefusedSwitch } from "./launch-switches";
 import {
   createRendererSecurityEnvironment,
   installSessionPermissionHandlers
@@ -26,11 +27,16 @@ import {
   stopPerformanceAudit
 } from "./perf-audit";
 
-// A shipped app must never accept the test doubles, which report a paste that did not happen.
-if (app.isPackaged) {
-  delete process.env.IVRIT_E2E_MOCK;
-  delete process.env.IVRIT_USE_MOCK_SERVICES;
+const refusedSwitch = app.isPackaged && !debugSwitchesAllowed()
+  ? findRefusedSwitch([...process.argv, ...process.execArgv])
+  : null;
+if (refusedSwitch) {
+  console.error(`[startup] refusing to run with --${refusedSwitch}`);
+  app.exit(1);
 }
+
+// A shipped app must never accept the test doubles, which report a paste that did not happen.
+if (app.isPackaged) clearDevelopmentEnv(process.env);
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
@@ -92,6 +98,7 @@ function showMainWindow(): void {
     return;
   }
 
+  if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
 }
@@ -170,6 +177,12 @@ async function bootstrap(): Promise<void> {
   const userDataPath = resolveUserDataPath(app.getPath("appData"), process.env);
   mkdirSync(userDataPath, { recursive: true, mode: 0o700 });
   app.setPath("userData", userDataPath);
+  // The lock belongs to the profile, so an isolated MELULI_USER_DATA run takes its own.
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+  app.on("second-instance", showMainWindow);
   await app.whenReady();
   await startPerformanceAudit(app.getPath("userData"));
   markPerformanceAudit("app:ready");
@@ -312,8 +325,7 @@ async function bootstrap(): Promise<void> {
   services.runtime.on("state", claimDictationKeys);
   services.getTextInsertionService().onFrontmostChanged = claimDictationKeys;
   powerMonitor.on("suspend", () => {
-    const { status, overlaySession } = services.runtime.getState();
-    if ((status === "recording" || status === "paused") && overlaySession) services.runtime.requestRecordingInterrupt();
+    services.runtime.requestRecordingInterrupt();
     void services.calls.suspend();
   });
   let systemShuttingDown = false;
@@ -477,4 +489,4 @@ async function bootstrap(): Promise<void> {
   });
 }
 
-void bootstrap();
+if (!refusedSwitch) void bootstrap();

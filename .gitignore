@@ -18,6 +18,15 @@ resources/models/whispercpp-vad/*
 *.log
 .DS_Store
 
+# Secrets and personal data that must never reach the public repository.
+.env*
+*.pem
+*.key
+*.p12
+*.sqlite
+*.wav
+credentials.json
+
 # Rendered from the Mac's SF Symbols by pnpm run symbols; Apple's terms apply.
 src/renderer/assets/sf-symbols/
 

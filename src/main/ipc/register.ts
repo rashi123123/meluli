@@ -1,4 +1,4 @@
-import { stat, writeFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { app, dialog, shell, systemPreferences } from "electron";
 import { AppError } from "@shared/errors/app-error";
@@ -24,7 +24,8 @@ import { TranscriptionWorkflowService } from "../services/transcription-workflow
 import { YouTubeQueueService } from "../services/youtube-queue.service";
 import {
   buildTranscriptSrt,
-  buildTranscriptSrtFileName
+  buildTranscriptSrtFileName,
+  writeTranscriptSrt
 } from "../services/subtitle-export.service";
 import { registerAppHandlers } from "./handlers/app.handlers";
 import { registerFileHandlers } from "./handlers/files.handlers";
@@ -222,6 +223,11 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       dependencies.runtime.claimRecording(event.sender.id);
       pipelineTrace("recording_start_requested", "event");
       await dependencies.getTextInsertionService().whenCaptureSettled();
+      const { status } = dependencies.runtime.getState();
+      if (previousStatus === "paused" ? status !== "paused" : status !== "idle" && status !== "error") {
+        dependencies.runtime.releaseRecording(event.sender.id);
+        throw new Error("כבר יש הקלטה או עיבוד פעילים.");
+      }
       if (previousStatus !== "paused") {
         if (dependencies.runtime.getWindowRoleForWebContents(event.sender) === "overlay") {
           dependencies.runtime.startOverlaySession(dependencies.getTextInsertionService().getCapturedTargetApplicationName());
@@ -521,7 +527,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         return false;
       }
 
-      await writeFile(result.filePath, srt, "utf8");
+      await writeTranscriptSrt(result.filePath, srt);
       return true;
     }
   });

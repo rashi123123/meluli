@@ -34,7 +34,8 @@ func beginTransaction(_ board: NSPasteboard, text: String) throws -> () -> Bool 
     return {
         // A new copy, including identical text, belongs to the user and is left intact.
         guard board.changeCount == written else { return false }
-        board.clearContents()
+        // The original already synced when it was copied; restoring it must not sync it again.
+        board.prepareForNewContents(with: .currentHostOnly)
         if !saved.isEmpty { return board.writeObjects(saved) }
         return true
     }

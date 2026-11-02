@@ -171,6 +171,40 @@ describe("AppRuntime", () => {
     expect(() => runtime.claimRecording(2)).not.toThrow();
   });
 
+  it.each(["main", "overlay"] as const)("sends the interrupt only to the %s window when it owns the recording", (owner) => {
+    const runtime = new AppRuntime();
+    const windows = { main: createWindowMock(), overlay: createWindowMock() };
+    Object.assign(windows.main.window.webContents, { id: 1 });
+    Object.assign(windows.overlay.window.webContents, { id: 2 });
+    runtime.setWindow("main", windows.main.window as never);
+    runtime.setWindow("overlay", windows.overlay.window as never);
+    runtime.claimRecording(owner === "main" ? 1 : 2);
+    runtime.requestRecordingInterrupt();
+    const other = owner === "main" ? "overlay" : "main";
+    expect(windows[owner].send).toHaveBeenCalledWith(IPC_CHANNELS.recordingInterruptRequested, null);
+    expect(windows[other].send).not.toHaveBeenCalledWith(IPC_CHANNELS.recordingInterruptRequested, null);
+  });
+
+  it("interrupts nobody when no window owns a recording", () => {
+    const runtime = new AppRuntime();
+    const overlay = createWindowMock();
+    Object.assign(overlay.window.webContents, { id: 2 });
+    runtime.setWindow("overlay", overlay.window as never);
+    runtime.requestRecordingInterrupt();
+    expect(overlay.send).not.toHaveBeenCalledWith(IPC_CHANNELS.recordingInterruptRequested, null);
+  });
+
+  it("drops a job's status write while a recording holds the claim", () => {
+    const runtime = new AppRuntime();
+    runtime.claimRecording(1);
+    runtime.updateState({ status: "recording", timerStartedAt: 5 });
+    runtime.updateJobState({ status: "idle", timerStartedAt: null });
+    expect(runtime.getState()).toMatchObject({ status: "recording", timerStartedAt: 5 });
+    runtime.releaseRecording(1);
+    runtime.updateJobState({ status: "idle", timerStartedAt: null });
+    expect(runtime.getState().status).toBe("idle");
+  });
+
   it("gives every state listener a snapshot when held audio changes", () => {
     const runtime = new AppRuntime();
     const listener = vi.fn();

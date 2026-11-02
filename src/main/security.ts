@@ -150,7 +150,7 @@ export function isTrustedRendererUrl(
     return parsed.origin === environment.devServerUrl.origin;
   }
 
-  return parsed.protocol === "file:" && parsed.pathname.endsWith(RENDERER_ENTRY_SUFFIX);
+  return parsed.protocol === "file:" && !parsed.host && parsed.pathname.endsWith(RENDERER_ENTRY_SUFFIX);
 }
 
 export function assertValidIpcSender(

@@ -40,6 +40,16 @@ interface TargetApplication {
   bundleId: string | null;
 }
 
+const LINE_OR_CONTROL_CHARACTER = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+
+/** A bundle's own metadata fills these fields, so one that adds a line must not move the pid. */
+function parseSystemEventsTarget(output: string): TargetApplication {
+  const fields = output.split("\n");
+  if (fields.length !== 3 || fields.some(field => LINE_OR_CONTROL_CHARACTER.test(field))) throw new Error(he.textInsertionFailed);
+  const [name, bundleId, pid] = fields as [string, string, string];
+  return { name, bundleId, pid: Number(pid) };
+}
+
 export type TextInsertionFailureCode = "permission" | "target_unavailable" | "target_changed" | "secure_field" | "clipboard_changed" | "paste_failed";
 
 export class TextInsertionError extends Error {
@@ -158,47 +168,47 @@ export class TextInsertionService {
     try {
       let nativeToken: string | null = null;
       let nativeSnapshot: Record<string, unknown> | null = null;
-      const nativeFrontmost = this.persistentNative ? await this.persistentNative.capture().then(({ target, token }) => {
-        nativeToken = token; nativeSnapshot = { ...target }; return [target.name, target.bundleId, target.pid].join("\n");
+      const nativeFrontmost = this.persistentNative ? await this.persistentNative.capture().then(({ target, token }): TargetApplication => {
+        nativeToken = token; nativeSnapshot = { ...target }; return { name: target.name, bundleId: target.bundleId, pid: target.pid };
       }).catch((error: unknown) => {
         // The helper answered, so there is nothing for the fallback to add.
-        if (this.legacyFallback && error instanceof NativeInsertionFailure && (error.message === "own_application" || error.message === "target_unavailable")) throw error;
+        if (this.legacyFallback && error instanceof NativeInsertionFailure && (error.answered || error.message === "own_application" || error.message === "target_unavailable")) throw error;
         if (this.legacyFallback) return null;
         throw error;
       }) : null;
-      const frontmost = nativeFrontmost ?? (this.researchNativePaste ? await new Promise<string>((resolve, reject) => {
+      const frontmost = nativeFrontmost ?? (this.researchNativePaste ? await new Promise<TargetApplication>((resolve, reject) => {
         pipelineTrace("target_capture_native", "start");
         execFile(this.researchNativePaste!, ["--capture"], { timeout: 2_000, maxBuffer: 8192 }, (error, stdout) => {
           pipelineTrace("target_capture_native", "end", { success: !error });
           if (error) { reject(error); return; }
           try {
             const target = JSON.parse(stdout);
-            resolve([target.name, target.bundleId, target.pid].join("\n"));
+            resolve({ name: String(target.name ?? ""), bundleId: target.bundleId ? String(target.bundleId) : null, pid: Number(target.pid) });
           } catch (failure) { reject(failure); }
         });
-      }) : await runOsaScript([
+      }) : parseSystemEventsTarget(await runOsaScript([
         'tell application "System Events"',
         "set frontApp to first application process whose frontmost is true",
         "set frontName to name of frontApp",
         "set frontBundleId to bundle identifier of frontApp",
         'return frontName & linefeed & (frontBundleId as text) & linefeed & (unix id of frontApp as text)',
         "end tell"
-      ]));
+      ])));
 
       if (generation !== this.captureGeneration || !shouldCapture()) return this.targetApplication;
-      const [name, bundleId, pid] = frontmost.split(/\r?\n/, 3);
-      if (Number(pid) === process.pid) {
+      const { name, bundleId, pid } = frontmost;
+      if (pid === process.pid) {
         this.ownWindowFrontmost = !this.targetApplication;
         return this.targetApplication;
       }
       this.ownWindowFrontmost = false;
-      this.frontmostPid = Number(pid);
+      this.frontmostPid = pid;
       this.nativeTargetToken = nativeToken;
       this.researchTargetSnapshot = nativeSnapshot;
-      this.targetApplication = name && Number.isSafeInteger(Number(pid)) && Number(pid) > 0
+      this.targetApplication = name && Number.isSafeInteger(pid) && pid > 0
         ? {
             name,
-            pid: Number(pid),
+            pid,
             bundleId: bundleId || null
           }
         : null;
@@ -363,13 +373,15 @@ export class TextInsertionService {
       else if (this.outcome === "unresolved") this.nativeOutcomeUnknown = true;
       throw normalizeInsertionError(error);
     } finally {
+      // Cmd-V went out, and nothing shows that a slow target has read the clipboard yet.
+      const unverified = pasted && this.outcome !== "confirmed";
       pipelineTrace("clipboard_hold", "start", { pasted });
-      if (pasted && this.outcome !== "confirmed") await new Promise(resolve => setTimeout(resolve, CLIPBOARD_RESTORE_DELAY_MS));
+      if (unverified && lease && !lease.quarantine) await new Promise(resolve => setTimeout(resolve, CLIPBOARD_RESTORE_DELAY_MS));
       pipelineTrace("clipboard_hold", "end");
       try {
         // The payload stays available to a late Cmd-V. The next insertion waits for
         // this hold instead of the overlay, which must report the outcome now.
-        if (lease?.quarantine && this.nativeOutcomeUnknown)
+        if (lease?.quarantine && (unverified || this.nativeOutcomeUnknown))
           this.clipboardHold = lease.quarantine().catch(() => undefined).finally(() => { this.clipboardHold = null; });
         else await lease?.restore();
       } finally { restoreOverlay(); }

@@ -2,9 +2,12 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { NativeInsertionClient } from "@main/services/native-insertion-client";
-vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
+import { TextInsertionService } from "@main/services/text-insertion.service";
+import type { ClipboardBridgeService } from "@main/services/clipboard-bridge.service";
+vi.mock("node:child_process", () => ({ spawn: vi.fn(), execFile: vi.fn() }));
+vi.mock("electron", () => ({ systemPreferences: { isTrustedAccessibilityClient: vi.fn(() => true) } }));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 function setup(adaptive = false) {
   const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), kill: vi.fn(), exitCode: null as number | null });
@@ -108,6 +111,84 @@ describe("adaptive production client", () => {
     s.child.stdout.write('{"type":"frontmost","pid":77}\n');
     await vi.waitFor(() => expect(seen).toHaveBeenCalledWith(77));
     expect(s.client.frontmostPid).toBe(77);
+    s.child.exitCode = 0; await s.client.dispose();
+  });
+  const target = { name: "Editor", pid: 2, bundleId: "b" };
+  it("lets an overlapping capture wait its turn instead of reporting the helper busy", async () => {
+    const s = setup(true), first = s.client.capture(), second = s.client.capture(); s.ready();
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    s.reply("captured", { targetToken: "a", target });
+    expect((await first).token).toBe("a");
+    await vi.waitFor(() => expect(s.requests).toHaveLength(2));
+    s.reply("captured", { targetToken: "b", target });
+    expect((await second).token).toBe("b");
+    s.child.exitCode = 0; await s.client.dispose();
+  });
+  it("holds a capture behind an insertion that is still running", async () => {
+    const s = await captured();
+    const inserted = s.client.insert("t", "hello", "op");
+    await vi.waitFor(() => expect(s.requests).toHaveLength(2));
+    const next = s.client.capture();
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(s.requests).toHaveLength(2);
+    s.reply("confirmed"); await inserted;
+    await vi.waitFor(() => expect(s.requests).toHaveLength(3));
+    expect(s.requests.at(-1)?.type).toBe("capture");
+    s.reply("captured", { targetToken: "n", target });
+    expect((await next).token).toBe("n");
+    s.child.exitCode = 0; await s.client.dispose();
+  });
+  it("moves a waiting capture to a new helper when the one ahead of it dies", async () => {
+    const s = setup(true), first = s.client.capture().catch(error => error), second = s.client.capture(); s.ready();
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    const replacement = setup(true);
+    s.child.emit("close");
+    expect(await first).toMatchObject({ state: "not_dispatched", answered: false });
+    await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));
+    replacement.ready();
+    await vi.waitFor(() => expect(replacement.requests).toHaveLength(1));
+    replacement.reply("captured", { targetToken: "fresh", target });
+    expect((await second).token).toBe("fresh");
+    replacement.child.exitCode = 0; await s.client.dispose();
+  });
+  it.each([
+    ["unparseable JSON", "not json\n"],
+    ["half a message", '{"requestId":\n'],
+    ["a reply to no request", '{"requestId":"old","state":"confirmed","reason":"stale"}\n']
+  ])("reports %s from a live helper as answered, so no fallback runs", async (_label, line) => {
+    const s = setup(true), call = s.client.capture().catch(error => error); s.ready();
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    s.child.stdout.write(line);
+    expect(await call).toMatchObject({ state: "not_dispatched", answered: true });
+    s.child.exitCode = 0; await s.client.dispose();
+  });
+  it("keeps a framing failure during an insertion unknown, because Cmd-V may have gone out", async () => {
+    const s = await captured();
+    const lost = s.client.insert("t", "hello", "op").catch(error => error);
+    await vi.waitFor(() => expect(s.requests).toHaveLength(2));
+    s.child.stdout.write("not json\n");
+    expect(await lost).toMatchObject({ state: "unresolved", answered: true });
+    s.child.exitCode = 0; await s.client.dispose();
+  });
+  it("reports a dead helper as unavailable, so the fallback may run", async () => {
+    const s = setup(true), call = s.client.capture().catch(error => error); s.ready();
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    s.child.emit("close");
+    expect(await call).toMatchObject({ answered: false });
+    await s.client.dispose();
+  });
+  it("never drops a held target to AppleScript because two captures overlapped", async () => {
+    const s = setup(true);
+    const service = new TextInsertionService({} as ClipboardBridgeService, undefined, undefined, s.client, true);
+    const first = service.captureCurrentTargetApplication(), second = service.captureCurrentTargetApplication(); s.ready();
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    s.reply("captured", { targetToken: "old", target: { ...target, name: "Old" } });
+    await vi.waitFor(() => expect(s.requests).toHaveLength(2));
+    s.reply("captured", { targetToken: "new", target: { ...target, name: "New" } });
+    await first; await second;
+    expect(execFile).not.toHaveBeenCalled();
+    expect(service.getCapturedTargetApplicationName()).toBe("New");
+    expect(service.getRecoveryTargetMetadata()).toMatchObject({ name: "New" });
     s.child.exitCode = 0; await s.client.dispose();
   });
 });

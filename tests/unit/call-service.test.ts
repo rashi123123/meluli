@@ -1,7 +1,8 @@
-import { EventEmitter } from "node:events";
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { EventEmitter, once } from "node:events";
+import { mkdir, mkdtemp, readdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppStateSnapshot, CallState, TranscriptSegment } from "../../src/shared/types";
 import { CallService, MAX_CALL_MS, type CallServiceDependencies } from "../../src/main/services/calls/call.service";
@@ -237,5 +238,143 @@ describe("CallService", () => {
     const [id] = await readdir(root);
     const record = JSON.parse(await readFile(join(root, id!, "call.json"), "utf8"));
     expect(record.status).toBe("pending");
+  });
+
+  describe("a call owned by another run", () => {
+    const FIRST = 111;
+    const SECOND = 222;
+    /** A second copy of the app, with its own helper and state, sharing the same folder. */
+    const secondCopy = (overrides: Partial<CallServiceDependencies> = {}) =>
+      build({ audio: new FakeAudio() as never, runtime: new FakeRuntime(), pid: SECOND, ...overrides });
+    const recordOf = async (id: string) => JSON.parse(await readFile(join(root, id, "call.json"), "utf8"));
+    const recordingCall = async () => {
+      service = build({ pid: FIRST });
+      await startCall();
+      return (await readdir(root))[0]!;
+    };
+
+    it("leaves a live recording's folder alone, and that recording still finishes", async () => {
+      const id = await recordingCall();
+      await secondCopy({ isProcessAlive: (pid) => pid === FIRST }).initialize();
+      expect((await recordOf(id)).status).toBe("recording");
+      expect(saved).toEqual([]);
+
+      await service.stop();
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+      await settle();
+      expect(await readdir(root)).toEqual([]);
+    });
+
+    it("recovers a recording whose owner is dead", async () => {
+      await recordingCall();
+      await audio.stop();
+      await secondCopy({ isProcessAlive: () => false }).initialize();
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    });
+
+    it("recovers a recording too old to be alive, even if its pid came back", async () => {
+      await recordingCall();
+      await audio.stop();
+      clock += MAX_CALL_MS + 60_000;
+      await secondCopy({ isProcessAlive: () => true }).initialize();
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    });
+
+    it("recovers a record written before owners were stored", async () => {
+      const id = await recordingCall();
+      await audio.stop();
+      const { ownerPid: _owner, ...record } = await recordOf(id);
+      await writeFile(join(root, id, "call.json"), JSON.stringify(record));
+      await secondCopy({ isProcessAlive: () => true }).initialize();
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    });
+
+    it("tells live pids from dead ones", async () => {
+      const id = await recordingCall();
+      await audio.stop();
+      const record = await recordOf(id);
+      await writeFile(join(root, id, "call.json"), JSON.stringify({ ...record, ownerPid: process.ppid }));
+      await secondCopy().initialize();
+      expect((await recordOf(id)).status).toBe("recording");
+
+      const finished = spawn(process.execPath, ["-e", ""]);
+      await once(finished, "close");
+      await writeFile(join(root, id, "call.json"), JSON.stringify({ ...record, ownerPid: finished.pid }));
+      await secondCopy().initialize();
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    });
+  });
+
+  describe("when the record cannot be written", () => {
+    /** A folder in the way of the temporary file fails every save until it is removed. */
+    const blockSaves = (directory: string) => mkdir(join(directory, "call.json.tmp"), { recursive: true });
+    const unblockSaves = (directory: string) => rmdir(join(directory, "call.json.tmp"));
+
+    it("keeps a finished call's audio and offers a retry that still has its offsets", async () => {
+      const records: { micOffsetMs: number; partial: boolean }[] = [];
+      service = build({ saveTranscript: async (record) => { records.push(record); } });
+      await startCall();
+      const directory = audio.directory!;
+      await blockSaves(directory);
+      audio.stopped = { micOffsetMs: 40, systemOffsetMs: 0, systemHeard: true };
+      await service.stop();
+      expect(callState().recording).toBeNull();
+      expect(callState().failures).toHaveLength(1);
+      expect((await stat(join(directory, "mic.wav"))).size).toBeGreaterThan(0);
+
+      await unblockSaves(directory);
+      await service.retry(callState().failures[0]!.id);
+      await vi.waitFor(() => { expect(records).toHaveLength(1); });
+      expect(records[0]!.micOffsetMs).toBe(40);
+      expect(callState().failures).toEqual([]);
+    });
+
+    it("leaves the record for the next launch to recover", async () => {
+      await startCall();
+      const directory = audio.directory!;
+      await blockSaves(directory);
+      await service.stop();
+      await unblockSaves(directory);
+      await build({ audio: new FakeAudio() as never, runtime: new FakeRuntime(), pid: 222, isProcessAlive: () => false }).initialize();
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    });
+
+    it("still shuts down when the call ending at quit cannot be saved", async () => {
+      await startCall();
+      await blockSaves(audio.directory!);
+      await service.dispose();
+      expect(audio.dispose).toHaveBeenCalled();
+    });
+
+    it("clears the recording and says so when the folder is gone", async () => {
+      await startCall();
+      audio.tracks = {};
+      await rm(audio.directory!, { recursive: true });
+      await service.stop();
+      expect(callState().recording).toBeNull();
+      expect(callState().failures).toEqual([]);
+      expect(callState().notice).toBe("partial_audio");
+    });
+
+    it("does not transcribe again and again when a failure cannot be recorded", async () => {
+      transcribePiece.mockImplementation(async (path) => {
+        await blockSaves(dirname(path));
+        throw new Error("model");
+      });
+      await startCall();
+      const directory = audio.directory!;
+      await service.stop();
+      await vi.waitFor(() => { expect(callState().failures).toHaveLength(1); });
+      await settle();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(transcribePiece).toHaveBeenCalledTimes(1);
+
+      await unblockSaves(directory);
+      transcribePiece.mockImplementation(async () => [{ start: 0.1, end: 0.5, text: "שורה" }]);
+      await service.retry(callState().failures[0]!.id);
+      await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+      await settle();
+      expect(callState().failures).toEqual([]);
+    });
   });
 });

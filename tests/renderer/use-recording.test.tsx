@@ -19,6 +19,7 @@ let host: HTMLDivElement, root: Root, hook: { current: Hook | null };
 let onError: ReturnType<typeof vi.fn>, onTranscript: ReturnType<typeof vi.fn>, recording: Record<string, ReturnType<typeof vi.fn>>;
 let overlay: { retarget: ReturnType<typeof vi.fn>; setHeldRecording: ReturnType<typeof vi.fn>; hide: ReturnType<typeof vi.fn> };
 let transcription: { cancel: ReturnType<typeof vi.fn> };
+let appBridge: { isMockMode: ReturnType<typeof vi.fn>; onRecordingInterruptRequested: ReturnType<typeof vi.fn> };
 
 function Harness({ mode, handle }: { mode: "main" | "overlay"; handle: Ref<Hook> }) {
   const value = useRecording({
@@ -43,7 +44,8 @@ beforeEach(() => {
   };
   overlay = { retarget: vi.fn().mockResolvedValue(undefined), setHeldRecording: vi.fn(), hide: vi.fn().mockResolvedValue(true) };
   transcription = { cancel: vi.fn().mockResolvedValue(true) };
-  Object.assign(window, { ivritMenuBar: { app: { isMockMode: vi.fn().mockResolvedValue(false) }, recording, overlay, transcription } });
+  appBridge = { isMockMode: vi.fn().mockResolvedValue(false), onRecordingInterruptRequested: vi.fn(() => () => {}) };
+  Object.assign(window, { ivritMenuBar: { app: appBridge, recording, overlay, transcription } });
   vi.stubGlobal("BroadcastChannel", class { postMessage() {} close() {} addEventListener() {} removeEventListener() {} });
   window.localStorage.clear();
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -156,6 +158,50 @@ describe("failed transcription", () => {
     await run(value => value.resendHeldRecording());
     expect(recording.sendAudio).toHaveBeenCalledOnce();
   });
+  const failedRecording = async () => {
+    recording.sendAudio.mockRejectedValueOnce(new Error(he.transcriptionProcessFailed));
+    await mount();
+    await run(value => value.startRecording());
+    await run(value => value.stopRecording());
+    onError.mockClear();
+  };
+  // The clock keeps going through sleep; timers do not.
+  const sleep = (ms: number) => vi.setSystemTime(Date.now() + ms);
+  it("counts the time the Mac slept, soon after it wakes", async () => {
+    await failedRecording();
+    sleep(HELD_RECORDING_TTL_MS);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(hook.current!.heldRecording).toBeNull();
+    expect(onError).toHaveBeenCalledWith(he.recordingHeldExpired);
+    await run(value => value.resendHeldRecording());
+    expect(recording.sendAudio).toHaveBeenCalledOnce();
+  });
+  it("keeps the audio after a short sleep", async () => {
+    await failedRecording();
+    sleep(HELD_RECORDING_TTL_MS - 60_000);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(hook.current!.heldRecording?.reason).toBe("failed");
+    expect(onError).not.toHaveBeenCalled();
+  });
+  it("refuses to resend expired audio even if no timer has run yet", async () => {
+    await failedRecording();
+    sleep(HELD_RECORDING_TTL_MS);
+    await run(value => value.resendHeldRecording());
+    expect(overlay.retarget).not.toHaveBeenCalled();
+    expect(recording.sendAudio).toHaveBeenCalledOnce();
+    expect(hook.current!.heldRecording).toBeNull();
+    expect(onError).toHaveBeenCalledWith(he.recordingHeldExpired);
+  });
+  it("gives failed retries no more time than the recording had", async () => {
+    await failedRecording();
+    await act(async () => { await vi.advanceTimersByTimeAsync(HELD_RECORDING_TTL_MS - 1_000); });
+    recording.sendAudio.mockRejectedValueOnce(new Error(he.transcriptionProcessFailed));
+    await run(value => value.resendHeldRecording());
+    expect(hook.current!.heldRecording?.reason).toBe("failed");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(hook.current!.heldRecording).toBeNull();
+    expect(onError).toHaveBeenCalledWith(he.recordingHeldExpired);
+  });
   it("forgets the audio when a new recording starts", async () => {
     recording.sendAudio.mockRejectedValueOnce(new Error(he.transcriptionProcessFailed));
     await mount();
@@ -257,6 +303,21 @@ describe("audio that must survive", () => {
     expect(recording.stop).toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith(he.recordingInterrupted);
     expect(hook.current!.heldRecording).toEqual({ reason: "failed", durationMs: 8_000 });
+  });
+  it("stops a main-window recording when the computer cuts it off", async () => {
+    await mount("main");
+    await run(value => value.startRecording());
+    const interrupt = appBridge.onRecordingInterruptRequested.mock.calls[0]![0] as () => void;
+    await act(async () => { interrupt(); await vi.advanceTimersByTimeAsync(0); });
+    expect(capture.stop).toHaveBeenCalledOnce();
+    expect(recording.stop).toHaveBeenCalled();
+    expect(recording.sendAudio).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(he.recordingInterrupted);
+    expect(hook.current!.heldRecording).toEqual({ reason: "failed", durationMs: 8_000 });
+  });
+  it("leaves the interrupt to the HUD in the floating window", async () => {
+    await mount("overlay");
+    expect(appBridge.onRecordingInterruptRequested).not.toHaveBeenCalled();
   });
   it("reports a lost microphone through the same path", async () => {
     const { AudioCaptureController } = await import("@/lib/audio-capture");

@@ -1,6 +1,6 @@
 /* @vitest-environment node */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,6 +18,93 @@ afterEach(() => {
 });
 
 describe("TranscriptRepository", () => {
+  describe("search queries", () => {
+    const open = () => {
+      const dir = mkdtempSync(join(tmpdir(), "ivrit-menu-bar-test-"));
+      tempDirs.push(dir);
+      const repository = createAppDatabase(dir).transcriptRepository;
+      repository.create({ id: "1", createdAt: 1, sourceType: "microphone", text: "alpha beta", rawText: "alpha beta", durationMs: 1, backend: "ct2", modelId: "demo" });
+      return repository;
+    };
+
+    it("finds nothing, rather than failing, when no search term is left", () => {
+      const repository = open();
+      expect(repository.search("\"", 10)).toEqual({ items: [], nextCursor: null });
+      expect(repository.search("' \"", 10)).toEqual({ items: [], nextCursor: null });
+    });
+
+    it("treats a NUL as a space", () => {
+      expect(open().search("alpha\u0000beta", 10).items).toHaveLength(1);
+    });
+
+    it("searches for the start of a query past the token limit", () => {
+      expect(open().search(`${"alpha ".repeat(64)}absent`, 10).items).toHaveLength(1);
+    });
+
+    it("searches for the start of a query past the length limit", () => {
+      expect(open().search(`alpha${" ".repeat(2000)}absent`, 10).items).toHaveLength(1);
+    });
+  });
+
+  describe("deleted text", () => {
+    const onDisk = (dir: string, word: string) => readdirSync(dir)
+      .filter((file) => file.includes(".sqlite"))
+      .filter((file) => readFileSync(join(dir, file)).includes(word));
+    const open = () => {
+      const dir = mkdtempSync(join(tmpdir(), "ivrit-menu-bar-test-"));
+      tempDirs.push(dir);
+      const database = createAppDatabase(dir);
+      const repository = database.transcriptRepository;
+      const add = (id: string, text: string) => repository.create({ id, createdAt: 1, sourceType: "microphone", text, rawText: text, durationMs: 1, backend: "ct2", modelId: "demo" });
+      return { dir, database, repository, add };
+    };
+
+    it("leaves no copy on disk, in the row or the search index, after one is deleted", () => {
+      const { dir, repository, add } = open();
+      add("kept", "Keptword stays");
+      add("gone", "Secretword goes");
+      expect(onDisk(dir, "Secretword")).not.toHaveLength(0);
+      expect(onDisk(dir, "secretword")).not.toHaveLength(0);
+
+      repository.delete("gone");
+
+      expect(onDisk(dir, "Secretword")).toEqual([]);
+      expect(onDisk(dir, "secretword")).toEqual([]);
+      expect(onDisk(dir, "Keptword")).not.toHaveLength(0);
+      expect(repository.search("keptword", 10).items).toHaveLength(1);
+      expect(repository.search("secretword", 10).items).toHaveLength(0);
+    });
+
+    it("leaves no copy on disk after the whole history is deleted", () => {
+      const { dir, repository, add } = open();
+      add("gone", "Secretword goes");
+
+      repository.deleteAll();
+
+      expect(onDisk(dir, "Secretword")).toEqual([]);
+      expect(onDisk(dir, "secretword")).toEqual([]);
+    });
+
+    it("also clears a row saved before the database was last opened", () => {
+      const { dir, add, database } = open();
+      add("kept", "Keptword stays");
+      add("gone", "Secretword goes");
+      database.db!.close();
+
+      createAppDatabase(dir).transcriptRepository.delete("gone");
+
+      expect(onDisk(dir, "secretword")).toEqual([]);
+    });
+
+    it("leaves FTS5's own secure-delete option off", () => {
+      const { database, repository, add } = open();
+      add("gone", "Secretword goes");
+      repository.delete("gone");
+
+      expect(database.db!.prepare("SELECT v FROM transcripts_fts_config WHERE k = 'secure-delete'").get()).toBeUndefined();
+    });
+  });
+
   it("creates, lists, searches, and deletes transcript rows", () => {
     const dir = mkdtempSync(join(tmpdir(), "ivrit-menu-bar-test-"));
     tempDirs.push(dir);

@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createInterface } from "node:readline";
 import { z } from "zod";
 import type { HoldKeyChoice, HoldKeyStatus } from "@shared/types";
+import { ProcessLines } from "./process-lines";
 
 const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
@@ -107,7 +107,7 @@ export class HoldKeyService {
     const child = spawn(this.executable, [], { stdio: ["pipe", "pipe", "pipe"] });
     this.child = child;
     this.watching = key;
-    const lines = createInterface({ input: child.stdout });
+    const lines = new ProcessLines(child.stdout);
     child.stderr.resume();
     child.stdin.on("error", () => child.kill("SIGTERM"));
     child.once("error", () => this.childGone(child, null));

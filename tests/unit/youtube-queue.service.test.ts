@@ -38,4 +38,24 @@ describe("YouTube cancellation", () => {
     expect(await readdir(directory)).toEqual([]); expect(queue.cancelActive()).toBe(false);
     await queue.dispose();
   });
+  it("does not start a link while a recording holds the claim, and starts it after", async () => {
+    const runtime = new AppRuntime();
+    const downloadAudio = vi.fn(async () => { throw new Error("stop here"); });
+    const queue = new YouTubeQueueService({
+      database: { paths: { userDataPath: directory } } as never, runtime,
+      youtubeImportService: { downloadAudio, cancel: vi.fn(() => false), dispose: vi.fn() } as never,
+      audioConverter: {} as never, transcriptionService: { cancel: vi.fn(() => false) } as never, transcriptionWorkflow: {} as never
+    });
+    queue.initialize();
+    runtime.claimRecording(1);
+    queue.submit("https://youtube.com/watch?v=test");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(downloadAudio).not.toHaveBeenCalled();
+    expect(runtime.getState().status).toBe("idle");
+    expect(runtime.getState().pendingYoutubeJob?.url).toBe("https://youtube.com/watch?v=test");
+    runtime.releaseRecording(1);
+    runtime.updateState({ status: "idle" });
+    await vi.waitFor(() => expect(downloadAudio).toHaveBeenCalledOnce());
+    await queue.dispose();
+  });
 });

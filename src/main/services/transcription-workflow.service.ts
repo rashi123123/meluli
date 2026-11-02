@@ -299,7 +299,7 @@ export class TranscriptionWorkflowService {
     let latestAudioDurationMs = input.durationMs ?? null;
     let latestSetupElapsedMs = 0;
 
-    this.dependencies.runtime.updateState({
+    this.dependencies.runtime.updateJobState({
       status: "processing",
       timerStartedAt: null,
       processingStartedAt,
@@ -416,7 +416,7 @@ export class TranscriptionWorkflowService {
       // Keep the job busy until its single automatic paste has settled.
       await this.maybeCompleteOverlaySession(transcript, input);
       try {
-        this.dependencies.runtime.updateState({
+        this.dependencies.runtime.updateJobState({
           status: "idle", timerStartedAt: null, activeSourceType: null,
           currentYoutubeJob: null, lastError: mirrorError
         });
@@ -432,7 +432,7 @@ export class TranscriptionWorkflowService {
         errorType: error instanceof Error ? error.name : "UnknownError"
       });
       if (isTranscriptionCanceledError(error)) {
-        this.dependencies.runtime.updateState({
+        this.dependencies.runtime.updateJobState({
           status: "idle",
           timerStartedAt: null,
           activeSourceType: null,
@@ -448,7 +448,7 @@ export class TranscriptionWorkflowService {
 
       const message = getHebrewErrorMessage(error, he.transcriptionProcessFailed);
       const shouldContinueWithQueuedYoutube = Boolean(this.dependencies.runtime.getState().pendingYoutubeJob);
-      this.dependencies.runtime.updateState({
+      this.dependencies.runtime.updateJobState({
         status: shouldContinueWithQueuedYoutube ? "idle" : "error",
         timerStartedAt: null,
         activeSourceType: null,
@@ -544,7 +544,9 @@ export class TranscriptionWorkflowService {
 
   private async transcribeImportedFileInternal(filePath: string): Promise<{ canceled: false; fileName: string; transcript: TranscriptRecord }> {
     const state = this.dependencies.runtime.getState();
-    if (state.status !== "idle" && state.status !== "error") throw new Error("כבר יש הקלטה או עיבוד פעילים.");
+    if (this.dependencies.runtime.hasRecordingOwner() || (state.status !== "idle" && state.status !== "error")) {
+      throw new Error("כבר יש הקלטה או עיבוד פעילים.");
+    }
     const wavPath = join(this.dependencies.database.paths.userDataPath, `import-${crypto.randomUUID()}.wav`);
     const preparation = new AbortController();
     this.preparation = preparation;

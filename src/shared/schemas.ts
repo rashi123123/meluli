@@ -38,13 +38,16 @@ export const onboardingTrackingEventNameSchema = z.enum([
 ]);
 export const workerVadModeSchema = z.enum(["ct2_filter", "whispercpp_native", "none"]);
 
-const LOCAL_HOST = /(^localhost$|\.(localhost|local|internal|intranet|lan|home|test)$)/u;
+const LOCAL_HOST = /(^localhost$|\.(localhost|local|internal|intranet|lan|home|test|home\.arpa)$)/u;
 
 /** A public https page, for yt-dlp to match against its site list. YouTube keeps its single-video rule. */
 export function isSupportedMediaUrl(value: string): boolean {
   try {
-    const url = new URL(value.trim());
-    const host = url.hostname.toLowerCase();
+    // A backslash or space reads as a different host in yt-dlp than it does here.
+    const trimmed = value.trim();
+    if (/[\\\s]/u.test(trimmed)) return false;
+    const url = new URL(trimmed);
+    const host = url.hostname.toLowerCase().replace(/\.$/u, "");
     if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
     if (!host.includes(".") || host.includes(":") || /^[\d.]+$/u.test(host) || LOCAL_HOST.test(host)) return false;
     return /(^|\.)(youtube\.com|youtu\.be)$/u.test(host) ? isSupportedYouTubeUrl(value) : true;
@@ -101,6 +104,7 @@ export const youtubeSubmitInputSchema = z.object({
     .trim()
     .url(he.youtubeInvalidUrl)
     .refine(isSupportedMediaUrl, he.youtubeInvalidUrl)
+    .transform(value => new URL(value).href)
 });
 
 const processingTelemetryBucketSchema = z.object({

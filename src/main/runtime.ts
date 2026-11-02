@@ -48,6 +48,10 @@ export class AppRuntime extends EventEmitter {
     this.recordingOwner = null;
   }
 
+  hasRecordingOwner(): boolean {
+    return this.recordingOwner !== null;
+  }
+
   setOverlayReady(): void {
     this.overlayReady = true;
     if (this.pendingRecordingToggle) {
@@ -143,6 +147,11 @@ export class AppRuntime extends EventEmitter {
     return this.state;
   }
 
+  /** A background job reports here, so it cannot write over a recording that holds the claim. */
+  updateJobState(next: Partial<AppStateSnapshot>): AppStateSnapshot {
+    return this.hasRecordingOwner() ? this.state : this.updateState(next);
+  }
+
   startOverlaySession(targetAppName: string | null): OverlaySession {
     const overlaySession: OverlaySession = {
       id: crypto.randomUUID(),
@@ -232,7 +241,9 @@ export class AppRuntime extends EventEmitter {
 
   /** Stops capture but keeps the audio, for an end the user did not choose such as sleep. */
   requestRecordingInterrupt(): void {
-    this.sendTo("overlay", IPC_CHANNELS.recordingInterruptRequested, null);
+    for (const [role, window] of this.windows) {
+      if (window.webContents.id === this.recordingOwner) this.sendTo(role, IPC_CHANNELS.recordingInterruptRequested, null);
+    }
   }
 
   requestMainNavigation(view: MainView): void {

@@ -12,6 +12,7 @@ type RecordingCommand = "pause" | "resume" | "stop" | "cancel";
 
 const RECORDING_OWNER_STORAGE_KEY = "ivrit-recording-owner";
 const RECORDING_CONTROL_CHANNEL = "ivrit-recording-control";
+const HELD_EXPIRY_CHECK_MS = 30_000;
 
 /** A finished recording that has no transcript yet. It lives only in this window's memory. */
 export interface HeldRecording {
@@ -61,6 +62,8 @@ export function useRecording({
   const cancelRequestedRef = useRef(false);
   const heldPayloadRef = useRef<RecordingAudioPayload | null>(null);
   const heldTimerRef = useRef<number | null>(null);
+  /** Weak, so remembering when audio expires never keeps the audio itself in memory. */
+  const heldExpiryRef = useRef(new WeakMap<RecordingAudioPayload, number>());
   const [heldRecording, setHeldRecording] = useState<HeldRecording | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -93,14 +96,28 @@ export function useRecording({
     setHeldRecording(null);
   };
 
+  const expireHeldRecording = (reason: HeldRecording["reason"] | undefined) => {
+    dropHeldRecording();
+    if (reason === "failed") onError(he.recordingHeldExpired);
+  };
+
+  /** Timers stop while the Mac sleeps, so after a wake only the clock knows how long it has been. */
+  const watchHeldExpiry = (payload: RecordingAudioPayload, reason: HeldRecording["reason"]) => {
+    const remainingMs = heldExpiryRef.current.get(payload)! - Date.now();
+    if (remainingMs <= 0) {
+      expireHeldRecording(reason);
+      return;
+    }
+    heldTimerRef.current = window.setTimeout(() => watchHeldExpiry(payload, reason), Math.min(remainingMs, HELD_EXPIRY_CHECK_MS));
+  };
+
+  /** A failed retry holds the same audio again, which does not buy it more time. */
   const holdRecording = (payload: RecordingAudioPayload, reason: HeldRecording["reason"]) => {
     dropHeldRecording();
+    heldExpiryRef.current.set(payload, heldExpiryRef.current.get(payload) ?? Date.now() + HELD_RECORDING_TTL_MS);
     heldPayloadRef.current = payload;
-    heldTimerRef.current = window.setTimeout(() => {
-      dropHeldRecording();
-      if (reason === "failed") onError(he.recordingHeldExpired);
-    }, HELD_RECORDING_TTL_MS);
     setHeldRecording({ reason, durationMs: payload.durationMs });
+    watchHeldExpiry(payload, reason);
   };
 
   useEffect(() => {
@@ -340,6 +357,11 @@ export function useRecording({
     }
   });
 
+  // The floating window hears this through its HUD; a recording here has no HUD to hear it.
+  useEffect(() => windowMode === "main"
+    ? window.ivritMenuBar.app.onRecordingInterruptRequested?.(() => { void interruptRecordingLocal(he.recordingInterrupted); })
+    : undefined, [windowMode]);
+
   /** Stops the engine and waits to learn whether the audio is held for Undo. */
   const cancelProcessingLocal = useEffectEvent(async () => {
     const canceled = await window.ivritMenuBar.transcription.cancel();
@@ -351,6 +373,10 @@ export function useRecording({
   const resendHeldRecordingLocal = useEffectEvent(async () => {
     const payload = heldPayloadRef.current;
     if (!payload || startInFlightRef.current || stopInFlightRef.current || ownerRef.current === windowMode) return;
+    if ((heldExpiryRef.current.get(payload) ?? 0) <= Date.now()) {
+      expireHeldRecording(heldRecording?.reason);
+      return;
+    }
     stopInFlightRef.current = true;
     setHeldRecording(null);
     setIsResending(true);
@@ -359,7 +385,7 @@ export function useRecording({
       await window.ivritMenuBar.recording.start(Date.now());
       await deliverAudio(payload);
     } catch (error) {
-      setHeldRecording({ reason: "failed", durationMs: payload.durationMs });
+      if (heldPayloadRef.current === payload) setHeldRecording({ reason: "failed", durationMs: payload.durationMs });
       onError(getHebrewErrorMessage(error, he.stopRecordingFailed));
     } finally {
       stopInFlightRef.current = false;

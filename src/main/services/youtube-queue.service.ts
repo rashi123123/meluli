@@ -120,7 +120,7 @@ export class YouTubeQueueService {
 
     const snapshot = this.dependencies.runtime.getState();
     const pending = snapshot.pendingYoutubeJob;
-    if (!pending || snapshot.status !== "idle") {
+    if (!pending || snapshot.status !== "idle" || this.dependencies.runtime.hasRecordingOwner()) {
       return;
     }
 
@@ -169,7 +169,7 @@ export class YouTubeQueueService {
         });
       } catch (error) {
         if (controller.signal.aborted || isYouTubeDownloadCanceledError(error) || isTranscriptionCanceledError(error)) {
-          this.dependencies.runtime.updateState({
+          this.dependencies.runtime.updateJobState({
             status: "idle",
             timerStartedAt: null,
             activeSourceType: null,
@@ -181,7 +181,7 @@ export class YouTubeQueueService {
 
         const message = getHebrewErrorMessage(error, he.youtubeImportFailed);
         const shouldContinueWithQueuedYoutube = Boolean(this.dependencies.runtime.getState().pendingYoutubeJob);
-        this.dependencies.runtime.updateState({
+        this.dependencies.runtime.updateJobState({
           status: shouldContinueWithQueuedYoutube ? "idle" : "error",
           timerStartedAt: null,
           activeSourceType: null,

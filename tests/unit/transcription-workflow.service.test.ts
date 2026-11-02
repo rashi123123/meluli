@@ -482,4 +482,36 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
     expect(transcriptionService.transcribe).not.toHaveBeenCalled();
   });
 
+  it.each(["idle", "error"] as const)("refuses an import while a recording holds the claim (status %s)", async status => {
+    runtime.clearOverlaySession();
+    runtime.updateState({ status });
+    runtime.claimRecording(10);
+    const convertInputToWav = vi.fn();
+    await expect(createWorkflow({ convertInputToWav }).transcribeImportedFile("/unused.mp3")).rejects.toThrow("כבר יש הקלטה");
+    expect(convertInputToWav).not.toHaveBeenCalled();
+    expect(runtime.getState().status).toBe(status);
+    expect(runtime.getState().activeSourceType).toBeNull();
+  });
+
+  it.each([
+    ["finishes", null],
+    ["fails", new Error("engine failed")],
+    ["is canceled", new TranscriptionCanceledError()]
+  ])("leaves the status with a recording that holds the claim when a job %s", async (_name, failure) => {
+    runtime.clearOverlaySession();
+    runtime.claimRecording(10);
+    runtime.updateState({ status: "recording", activeSourceType: "microphone", timerStartedAt: 5 });
+    let settle!: () => void;
+    transcriptionService.transcribe.mockImplementation(() => new Promise((resolve, reject) => {
+      settle = () => failure ? reject(failure) : resolve({ text: transcript.text, language: "he", segments: transcript.segments });
+    }));
+    const pending = createWorkflow().transcribeAndStore({ wavPath: "/unused.wav", sourceType: "imported_file" });
+    const landed = pending.catch(() => undefined);
+    await vi.waitFor(() => expect(transcriptionService.transcribe).toHaveBeenCalled());
+    expect(runtime.getState()).toMatchObject({ status: "recording", activeSourceType: "microphone", timerStartedAt: 5 });
+    settle();
+    await landed;
+    expect(runtime.getState()).toMatchObject({ status: "recording", activeSourceType: "microphone", timerStartedAt: 5 });
+  });
+
 });

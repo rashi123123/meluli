@@ -127,6 +127,23 @@ describe("call suggestions", () => {
 });
 
 describe("youtubeSubmitInputSchema", () => {
+  it("refuses links that read differently to yt-dlp or end in a dot", () => {
+    for (const url of [
+      "https://example.com\\@127.0.0.1/a",
+      "https://example.com\\.127.0.0.1/a",
+      "https://router.local./a",
+      "https://localhost./a",
+      "https://printer.home.arpa/a"
+    ]) {
+      expect(() => youtubeSubmitInputSchema.parse({ url }), url).toThrow();
+    }
+  });
+
+  it("hands on the parsed form of the link", () => {
+    expect(youtubeSubmitInputSchema.parse({ url: "  https://SoundCloud.com/artist/track  " }).url)
+      .toBe("https://soundcloud.com/artist/track");
+  });
+
   it("refuses YouTube Music links", () => {
     expect(() => youtubeSubmitInputSchema.parse({ url: "https://music.youtube.com/watch?v=abc123xyz" })).toThrow();
   });

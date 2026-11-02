@@ -24,6 +24,7 @@ Meluli is a Preview. This page lists what is known not to work, or has not been 
 - A cancelled recording or transcription can be restored from the floating window for six seconds, provided the recording lasted at least three seconds. After that the audio is gone.
 - A crash can leave a temporary audio file behind. It is removed on the first launch after it is six hours old, and it stays on disk until then.
 - A link import downloads audio only to transcribe it. Meluli does not save the audio as a file. Sites can block the download, and private or sign-in content does not work.
+- Link import checks the pasted address, not where a site's extractor goes next. Extractors that follow any host are blocked, and that list must be checked whenever the yt-dlp pin moves.
 - Deleting a transcript does not guarantee removal from migration backups, TXT mirrors or exported files, and SQLite may keep deleted bytes until they are overwritten.
 
 ## Microphone

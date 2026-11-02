@@ -25,7 +25,8 @@ func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
 func ms(_ start: UInt64) -> Double { Double(now() - start) / 1_000_000 }
 func emit(_ value: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), let text = String(data: data, encoding: .utf8) else { return }
-    print(text); fflush(stdout)
+    // Valid unescaped JSON, yet readline-style consumers end a line at these two.
+    print(text.replacingOccurrences(of: "\u{2028}", with: "\\u2028").replacingOccurrences(of: "\u{2029}", with: "\\u2029")); fflush(stdout)
 }
 func attr(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     var value: CFTypeRef?

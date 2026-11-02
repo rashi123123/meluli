@@ -1,4 +1,4 @@
-import { mkdirSync, chmodSync } from "node:fs";
+import { chmodSync, closeSync, mkdirSync, openSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { MODELS_DIR_NAME, TRANSCRIPTS_DIR_NAME } from "@shared/constants";
@@ -140,7 +140,10 @@ export function createAppDatabase(userDataPath: string): AppDatabase {
 
   const Database = require("better-sqlite3") as typeof import("better-sqlite3");
   markPerformanceAudit("database:open:start");
+  closeSync(openSync(paths.databasePath, "a", 0o600));
   const db = new Database(paths.databasePath);
+  db.pragma("trusted_schema = OFF");
+  db.pragma("secure_delete = ON");
   markPerformanceAudit("database:open:end");
   markPerformanceAudit("database:migrations:start");
   try {

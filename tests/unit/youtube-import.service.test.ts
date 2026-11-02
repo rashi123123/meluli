@@ -1,7 +1,7 @@
 /* @vitest-environment node */
 
 import { describe, expect, it } from "vitest";
-import { buildYtDlpDownloadArgs, buildYtDlpMetadataArgs, buildYtDlpProcessError, buildYtDlpRuntimeArgs, isLinkImportInstalled } from "@main/services/youtube-import.service";
+import { buildYtDlpDownloadArgs, buildYtDlpEnv, buildYtDlpMetadataArgs, buildYtDlpProcessError, buildYtDlpRuntimeArgs, isLinkImportInstalled } from "@main/services/youtube-import.service";
 import { he } from "@shared/locale";
 
 describe("link import helper", () => {
@@ -18,13 +18,22 @@ describe("link import helper", () => {
   });
 });
 
+const SOURCE_IES = "default,-generic,-mediasite,-mediasitecatalog,-mediasitenamedcatalog";
+
+describe("buildYtDlpEnv", () => {
+  it("passes on only what the helper needs", () => {
+    expect(buildYtDlpEnv({ HOME: "/Users/a", LANG: "he_IL.UTF-8", OPENSSL_CONF: "/tmp/x", PATH: "/tmp/evil", DYLD_INSERT_LIBRARIES: "/tmp/y" }))
+      .toEqual({ HOME: "/Users/a", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin", DENO_NO_UPDATE_CHECK: "1" });
+  });
+});
+
 describe("buildYtDlpMetadataArgs", () => {
   it("requests metadata for a single YouTube video without downloading", () => {
     expect(buildYtDlpMetadataArgs("https://www.youtube.com/watch?v=demo123")).toEqual([
       "--dump-single-json",
       "--skip-download",
       "--ies",
-      "default,-generic",
+      SOURCE_IES,
       "--no-playlist",
       "--playlist-items",
       "1",
@@ -40,12 +49,14 @@ describe("buildYtDlpDownloadArgs", () => {
       buildYtDlpDownloadArgs("https://youtu.be/demo123", "/tmp/ivrit-youtube/audio.%(ext)s")
     ).toEqual([
       "--ies",
-      "default,-generic",
+      SOURCE_IES,
       "--no-playlist",
       "--playlist-items",
       "1",
       "--no-warnings",
       "--no-progress",
+      "--max-filesize",
+      "2G",
       "--print",
       "after_move:filepath",
       "-f",

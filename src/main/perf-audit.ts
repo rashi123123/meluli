@@ -1,7 +1,8 @@
-import { contentTracing } from "electron";
+import { app, contentTracing } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { diagnosticsAllowed } from "./launch-switches";
 
 const PERF_AUDIT_DIR_NAME = "perf-audit";
 const DEFAULT_STOP_DELAY_MS = 5_000;
@@ -123,7 +124,8 @@ class PerfAuditSession {
   }
 }
 
-const perfAudit = process.env.IVRIT_PERF_AUDIT === "1" ? new PerfAuditSession() : null;
+// Imports run first, so this cannot rely on the startup code clearing the variable.
+const perfAudit = process.env.IVRIT_PERF_AUDIT === "1" && diagnosticsAllowed(app.isPackaged) ? new PerfAuditSession() : null;
 
 
 export function markPerformanceAudit(name: string, detail?: Record<string, unknown>): void {

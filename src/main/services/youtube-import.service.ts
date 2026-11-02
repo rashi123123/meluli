@@ -5,7 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { he } from "@shared/locale";
-import { youtubeSubmitInputSchema } from "@shared/schemas";
+import { isSupportedMediaUrl, youtubeSubmitInputSchema } from "@shared/schemas";
 
 export interface YouTubeImportDependencies {
   ytDlpBinaryPath: string;
@@ -43,12 +43,24 @@ export function buildYtDlpRuntimeArgs(denoExecutable: string): string[] {
     "--no-js-runtimes", "--js-runtimes", `deno:${denoExecutable}`];
 }
 
+/** Only what the helper needs: OPENSSL_CONF, PATH entries and the like run code in it. */
+export function buildYtDlpEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin", DENO_NO_UPDATE_CHECK: "1" };
+  for (const key of ["HOME", "TMPDIR", "LANG"]) {
+    if (source[key]) env[key] = source[key];
+  }
+  return env;
+}
+
 export function isLinkImportInstalled(paths: YouTubeImportDependencies): boolean {
   return existsSync(paths.ytDlpBinaryPath) && existsSync(paths.denoBinaryPath);
 }
 
 // The generic extractor would fetch any page it is handed, so only known sites run.
-const SOURCE_ARGS = ["--ies", "default,-generic", "--no-playlist", "--playlist-items", "1"];
+// Mediasite matches any host and calls back to it. Check for others when the yt-dlp pin moves.
+const ANY_HOST_EXTRACTORS = ["generic", "mediasite", "mediasitecatalog", "mediasitenamedcatalog"];
+const SOURCE_ARGS = ["--ies", ["default", ...ANY_HOST_EXTRACTORS.map(name => `-${name}`)].join(","),
+  "--no-playlist", "--playlist-items", "1"];
 // afconvert decodes these without ffmpeg; webm and opus would download and then fail.
 const AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio[ext=mp4]/best[ext=m4a]/best[ext=mp3]/best[ext=mp4]";
 
@@ -61,6 +73,8 @@ export function buildYtDlpDownloadArgs(url: string, outputTemplate: string): str
     ...SOURCE_ARGS,
     "--no-warnings",
     "--no-progress",
+    "--max-filesize",
+    "2G",
     "--print",
     "after_move:filepath",
     "-f",
@@ -93,9 +107,11 @@ export function buildYtDlpProcessError({
 
 function parseMetadata(rawJson: string): YouTubeMetadata {
   const parsed = JSON.parse(rawJson) as YouTubeMetadata;
+  const webpageUrl = parsed.webpage_url?.trim();
   return {
     title: parsed.title?.trim() || undefined,
-    webpage_url: parsed.webpage_url?.trim() || undefined,
+    // The site chooses this value, and it is shown and kept with the transcript.
+    webpage_url: webpageUrl && isSupportedMediaUrl(webpageUrl) ? webpageUrl : undefined,
     duration: typeof parsed.duration === "number" ? parsed.duration : null
   };
 }
@@ -212,7 +228,7 @@ export class YouTubeImportService extends EventEmitter {
     return new Promise((resolve, reject) => {
       const child = spawn(this.dependencies.ytDlpBinaryPath,
         [...buildYtDlpRuntimeArgs(this.dependencies.denoBinaryPath), ...args], {
-          env: { ...process.env, DENO_NO_UPDATE_CHECK: "1" }
+          env: buildYtDlpEnv(process.env)
         });
       this.activeProcess = child;
       this.cancelRequested = false;
