@@ -79,6 +79,7 @@ export class CallStore {
   }
 
   async clear(): Promise<void> {
-    await rm(this.root, { recursive: true, force: true });
+    // A piece already being written can land mid-sweep and fail the delete with ENOTEMPTY.
+    await rm(this.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 }

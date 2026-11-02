@@ -196,13 +196,11 @@ export class TranscriptRepository {
       )
       .all(...params, limit + 1);
 
-    const hasMore = rows.length > limit;
-    const items = rows.slice(0, limit).map(mapRow);
-
-    return {
-      items,
-      nextCursor: hasMore ? items.at(-1)?.createdAt ?? null : null
-    };
+    return this.pageOf(rows, limit, (operator, createdAt, count) =>
+      this.db
+        .prepare<unknown[], TranscriptRow>(`SELECT * FROM transcripts WHERE created_at ${operator} ? ORDER BY created_at DESC LIMIT ?`)
+        .all(createdAt, count)
+    );
   }
 
   search(query: string, limit: number, cursor: number | null = null): TranscriptListResult {
@@ -234,12 +232,41 @@ export class TranscriptRepository {
       )
       .all(...params);
 
-    const hasMore = rows.length > limit;
-    const items = rows.slice(0, limit).map(mapRow);
+    return this.pageOf(rows, limit, (operator, createdAt, count) =>
+      this.db
+        .prepare<unknown[], TranscriptRow>(
+          `SELECT t.*
+           FROM transcripts_fts f
+           JOIN transcripts t ON t.rowid = f.rowid
+           WHERE transcripts_fts MATCH ? AND t.created_at ${operator} ?
+           ORDER BY t.created_at DESC
+           LIMIT ?`
+        )
+        .all(match, createdAt, count)
+    );
+  }
 
+  /** The cursor is a strict created_at bound, so a page may only end between two timestamps. A tie at the limit comes back whole, even past the limit. */
+  private pageOf(
+    rows: TranscriptRow[],
+    limit: number,
+    read: (operator: "=" | "<", createdAt: number, count: number) => TranscriptRow[]
+  ): TranscriptListResult {
+    const last = rows[limit - 1];
+    const next = rows[limit];
+    if (!last || !next) {
+      return { items: rows.map(mapRow), nextCursor: null };
+    }
+
+    if (next.created_at !== last.created_at) {
+      return { items: rows.slice(0, limit).map(mapRow), nextCursor: last.created_at };
+    }
+
+    const newer = rows.filter((row) => row.created_at > last.created_at);
+    const hasOlder = read("<", last.created_at, 1).length > 0;
     return {
-      items,
-      nextCursor: hasMore ? items.at(-1)?.createdAt ?? null : null
+      items: [...newer, ...read("=", last.created_at, -1)].map(mapRow),
+      nextCursor: hasOlder ? last.created_at : null
     };
   }
 

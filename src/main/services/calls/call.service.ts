@@ -81,7 +81,11 @@ export class CallService {
   private stopping = false;
   private draining = false;
   private disposed = false;
-  private discardRecording = false;
+  /** Runs from the start of a delete-all to the end. Bumped at the end, so what started before it stays stale. */
+  private clearing = false;
+  private generation = 0;
+  private finishing: Promise<void> | null = null;
+  private saving: Promise<void> = Promise.resolve();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(private readonly dependencies: CallServiceDependencies) {
@@ -241,7 +245,15 @@ export class CallService {
     void this.finishRecording();
   }
 
+  /** Every caller waits for the stop under way, so a helper or folder is never pulled out from under it. A new call can begin during that save, so check again after it. */
   private async finishRecording(): Promise<void> {
+    while (this.finishing) await this.finishing.catch(() => undefined);
+    if (!this.active) return;
+    this.finishing = this.endRecording().finally(() => { this.finishing = null; });
+    await this.finishing;
+  }
+
+  private async endRecording(): Promise<void> {
     const active = this.active;
     if (!active || this.stopping) return;
     this.stopping = true;
@@ -255,7 +267,7 @@ export class CallService {
     else record.partial = true;
     this.setState({ recording: null });
     this.sync();
-    if (this.discardRecording) return;
+    if (this.clearing) return;
     await this.store.save(record).catch(() => this.holdUnsaved(record));
     void this.drain();
   }
@@ -292,10 +304,11 @@ export class CallService {
     this.draining = true;
     try {
       for (;;) {
+        const { generation } = this;
         const records = await this.store.list();
         const record = records.find((candidate) => candidate.status === "pending" && !this.unsaved.has(candidate.id));
-        if (!record || this.disposed) break;
-        await this.process(record);
+        if (!record || this.disposed || this.clearing) break;
+        await this.process(record, () => this.disposed || this.clearing || generation !== this.generation);
         if (this.disposed) break;
       }
     } finally {
@@ -304,7 +317,7 @@ export class CallService {
     }
   }
 
-  private async process(record: CallRecord): Promise<void> {
+  private async process(record: CallRecord, isStale: () => boolean): Promise<void> {
     const app = callAppById(record.appId);
     if (!app) return;
     this.setState({ processing: { progressRatio: 0, waiting: !isModelFree(this.dependencies.runtime.getState()) } });
@@ -315,9 +328,13 @@ export class CallService {
         waitForTurn: () => this.waitForTurn(),
         pauseAfterCancel: () => new Promise((resolve) => setTimeout(resolve, this.dependencies.cancelRetryMs ?? CANCEL_RETRY_MS)),
         isCanceled: this.dependencies.isCanceled
-      }, (progressRatio) => this.setState({ processing: { progressRatio, waiting: false } }), () => this.disposed);
-      if (!segments) return;
-      if (segments.length > 0) await this.dependencies.saveTranscript(record, app, segments);
+      }, (progressRatio) => this.setState({ processing: { progressRatio, waiting: false } }), isStale);
+      if (!segments || isStale()) return;
+      if (segments.length > 0) {
+        const saving = this.dependencies.saveTranscript(record, app, segments);
+        this.saving = saving.catch(() => undefined);
+        await saving;
+      }
       if (segments.length === 0) notice = "no_speech";
       else if (record.system.segments.length === 0 && !record.systemHeard) notice = "others_silent";
       else if (record.partial) notice = "partial_audio";
@@ -325,7 +342,7 @@ export class CallService {
       if (notice) this.setState({ notice });
     } catch {
       console.warn("[CallService] transcription failed; audio kept for retry");
-      if (this.disposed) return;
+      if (isStale()) return;
       record.status = "failed";
       // After delete-all the folder is gone, and with it this failure.
       await this.store.save(record).catch(() => this.unsaved.set(record.id, record));
@@ -356,10 +373,17 @@ export class CallService {
 
   /** Deleting everything has to reach audio that has not become a transcript yet. */
   async clearAll(): Promise<void> {
-    this.discardRecording = true;
-    await this.finishRecording();
-    this.discardRecording = false;
-    await this.store.clear();
+    this.clearing = true;
+    try {
+      await this.finishRecording().catch(() => undefined);
+      await this.saving;
+      await this.store.clear();
+    } finally {
+      this.clearing = false;
+      this.generation += 1;
+      // Drain stopped for the delete. If the delete failed, what is left still needs it.
+      void this.drain();
+    }
     this.unsaved.clear();
     this.setState({ failures: [], notice: null, processing: null });
   }
