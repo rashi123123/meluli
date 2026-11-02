@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
-import { ClipboardBridgeService } from "../../src/main/services/clipboard-bridge.service";
+import { ClipboardBridgeService, ClipboardUnavailableError } from "../../src/main/services/clipboard-bridge.service";
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 function helper() {
@@ -52,7 +52,7 @@ describe("clipboard helper lifecycle", () => {
     await Promise.resolve();
     expect(settled).toBe(false);
     child.emit("close", 0);
-    expect(await observed).toEqual(new Error("Clipboard helper did not become ready."));
+    expect(await observed).toEqual(new ClipboardUnavailableError("Clipboard helper did not become ready."));
   });
   it("bounds startup-failure cleanup when the helper never exits", async () => {
     vi.useFakeTimers(); const child = helper();
@@ -71,7 +71,7 @@ describe("clipboard helper lifecycle", () => {
     expect(settled).toBe(false);
     expect(child.stdin.writableEnded).toBe(true);
     child.emit("close", 1);
-    expect(await observed).toEqual(new Error("Clipboard helper unavailable."));
+    expect(await observed).toEqual(new ClipboardUnavailableError("Clipboard helper unavailable."));
   });
   it("rejects a spawn failure without waiting for a readiness deadline", async () => {
     const child = helper();

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { open, stat, statfs, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { he } from "@shared/locale";
+import { isMockMode } from "../config/mock-mode";
 
 // A forged header understates its length to afconvert and would fool any check made before
 // decoding, so the limits watch what is actually written: 16 kHz mono PCM16 is 32,000 bytes a second.
@@ -69,7 +70,7 @@ export class AudioConverterService {
   async convertInputToWav(inputPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted();
     if (this.disposed) throw new Error(he.transcriptionCanceled);
-    if (process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1") {
+    if (isMockMode()) {
       await writeFile(outputPath, "mock wav", "utf8");
       return outputPath;
     }

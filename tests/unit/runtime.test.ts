@@ -213,4 +213,40 @@ describe("AppRuntime", () => {
     expect(listener).toHaveBeenCalledWith(runtime.getState());
     expect(runtime.getHeldRecording()).toBe("canceled");
   });
+
+  it("gives up a recording claim when its window dies during the wait", async () => {
+    const runtime = new AppRuntime();
+    const gone: Array<() => void> = [];
+    const window = { on: vi.fn(), isDestroyed: () => false, webContents: {
+      id: 7, isDestroyed: () => false, isLoadingMainFrame: () => false, once: vi.fn(), send: vi.fn(),
+      on: (event: string, listener: () => void) => { if (event === "render-process-gone") gone.push(listener); }
+    } };
+    runtime.setWindow("overlay", window as never);
+    let settle = () => {};
+    const claim = runtime.claimRecordingAfter(7, () => new Promise<void>(resolve => { settle = resolve; }));
+    gone[0]();
+    settle();
+    await expect(claim).rejects.toThrow();
+    expect(runtime.getState().status).toBe("error");
+    expect(() => runtime.claimRecording(8)).not.toThrow();
+  });
+
+  it("keeps a claim whose owner survives the wait", async () => {
+    const runtime = new AppRuntime();
+    await runtime.claimRecordingAfter(7, async () => undefined);
+    expect(() => runtime.assertRecordingOwner(7)).not.toThrow();
+  });
+
+  it("lets a press wait for a paste retry to settle", async () => {
+    const runtime = new AppRuntime();
+    await runtime.whenPasteRetrySettled();
+    runtime.setPasteRetrying(true);
+    let settled = false;
+    const waited = runtime.whenPasteRetrySettled().then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    runtime.setPasteRetrying(false);
+    await waited;
+    expect(runtime.isPasteRetrying()).toBe(false);
+  });
 });

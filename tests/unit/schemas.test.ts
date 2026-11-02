@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appSettingsSchema,
-  appStateSnapshotSchema,
+  clipboardTextSchema,
   recordingAudioPayloadSchema,
   transcriptRecordSchema,
   youtubeSubmitInputSchema
@@ -205,34 +205,11 @@ describe("transcriptRecordSchema", () => {
   });
 });
 
-describe("appStateSnapshotSchema", () => {
-  it("accepts the additive overlay session state without breaking the base snapshot", () => {
-    expect(
-      appStateSnapshotSchema.parse({
-        status: "processing",
-        timerStartedAt: null,
-        activeSourceType: "microphone",
-        overlaySession: {
-          id: "overlay-1",
-          phase: "processing",
-          transcriptId: null,
-          transcriptText: null,
-          targetAppName: "Safari",
-          lastErrorCode: null
-        }
-      }).overlaySession
-    ).toEqual({
-      id: "overlay-1",
-      phase: "processing",
-      transcriptId: null,
-      transcriptText: null,
-      targetAppName: "Safari",
-      lastErrorCode: null
-    });
-  });
-});
-
 describe("recordingAudioPayloadSchema", () => {
+  it("carries the incomplete flush flag through to Main", () => {
+    expect(recordingAudioPayloadSchema.parse({ pcm: [0], sampleRate: 16_000, durationMs: 1, flushIncomplete: true }).flushIncomplete).toBe(true);
+  });
+
   it("accepts Float32Array microphone payloads for faster IPC", () => {
     const pcm = Float32Array.from([0, 0.25, -0.25]);
 
@@ -243,5 +220,12 @@ describe("recordingAudioPayloadSchema", () => {
         durationMs: 100
       }).pcm
     ).toBeInstanceOf(Float32Array);
+  });
+});
+
+describe("unbounded text inputs", () => {
+  it("accepts text at the limit and refuses text past it", () => {
+    expect(clipboardTextSchema.safeParse("א".repeat(4_000_000)).success).toBe(true);
+    expect(clipboardTextSchema.safeParse("א".repeat(4_000_001)).success).toBe(false);
   });
 });

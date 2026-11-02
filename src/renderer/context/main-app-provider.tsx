@@ -1,7 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   appendOnboardingTrackingEvent,
-  buildOnboardingTrackingMetrics,
   deriveOnboardingDisplayState
 } from "@shared/onboarding";
 import { createDefaultOnboardingState, createDefaultOnboardingTrackingState } from "@shared/onboarding-defaults";
@@ -54,10 +53,6 @@ export function MainAppProvider({
   const onboarding = useMemo(
     () => (appState.settings ? deriveOnboardingDisplayState(appState.settings, appState.permissionStatus) : null),
     [appState.permissionStatus, appState.settings]
-  );
-  const onboardingMetrics = useMemo(
-    () => (appState.settings ? buildOnboardingTrackingMetrics(appState.settings.onboardingTracking) : null),
-    [appState.settings]
   );
 
   const mutateOnboarding = useEffectEvent(
@@ -304,16 +299,6 @@ export function MainAppProvider({
     return permission;
   };
 
-  const setRecordingShortcut = async (shortcut: string) => {
-    const nextSettings = await window.ivritMenuBar.settings.set("shortcut", shortcut);
-    setSettingsState(nextSettings);
-  };
-
-  const setOverlayShortcut = async (shortcut: string) => {
-    const nextSettings = await window.ivritMenuBar.settings.set("overlayShortcut", shortcut);
-    setSettingsState(nextSettings);
-  };
-
   const downloadModel = async () => {
     appState.setModelProgress({
       bytesDownloaded: 0,
@@ -536,26 +521,6 @@ export function MainAppProvider({
     setActiveView("workspace");
   };
 
-  const completeOnboardingOptionalAction = async (action: OnboardingOptionalAction) => {
-    await mutateOnboarding((current) => ({
-      onboarding: {
-        ...current.onboarding,
-        completedOptionalActions: current.onboarding.completedOptionalActions.includes(action)
-          ? current.onboarding.completedOptionalActions
-          : [...current.onboarding.completedOptionalActions, action],
-        dismissedOptionalActions: current.onboarding.dismissedOptionalActions.filter((item) => item !== action)
-      },
-      events: [
-        {
-          name: "optional_step_completed",
-          phase: "activated",
-          step: "celebration",
-          optionalAction: action
-        }
-      ]
-    }));
-  };
-
   const dismissOnboardingOptionalAction = async (action: OnboardingOptionalAction) => {
     await mutateOnboarding((current) => ({
       onboarding: {
@@ -611,66 +576,45 @@ export function MainAppProvider({
     onDurationLimit: () => setErrorMessage(he.recordingLimitReached)
   });
 
-  const value = useMemo<AppContextValue>(
-    () => ({
-      loading: appState.loading,
-      loadFailed: appState.loadFailed,
-      settings: appState.settings,
-      appState: appState.appState,
-      permissionStatus: appState.permissionStatus,
-      accessibilityPermissionStatus: appState.accessibilityPermissionStatus,
-      modelProgress: appState.modelProgress,
-      storagePaths: appState.storagePaths,
-      lastTranscript: transcripts.latestTranscript,
-      onboarding,
-      onboardingMetrics,
-      activeView,
-      setActiveView,
-      errorMessage,
-      setErrorMessage,
-      transcripts,
-      recording,
-      refreshSettings,
-      updateSetting,
-      setRecordingShortcut,
-      setOverlayShortcut,
-      requestMicrophonePermission,
-      requestAccessibilityPermission,
-      downloadModel,
-      removeModel,
-      importAudio: () => runAudioImport(() => window.ivritMenuBar.files.importAudio()),
-      importDroppedAudio: file => runAudioImport(() => window.ivritMenuBar.files.importDroppedAudio(file)),
-      submitYouTubeUrl,
-      cancelActiveYouTube,
-      cancelPendingYouTube,
-      revealStorage,
-      rerunOnboarding,
-      resetEverything,
-      trackOnboardingStepViewed,
-      completeOnboardingStep,
-      continueOnboardingLater,
-      goBackOnboardingStep,
-      resumeOnboardingFlow,
-      completeOnboardingOptionalAction,
-      dismissOnboardingOptionalAction
-    }),
-    [
-      activeView,
-      appState.accessibilityPermissionStatus,
-      appState.appState,
-      appState.loading,
-      appState.loadFailed,
-      appState.modelProgress,
-      appState.permissionStatus,
-      appState.settings,
-      appState.storagePaths,
-      errorMessage,
-      onboarding,
-      onboardingMetrics,
-      recording,
-      transcripts
-    ]
-  );
+  // useRecording returns a new object on every render, so this value changes with each one.
+  const value: AppContextValue = {
+    loading: appState.loading,
+    loadFailed: appState.loadFailed,
+    settings: appState.settings,
+    appState: appState.appState,
+    permissionStatus: appState.permissionStatus,
+    accessibilityPermissionStatus: appState.accessibilityPermissionStatus,
+    modelProgress: appState.modelProgress,
+    storagePaths: appState.storagePaths,
+    lastTranscript: transcripts.latestTranscript,
+    onboarding,
+    activeView,
+    setActiveView,
+    errorMessage,
+    setErrorMessage,
+    transcripts,
+    recording,
+    refreshSettings,
+    updateSetting,
+    requestMicrophonePermission,
+    requestAccessibilityPermission,
+    downloadModel,
+    removeModel,
+    importAudio: () => runAudioImport(() => window.ivritMenuBar.files.importAudio()),
+    importDroppedAudio: file => runAudioImport(() => window.ivritMenuBar.files.importDroppedAudio(file)),
+    submitYouTubeUrl,
+    cancelActiveYouTube,
+    cancelPendingYouTube,
+    revealStorage,
+    rerunOnboarding,
+    resetEverything,
+    trackOnboardingStepViewed,
+    completeOnboardingStep,
+    continueOnboardingLater,
+    goBackOnboardingStep,
+    resumeOnboardingFlow,
+    dismissOnboardingOptionalAction
+  };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

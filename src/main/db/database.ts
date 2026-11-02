@@ -9,6 +9,7 @@ import type { TranscriptContent } from "../services/transcript-edit.service";
 import { runMigrations, DATABASE_SCHEMA_VERSION } from "./migrations";
 import { SettingsRepository } from "./settings.repository";
 import { TranscriptRepository } from "./transcript.repository";
+import { isMockMode } from "../config/mock-mode";
 
 const require = createRequire(import.meta.url);
 
@@ -130,7 +131,7 @@ export function createAppDatabase(userDataPath: string): AppDatabase {
   mkdirSync(paths.transcriptsDir, { recursive: true, mode: 0o700 });
   mkdirSync(paths.modelsDir, { recursive: true, mode: 0o700 });
 
-  if (process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1") {
+  if (isMockMode()) {
     markPerformanceAudit("database:init:mock");
     return {
       paths,

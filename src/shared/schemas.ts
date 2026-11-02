@@ -17,10 +17,7 @@ export const transcriptSourceSchema = z.enum(["microphone", "imported_file", "yo
 export const transcriptionBackendSchema = z.enum(["ct2", "whispercpp", "nemo"]);
 export const speedPreferenceSchema = z.enum(["accurate", "balanced"]);
 export const themeSchema = z.enum(THEME_IDS);
-export const appRuntimeStatusSchema = z.enum(["idle", "recording", "paused", "youtube_downloading", "processing", "error"]);
 export const modelDownloadStateSchema = z.enum(["missing", "downloading", "ready", "error"]);
-export const overlaySessionPhaseSchema = z.enum(["recording", "processing", "paste_failed", "success"]);
-export const overlaySessionErrorCodeSchema = z.enum(["permission", "target_unavailable", "paste_failed"]);
 export const onboardingPhaseSchema = z.enum(["not_started", "needs_mic", "needs_hold_key", "needs_model", "needs_first_transcript", "activated"]);
 export const onboardingSurfaceSchema = z.enum(["flow", "workspace"]);
 export const onboardingStepKeySchema = z.enum(["ready", "microphone", "hold_key", "local_install", "first_transcript", "celebration"]);
@@ -36,7 +33,6 @@ export const onboardingTrackingEventNameSchema = z.enum([
   "optional_step_dismissed",
   "secondary_source_selected"
 ]);
-export const workerVadModeSchema = z.enum(["ct2_filter", "whispercpp_native", "none"]);
 
 const LOCAL_HOST = /(^localhost$|\.(localhost|local|internal|intranet|lan|home|test|home\.arpa)$)/u;
 
@@ -86,17 +82,12 @@ export function isSupportedYouTubeUrl(value: string): boolean {
 
 export const overlayPositionSchema = z.enum(["last", "top", "bottom", "right", "left", "top-right", "top-left", "bottom-right", "bottom-left"]);
 
-export const clipboardTextSchema = z.string().min(1);
+export const clipboardTextSchema = z.string().min(1).max(4_000_000);
 
 export const droppedAudioPathSchema = z.string().refine(
   path => path.startsWith("/") && AUDIO_IMPORT_EXTENSIONS.some(extension => path.toLowerCase().endsWith(`.${extension}`)),
   he.importAudioFailed
 );
-
-export const youtubeJobInfoSchema = z.object({
-  url: z.string().url(),
-  title: z.string().nullable().optional()
-});
 
 export const youtubeSubmitInputSchema = z.object({
   url: z
@@ -192,11 +183,6 @@ export const transcriptRecordSchema = z.object({
   editedAt: z.number().int().nullable().optional()
 });
 
-export const transcriptListResultSchema = z.object({
-  items: z.array(transcriptRecordSchema),
-  nextCursor: z.number().int().nullable()
-});
-
 export const modelStateSchema = z.object({
   id: z.string().prefault(DEFAULT_MODEL_ID),
   url: z.string().url().prefault(DEFAULT_MODEL_URL),
@@ -206,18 +192,6 @@ export const modelStateSchema = z.object({
   bytesDownloaded: z.number().int().nonnegative().prefault(0),
   totalBytes: z.number().int().positive().nullable().prefault(null),
   lastError: z.string().nullable().optional()
-});
-
-export const overlaySessionSchema = z.object({
-  manualCopyOnly: z.boolean().optional(),
-  insertionOutcome: z.enum(["confirmed", "not_dispatched", "unknown"]).optional(),
-  deliveredInApp: z.boolean().optional(),
-  id: z.string(),
-  phase: overlaySessionPhaseSchema,
-  transcriptId: z.string().nullable(),
-  transcriptText: z.string().nullable(),
-  targetAppName: z.string().nullable(),
-  lastErrorCode: overlaySessionErrorCodeSchema.nullable()
 });
 
 export const onboardingStateSchema = z.object({
@@ -267,44 +241,7 @@ const appSettingsInputSchema = z.object({
   spokenCommands: z.boolean().prefault(true),
   autoUpdate: z.boolean().prefault(true),
   callDetection: z.boolean().prefault(false),
-  processingTelemetry: processingTelemetrySchema.prefault({
-    microphone: {
-      balanced: {
-        sampleCount: 0,
-        averageSetupMs: 7_000,
-        averageMsPerAudioSecond: 200
-      },
-      accurate: {
-        sampleCount: 0,
-        averageSetupMs: 7_800,
-        averageMsPerAudioSecond: 224
-      }
-    },
-    imported_file: {
-      balanced: {
-        sampleCount: 0,
-        averageSetupMs: 6_500,
-        averageMsPerAudioSecond: 180
-      },
-      accurate: {
-        sampleCount: 0,
-        averageSetupMs: 7_200,
-        averageMsPerAudioSecond: 202
-      }
-    },
-    youtube: {
-      balanced: {
-        sampleCount: 0,
-        averageSetupMs: 6_500,
-        averageMsPerAudioSecond: 180
-      },
-      accurate: {
-        sampleCount: 0,
-        averageSetupMs: 7_200,
-        averageMsPerAudioSecond: 202
-      }
-    }
-  }),
+  processingTelemetry: processingTelemetrySchema.prefault({}),
   modelState: modelStateSchema.prefault({
     id: DEFAULT_MODEL_ID,
     url: DEFAULT_MODEL_URL,
@@ -334,19 +271,6 @@ export const appSettingsSchema = appSettingsInputSchema.transform((input) => {
   };
 });
 
-export const appStateSnapshotSchema = z.object({
-  status: appRuntimeStatusSchema,
-  timerStartedAt: z.number().int().nullable(),
-  processingStartedAt: z.number().int().nullable().optional(),
-  processingEstimateMs: z.number().int().nonnegative().nullable().optional(),
-  processingProgressRatio: z.number().min(0).max(1).nullable().optional(),
-  activeSourceType: transcriptSourceSchema.nullable().optional(),
-  currentYoutubeJob: youtubeJobInfoSchema.nullable().optional(),
-  pendingYoutubeJob: youtubeJobInfoSchema.nullable().optional(),
-  lastError: z.string().nullable().optional(),
-  overlaySession: overlaySessionSchema.nullable().optional()
-});
-
 const isFloat32ArrayLike = (value: unknown): value is Float32Array =>
   value instanceof Float32Array || Object.prototype.toString.call(value) === "[object Float32Array]";
 const isArrayBufferLike = (value: unknown): value is ArrayBuffer =>
@@ -361,7 +285,8 @@ export const recordingAudioPayloadSchema = z.object({
   ),
   sampleRate: z.number().positive(),
   durationMs: z.number().nonnegative(),
-  capturedAt: z.object({ micReady: z.number(), stopped: z.number() }).optional()
+  capturedAt: z.object({ micReady: z.number(), stopped: z.number() }).optional(),
+  flushIncomplete: z.literal(true).optional()
 });
 
 export const recordingStartInputSchema = z.object({
@@ -441,12 +366,6 @@ export const modelDownloadProgressSchema = z.object({
 
 export const transcriptionErrorPayloadSchema = z.object({
   message: z.string()
-});
-
-export const appErrorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-  details: z.record(z.string(), z.unknown()).optional()
 });
 
 export const overlaySizeSchema = z.enum(["compact", "expanded"]);

@@ -8,7 +8,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { RecordButton } from "@/components/RecordButton";
 import { Button } from "@/components/ui/button";
 import { BarVisualizer, useDocumentVisible, type AgentState } from "@/components/ui/bar-visualizer";
-import { useAppContext } from "@/context/app-context";
+import { useOverlayContext } from "@/context/overlay-context";
 import { formatDurationMs } from "@/lib/format";
 import { CANCEL_UNDO_WINDOW_MS, isNearRecordingLimit } from "@shared/constants";
 import { he } from "@shared/locale";
@@ -28,6 +28,8 @@ function getOverlaySessionErrorMessage(code: OverlaySessionErrorCode | null): st
       return he.textInsertionSecureField;
     case "clipboard_changed":
       return he.textInsertionClipboardChanged;
+    case "clipboard_unavailable":
+      return he.textInsertionClipboardUnavailable;
     case "paste_failed":
     default:
       return he.textInsertionFailed;
@@ -46,7 +48,7 @@ export function FloatingRecorderHud() {
     requestAccessibilityPermission,
     errorMessage,
     setErrorMessage
-  } = useAppContext();
+  } = useOverlayContext();
   const visible = useDocumentVisible();
   const [now, setNow] = useState(Date.now());
   const [isRetrying, setIsRetrying] = useState(false);

@@ -36,14 +36,12 @@ export interface IvritMenuBarApi {
   };
   transcription: {
     cancel(): Promise<boolean>;
-    onProgress(listener: (progress: { stage: string }) => void): EventSubscription;
     onComplete(listener: (payload: { transcript: TranscriptRecord }) => void): EventSubscription;
     onFailed(listener: (payload: { message: string }) => void): EventSubscription;
   };
   history: {
     list(limit?: number, cursor?: number | null): Promise<TranscriptListResult>;
     search(query: string, limit?: number, cursor?: number | null): Promise<TranscriptListResult>;
-    get(id: string): Promise<TranscriptRecord | null>;
     update(input: TranscriptUpdateInput): Promise<TranscriptRecord | null>;
     restoreOriginal(id: string): Promise<TranscriptRecord | null>;
     delete(id: string): Promise<boolean>;
@@ -55,7 +53,6 @@ export interface IvritMenuBarApi {
     onChanged(listener: (settings: AppSettings) => void): EventSubscription;
   };
   model: {
-    status(): Promise<ModelState>;
     download(): Promise<ModelState>;
     remove(): Promise<ModelState>;
     onProgress(listener: (payload: ModelDownloadProgress) => void): EventSubscription;
@@ -85,10 +82,6 @@ export interface IvritMenuBarApi {
   };
   clipboard: {
     writeText(text: string): Promise<void>;
-  };
-  shortcut: {
-    get(): Promise<string>;
-    set(accelerator: string): Promise<string>;
   };
   app: {
     state(): Promise<AppStateSnapshot>;

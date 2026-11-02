@@ -1,8 +1,6 @@
 import { pipelineTrace } from "../pipeline-trace";
 import { EventEmitter } from "node:events";
-import { existsSync, statSync } from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { join } from "node:path";
 import type {
   TranscriptRecord,
   TranscriptSegment,
@@ -11,15 +9,17 @@ import type {
   WorkerReadyV2,
   WorkerVadCapability
 } from "@shared/types";
-import { DEFAULT_TRANSCRIPTION_BACKEND, DEFAULT_MODEL_ID, DEFAULT_MODEL_REVISION, DEFAULT_MODEL_WEIGHT_FILE } from "@shared/constants";
+import { DEFAULT_TRANSCRIPTION_BACKEND, DEFAULT_MODEL_ID, DEFAULT_MODEL_REVISION } from "@shared/constants";
 import { formatCallText } from "./calls/call-transcript";
 import { he } from "@shared/locale";
 import { resolveWorkerCommand, type BinaryPaths } from "../config/paths";
 import { SettingsService } from "./settings.service";
+import { normalizeTranscriptionResult } from "./transcription-normalize";
 import { applyTerms, termMatcherForSettings } from "./term-replacement";
 import { applySpokenCommands, resolveSpokenBreaks } from "./spoken-commands";
 import { enhanceTranscript } from "./transcript-enhancer.service";
 import { ProcessLines } from "./process-lines";
+import { isMockMode } from "../config/mock-mode";
 
 export interface NormalizedTranscriptionResult {
   text: string;
@@ -44,7 +44,7 @@ export interface TranscriptionProgressPayload {
   setupElapsedMs?: number | null;
 }
 
-type WorkerMessage =
+export type WorkerMessage =
   | {
       type: "ready";
       protocolVersion?: number;
@@ -68,7 +68,6 @@ type WorkerMessage =
       processedAudioSec?: number | null;
       progressRatio?: number | null;
     }
-  | { type: "partial"; jobId: string; text?: string | null }
   | { type: "result"; jobId: string; result: { text?: string | null; language?: string | null; segments?: unknown[] | null }; timing?: Record<string, number> }
   | { type: "error"; jobId?: string; code?: string | null; message?: string | null }
   | { type: "canceled"; jobId: string };
@@ -77,7 +76,7 @@ export interface TranscriptionDependencies {
   /** Isolated research configuration; absent in production. */
   workerEnv?: Record<string, string>;
   modelId?: string;
-  getModelPath?: () => Promise<string>;
+  getModelPath: () => Promise<string>;
   binaryPaths: BinaryPaths;
 }
 
@@ -102,7 +101,6 @@ interface PendingWarmupJob {
   timeout: NodeJS.Timeout;
 }
 
-const validatedModelPathCache = new Set<string>();
 
 export class TranscriptionCanceledError extends Error {
   constructor() {
@@ -119,82 +117,6 @@ export function isTranscriptionCanceledError(error: unknown): error is Transcrip
 }
 
 
-export function normalizeTranscriptSegments(rawSegments: unknown[] | null | undefined): TranscriptSegment[] | null {
-  if (!Array.isArray(rawSegments)) {
-    return null;
-  }
-
-  const normalized = rawSegments
-    .map((segment) => {
-      if (!segment || typeof segment !== "object") {
-        return null;
-      }
-
-      const candidate = segment as Record<string, unknown>;
-      if (
-        typeof candidate.start !== "number" || !Number.isFinite(candidate.start) ||
-        typeof candidate.end !== "number" || !Number.isFinite(candidate.end) ||
-        typeof candidate.text !== "string"
-      ) {
-        return null;
-      }
-
-      const text = candidate.text.trim();
-      if (!text) {
-        return null;
-      }
-
-      return {
-        start: Math.max(0, candidate.start),
-        end: Math.max(Math.max(0, candidate.start), candidate.end),
-        text
-      } satisfies TranscriptSegment;
-    })
-    .filter((segment): segment is TranscriptSegment => segment !== null);
-
-  return normalized.length > 0 ? normalized : null;
-}
-
-function validateModelPath(modelPath: string): void {
-  const path = modelPath.trim();
-  if (validatedModelPathCache.has(path)) return;
-  try {
-    if (!path || !statSync(path).isDirectory() || !statSync(join(path, DEFAULT_MODEL_WEIGHT_FILE)).isFile()) {
-      throw new Error(he.localModelMissingError);
-    }
-  } catch {
-    throw new Error(he.localModelMissingError);
-  }
-  validatedModelPathCache.add(path);
-}
-
-export function normalizeTranscriptText(text: string | null | undefined, segments: TranscriptSegment[] | null): string {
-  const direct = (text ?? "").replace(/\r\n/g, "\n").trim();
-  if (direct) {
-    return direct;
-  }
-
-  if (!segments || segments.length === 0) {
-    return "";
-  }
-
-  return segments
-    .map((segment) => segment.text.trim())
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function normalizeTranscriptionResult(result: WorkerMessage & { type: "result" }): Omit<NormalizedTranscriptionResult, "backend" | "modelId"> {
-  const segments = normalizeTranscriptSegments(result.result.segments ?? null);
-  return {
-    text: normalizeTranscriptText(result.result.text, segments),
-    language: result.result.language?.trim() || "he",
-    segments
-  };
-}
-
 export function isWorkerReadyV2(
   message: WorkerMessage & { type: "ready" }
 ): message is WorkerReadyV2 {
@@ -202,7 +124,7 @@ export function isWorkerReadyV2(
     typeof message.protocolVersion === "number" &&
     Number.isFinite(message.protocolVersion) &&
     typeof message.workerVersion === "string" &&
-    (message.backend === "ct2" || message.backend === "whispercpp" || message.backend === "nemo") &&
+    message.backend === "whispercpp" &&
     typeof message.capabilities?.vad?.supported === "boolean" &&
     (message.capabilities.vad.mode === "ct2_filter" || message.capabilities.vad.mode === "whispercpp_native" || message.capabilities.vad.mode === "none") &&
     typeof message.capabilities.vad.requiresModelPath === "boolean"
@@ -365,7 +287,7 @@ export class TranscriptionService extends EventEmitter {
     input: TranscriptionStartInput,
     options?: { onProgress?: (payload: TranscriptionProgressPayload) => void }
   ): Promise<NormalizedTranscriptionResult> {
-    if (process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1") {
+    if (isMockMode()) {
       const text = input.sourceType === "youtube"
         ? `${he.mockTranscriptPrefix} ${input.sourceTitle ?? he.mockTranscriptVideoFallback}`
         : input.sourceType === "imported_file"
@@ -396,13 +318,11 @@ export class TranscriptionService extends EventEmitter {
       modelId
     });
 
-    const model = { ...settings.modelState, filePath: this.dependencies.getModelPath ? await this.dependencies.getModelPath() : settings.modelState.filePath };
+    const model = { ...settings.modelState, filePath: await this.dependencies.getModelPath() };
     if (!model.filePath) {
       console.error("[TranscriptionService] modelState.filePath is missing");
       throw new Error(he.localModelMissingError);
     }
-
-    if (!this.dependencies.getModelPath) validateModelPath(model.filePath);
 
     if (this.activeJob) {
       throw new Error(he.transcriptionAlreadyRunning);
@@ -517,17 +437,16 @@ export class TranscriptionService extends EventEmitter {
   }
 
   private async runPrewarm(): Promise<void> {
-    if (process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1") {
+    if (isMockMode()) {
       return;
     }
 
     const settings = this.settingsService.getSettings();
-    const modelPath = this.dependencies.getModelPath ? await this.dependencies.getModelPath() : settings.modelState.filePath;
+    const modelPath = await this.dependencies.getModelPath();
     if (!modelPath) {
       return;
     }
 
-    if (!this.dependencies.getModelPath) validateModelPath(modelPath);
     await this.ensureWorker();
 
     if (this.pendingWarmupJob) {
@@ -928,11 +847,6 @@ export class TranscriptionService extends EventEmitter {
       };
       this.emit("progress", payload);
       job.onProgress?.(payload);
-      return;
-    }
-
-    if (message.type === "partial") {
-      // Partial text updates are informational and should not settle the job.
       return;
     }
 

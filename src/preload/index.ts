@@ -77,14 +77,12 @@ function createMainApi(shared: ReturnType<typeof createSharedApi>): IvritMenuBar
       list: (limit = 20, cursor = null) => ipcRenderer.invoke(IPC_CHANNELS.historyList, { limit, cursor }),
       search: (query, limit = 20, cursor = null) =>
         ipcRenderer.invoke(IPC_CHANNELS.historySearch, { query, limit, cursor }),
-      get: (id) => ipcRenderer.invoke(IPC_CHANNELS.historyGet, id),
       update: (input) => ipcRenderer.invoke(IPC_CHANNELS.historyUpdate, input),
       restoreOriginal: (id) => ipcRenderer.invoke(IPC_CHANNELS.historyRestoreOriginal, { id }),
       delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.historyDelete, { id }),
       deleteAll: () => ipcRenderer.invoke(IPC_CHANNELS.historyDeleteAll)
     },
     model: {
-      status: () => ipcRenderer.invoke(IPC_CHANNELS.modelStatus),
       download: () => ipcRenderer.invoke(IPC_CHANNELS.modelDownload),
       remove: () => ipcRenderer.invoke(IPC_CHANNELS.modelRemove),
       onProgress: (listener) => subscribe(IPC_CHANNELS.modelDownloadProgress, listener)
@@ -103,17 +101,12 @@ function createMainApi(shared: ReturnType<typeof createSharedApi>): IvritMenuBar
       cancelActive: () => ipcRenderer.invoke(IPC_CHANNELS.youtubeCancelActive),
       cancelPending: () => ipcRenderer.invoke(IPC_CHANNELS.youtubeCancelPending)
     },
-    shortcut: {
-      get: () => ipcRenderer.invoke(IPC_CHANNELS.shortcutGet),
-      set: (accelerator) => ipcRenderer.invoke(IPC_CHANNELS.shortcutSet, accelerator)
-    },
     settings: {
       ...shared.settings,
       set: (key, value) => ipcRenderer.invoke(IPC_CHANNELS.settingsSet, { key, value })
     },
     transcription: {
       ...shared.transcription,
-      onProgress: (listener) => subscribe(IPC_CHANNELS.transcriptionProgress, listener),
       onComplete: (listener) => subscribe(IPC_CHANNELS.transcriptionComplete, listener)
     },
     permissions: {

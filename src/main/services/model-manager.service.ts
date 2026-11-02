@@ -11,6 +11,7 @@ import { MODEL_MANIFEST } from "../config/model-manifest";
 import { SettingsService } from "./settings.service";
 import { ModelIntegrity } from "./model-integrity";
 import { downloadVerifiedModel } from "./verified-download";
+import { isMockMode } from "../config/mock-mode";
 
 export class ModelManager extends EventEmitter {
   private downloadPromise: Promise<ModelState> | null = null;
@@ -33,7 +34,7 @@ export class ModelManager extends EventEmitter {
   }
 
   private get currentModelPath(): string { return join(this.modelsDir, DEFAULT_MODEL_FILENAME); }
-  private get useMockMode(): boolean { return process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1"; }
+  private get useMockMode(): boolean { return isMockMode(); }
   private emitProgress(bytesDownloaded: number, totalBytes: number): void {
     const now = Date.now();
     if (bytesDownloaded !== totalBytes && now - this.lastProgressAt < 100) return;

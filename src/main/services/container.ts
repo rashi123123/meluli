@@ -26,6 +26,7 @@ import { InsertionJournal } from "./insertion-journal";
 import { NativeInsertionClient } from "./native-insertion-client";
 import { isLinkImportInstalled, YouTubeImportService } from "./youtube-import.service";
 import { YouTubeQueueService } from "./youtube-queue.service";
+import { isMockMode } from "../config/mock-mode";
 
 export interface AppServiceContainer {
   dispose(): Promise<void>;
@@ -36,18 +37,15 @@ export interface AppServiceContainer {
   updates: UpdateService;
   calls: CallService;
   getModelManager: () => ModelManager;
-  getAudioConverter: () => AudioConverterService;
   getTranscriptionService: () => TranscriptionService;
   getTranscriptionWorkflow: () => TranscriptionWorkflowService;
   getTextInsertionService: () => TextInsertionService;
-  getYouTubeImportService: () => YouTubeImportService;
   getYouTubeQueueService: () => YouTubeQueueService;
 }
 
 export function createAppServiceContainer(dependencies: {
   app: Pick<App, "getPath" | "isPackaged" | "setLoginItemSettings" | "getLoginItemSettings">;
   showMainWindow: () => void;
-  onTranscriptionSettled?: () => void;
 }): AppServiceContainer {
   const database = createAppDatabase(dependencies.app.getPath("userData"));
   const runtime = new AppRuntime();
@@ -65,7 +63,7 @@ export function createAppServiceContainer(dependencies: {
   }
 
   runtime.updateState({ linkImportAvailable: isLinkImportInstalled(binaryPaths) ||
-    process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1" });
+    isMockMode() });
 
   let modelManager: ModelManager | null = null;
   let audioConverter: AudioConverterService | null = null;
@@ -77,14 +75,13 @@ export function createAppServiceContainer(dependencies: {
   let youtubeQueueService: YouTubeQueueService | null = null;
   const holdKey = new HoldKeyService(
     join(binaryPaths.resourcesBasePath, "bin", "meluli-holdkey"),
-    () => process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1" ? "off" : settingsService.getSettings().holdKey,
+    () => isMockMode() ? "off" : settingsService.getSettings().holdKey,
     (status) => { runtime.updateState({ holdKey: { status } }); }
   );
   const updates = new UpdateService(
     autoUpdater,
     UPDATE_FEED_URL,
-    () => dependencies.app.isPackaged && process.platform === "darwin" && process.env.IVRIT_E2E_MOCK !== "1" &&
-      process.env.IVRIT_USE_MOCK_SERVICES !== "1" && settingsService.getSettings().autoUpdate,
+    () => dependencies.app.isPackaged && process.platform === "darwin" && !isMockMode() && settingsService.getSettings().autoUpdate,
     (status, version) => { runtime.updateState({ update: { status, version } }); }
   );
   const callTitles = { zoom: he.callTitleZoom, teams: he.callTitleTeams, browser: he.callTitleBrowser };
@@ -92,8 +89,7 @@ export function createAppServiceContainer(dependencies: {
     audio: new CallAudioClient(join(binaryPaths.resourcesBasePath, "bin", "meluli-callaudio")),
     runtime,
     root: join(database.paths.userDataPath, "calls"),
-    isAvailable: () => process.platform === "darwin" && process.env.IVRIT_E2E_MOCK !== "1" &&
-      process.env.IVRIT_USE_MOCK_SERVICES !== "1" && supportsCallCapture(process.getSystemVersion?.() ?? ""),
+    isAvailable: () => process.platform === "darwin" && !isMockMode() && supportsCallCapture(process.getSystemVersion?.() ?? ""),
     isEnabled: () => settingsService.getSettings().callDetection,
     requestMicrophone: () => systemPreferences.askForMediaAccess("microphone"),
     transcribePiece: async (wavPath, durationMs) =>
@@ -102,6 +98,7 @@ export function createAppServiceContainer(dependencies: {
     saveTranscript: (record, app, segments) => {
       const service = getTranscriptionService();
       return getTranscriptionWorkflow().saveCallTranscript(
+        record.id,
         { wavPath: "", sourceType: "call", sourceTitle: callTitles[app.kind], durationMs: (record.endedAt ?? record.startedAt) - record.startedAt },
         { text: segments.map((segment) => segment.text).join(" "), language: "he", segments, backend: service.backend, modelId: service.modelId }
       );
@@ -163,7 +160,6 @@ export function createAppServiceContainer(dependencies: {
         researchArchive: researchProfile,
         insertionJournal: researchProfile ? new InsertionJournal(join(database.paths.userDataPath, "insertion-journal")) : undefined,
         onSettled: () => {
-          dependencies.onTranscriptionSettled?.();
           youtubeQueueService?.schedulePendingStart();
         }
       });
@@ -218,11 +214,9 @@ export function createAppServiceContainer(dependencies: {
     updates,
     calls,
     getModelManager,
-    getAudioConverter,
     getTranscriptionService,
     getTranscriptionWorkflow,
     getTextInsertionService,
-    getYouTubeImportService,
     getYouTubeQueueService
   };
 }

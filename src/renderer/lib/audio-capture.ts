@@ -127,6 +127,7 @@ export class AudioCaptureController {
     if (!context) throw new Error(he.recordingNotStarted);
     this.stopping = true;
     const micReady = this.startedAt;
+    let flushIncomplete = false;
     try {
       // Disconnect input first, then wait for the worklet's final buffered samples.
       this.sourceNode?.disconnect();
@@ -137,14 +138,17 @@ export class AudioCaptureController {
           const timeout = setTimeout(() => {
             this.onFlushed = null;
             if (this.strictFlush) reject(new Error("Experimental audio flush was not acknowledged; retained source may be incomplete."));
-            else resolve();
+            else { flushIncomplete = true; resolve(); }
           }, 1_000);
           this.onFlushed = () => { clearTimeout(timeout); this.onFlushed = null; resolve(); };
           this.workletNode!.port.postMessage({ type: "stop" });
         });
       }
       const pcm = mergeFloatChunks(this.chunks, this.sampleCount);
-      return { pcm, sampleRate: context.sampleRate, durationMs: pcm.length / context.sampleRate * 1000, capturedAt: { micReady, stopped } };
+      return {
+        pcm, sampleRate: context.sampleRate, durationMs: pcm.length / context.sampleRate * 1000, capturedAt: { micReady, stopped },
+        ...(flushIncomplete ? { flushIncomplete } : {})
+      };
     } finally {
       await this.destroy();
     }

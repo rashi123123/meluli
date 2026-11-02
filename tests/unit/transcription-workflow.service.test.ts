@@ -244,6 +244,64 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
     expect(runtime.getState().overlaySession).toMatchObject({ phase: "paste_failed", lastErrorCode: code, manualCopyOnly: true, transcriptText: transcript.text });
   });
 
+  it("keeps Retry after a clipboard it could not preserve, which can clear", async () => {
+    const insert = vi.fn(async () => { throw new TextInsertionError("clipboard_unavailable", "inspect"); });
+    const insertion = { ...textInsertionService, getLastInsertionOutcome: () => "not_dispatched", insertIntoCapturedTarget: insert };
+    const workflow = new TranscriptionWorkflowService({ database: database as never, runtime, settingsService: settingsService as never,
+      audioConverter: {} as never, transcriptionService: transcriptionService as never, textInsertionService: insertion as never, showMainWindow: vi.fn() });
+    await workflow.transcribeAndStore({ wavPath: "/tmp/public-fixture.wav", sourceType: "microphone" });
+    expect(insert).toHaveBeenCalledOnce();
+    expect(runtime.getState().overlaySession).toMatchObject({ phase: "paste_failed", lastErrorCode: "clipboard_unavailable", transcriptText: transcript.text });
+    expect(runtime.getState().overlaySession?.manualCopyOnly).toBeUndefined();
+  });
+
+  describe("a manual retry still running when the session moves on", () => {
+    async function retrying() {
+      let finish!: (value: boolean) => void, fail!: (error: Error) => void;
+      const insert = vi.fn().mockRejectedValueOnce(new TextInsertionError("target_changed", "moved"))
+        .mockReturnValueOnce(new Promise<boolean>((resolve, reject) => { finish = resolve; fail = reject; }));
+      const insertion = { ...textInsertionService, getLastInsertionOutcome: () => "not_dispatched", hasUnknownNativeOutcome: () => false, insertIntoCapturedTarget: insert };
+      const workflow = new TranscriptionWorkflowService({ database: database as never, runtime, settingsService: settingsService as never,
+        audioConverter: {} as never, transcriptionService: transcriptionService as never, textInsertionService: insertion as never, showMainWindow: vi.fn() });
+      await workflow.transcribeAndStore({ wavPath: "/tmp/public-fixture.wav", sourceType: "microphone" });
+      const retry = workflow.retryPaste(transcript.text);
+      runtime.clearOverlaySession();
+      const next = runtime.startOverlaySession("Next");
+      return { retry, next, insert, workflow, finish, fail };
+    }
+
+    it("leaves the new session alone when the retry lands", async () => {
+      const { retry, next, finish } = await retrying();
+      finish(true);
+      await expect(retry).resolves.toBe(true);
+      expect(runtime.getState().overlaySession).toEqual(next);
+    });
+
+    it("leaves the new session alone when the retry fails", async () => {
+      const { retry, next, fail } = await retrying();
+      fail(new TextInsertionError("secure_field", "refused"));
+      await expect(retry).rejects.toThrow("refused");
+      expect(runtime.getState().overlaySession).toEqual(next);
+    });
+
+    it("reports the running retry to the shortcuts until it settles", async () => {
+      const { retry, finish } = await retrying();
+      expect(runtime.isPasteRetrying()).toBe(true);
+      finish(true);
+      await retry;
+      expect(runtime.isPasteRetrying()).toBe(false);
+    });
+
+    it("refuses a second retry and keeps the first one marked as running", async () => {
+      const { retry, insert, workflow, finish } = await retrying();
+      await expect(workflow.retryPaste(transcript.text)).rejects.toMatchObject({ code: "paste_failed" });
+      expect(insert).toHaveBeenCalledTimes(2);
+      expect(runtime.isPasteRetrying()).toBe(true);
+      finish(true);
+      await retry;
+    });
+  });
+
   it("asks for the explicit path on a user retry, the only one allowed to bring the target forward", async () => {
     const insert = vi.fn().mockRejectedValueOnce(new TextInsertionError("target_changed", "moved")).mockResolvedValue(true);
     const insertion = { ...textInsertionService, getLastInsertionOutcome: () => "not_dispatched", insertIntoCapturedTarget: insert };
@@ -514,4 +572,23 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
     expect(runtime.getState()).toMatchObject({ status: "recording", activeSourceType: "microphone", timerStartedAt: 5 });
   });
 
+  it("saves a call once however many times its cleanup has to be retried", async () => {
+    const rows = new Map<string, unknown>();
+    const repository = {
+      getById: vi.fn((id: string) => rows.get(id) ?? null),
+      create: vi.fn((row: { id: string }) => {
+        if (rows.has(row.id)) throw new Error("UNIQUE constraint failed");
+        rows.set(row.id, row);
+      })
+    };
+    const workflow = new TranscriptionWorkflowService({ database: { ...database, transcriptRepository: repository } as never, runtime, settingsService: settingsService as never,
+      audioConverter: {} as never, transcriptionService: transcriptionService as never, textInsertionService: textInsertionService as never, showMainWindow: vi.fn() });
+    const input = { wavPath: "", sourceType: "call" as const };
+    const result = { text: transcript.text, language: "he", backend: "whispercpp", modelId: "fixture" };
+    await workflow.saveCallTranscript("call-1", input, result as never);
+    await workflow.saveCallTranscript("call-1", input, result as never);
+    expect(repository.create).toHaveBeenCalledOnce();
+    expect([...rows.keys()]).toEqual(["call-1"]);
+    expect(transcriptionService.buildTranscriptRecord).toHaveBeenCalledOnce();
+  });
 });

@@ -60,6 +60,9 @@ export function useRecording({
   const stopAfterStartRef = useRef(false);
   const deliveryRef = useRef<Promise<void> | null>(null);
   const cancelRequestedRef = useRef(false);
+  /** True until the microphone has handed over the audio: nothing has reached the engine yet. */
+  const flushingRef = useRef(false);
+  const stopTaskRef = useRef<Promise<void> | null>(null);
   const heldPayloadRef = useRef<RecordingAudioPayload | null>(null);
   const heldTimerRef = useRef<number | null>(null);
   /** Weak, so remembering when audio expires never keeps the audio itself in memory. */
@@ -284,10 +287,21 @@ export function useRecording({
     }
 
     stopInFlightRef.current = true;
+    cancelRequestedRef.current = false;
+    flushingRef.current = true;
+    let settleStop = () => {};
+    stopTaskRef.current = new Promise<void>((resolve) => { settleStop = resolve; });
     try {
-      const payload = await finishRecording();
+      const payload = await finishRecording().finally(() => { flushingRef.current = false; });
       setMediaStream(null);
       releaseOwnership();
+      if (cancelRequestedRef.current) {
+        const keepForUndo = windowMode === "overlay" && !experimentRef.current;
+        if (keepForUndo && payload && payload.durationMs >= CANCEL_UNDO_MIN_MS) holdRecording(payload, "canceled");
+        await experimentRef.current?.pending.catch(() => undefined);
+        await window.ivritMenuBar.recording.stop();
+        return;
+      }
       if (!payload || payload.durationMs < MIN_DICTATION_MS) {
         // A brushed shortcut never reaches the engine, which can only guess at so little audio.
         await window.ivritMenuBar.recording.stop();
@@ -308,15 +322,22 @@ export function useRecording({
       }
 
       await window.ivritMenuBar.recording.stop().catch(() => undefined);
-      onError(getHebrewErrorMessage(error, he.stopRecordingFailed));
+      if (!cancelRequestedRef.current) onError(getHebrewErrorMessage(error, he.stopRecordingFailed));
     } finally {
       experimentRef.current = null;
       stopInFlightRef.current = false;
+      settleStop();
     }
   });
 
   const cancelRecordingLocal = useEffectEvent(async () => {
-    if (stopInFlightRef.current) return;
+    if (stopInFlightRef.current) {
+      // Once the audio has been sent, canceling belongs to the processing path and its undo.
+      if (!flushingRef.current) return;
+      cancelRequestedRef.current = true;
+      await stopTaskRef.current;
+      return;
+    }
     if (startInFlightRef.current) {
       cancelRequestedRef.current = true;
       await controllerRef.current?.destroy();
@@ -378,6 +399,9 @@ export function useRecording({
       return;
     }
     stopInFlightRef.current = true;
+    // The payload stays until delivery settles, so a failure can hold it again.
+    if (heldTimerRef.current !== null) window.clearTimeout(heldTimerRef.current);
+    heldTimerRef.current = null;
     setHeldRecording(null);
     setIsResending(true);
     try {
@@ -385,7 +409,7 @@ export function useRecording({
       await window.ivritMenuBar.recording.start(Date.now());
       await deliverAudio(payload);
     } catch (error) {
-      if (heldPayloadRef.current === payload) setHeldRecording({ reason: "failed", durationMs: payload.durationMs });
+      if (heldPayloadRef.current === payload) holdRecording(payload, "failed");
       onError(getHebrewErrorMessage(error, he.stopRecordingFailed));
     } finally {
       stopInFlightRef.current = false;
@@ -531,7 +555,6 @@ export function useRecording({
     isResending,
     mediaStream,
     heldRecording,
-    isOwner: ownerRef.current === windowMode,
     startRecording: () => startRecording(),
     beginHold: () => beginHold(),
     endHold: () => endHold(),

@@ -31,8 +31,6 @@ export function SettingsView() {
     requestMicrophonePermission,
     requestAccessibilityPermission,
     downloadModel,
-    setRecordingShortcut,
-    setOverlayShortcut,
     revealStorage,
     rerunOnboarding,
     resetEverything
@@ -147,8 +145,8 @@ export function SettingsView() {
           </Select>
         </div>
       </div>
-      <div className="settings-row"><ShortcutEditor id="recording-shortcut-editor" label={he.recordingShortcutLabel} description={he.recordingShortcutDescription} value={settings.shortcut} onSave={setRecordingShortcut} /></div>
-      <div className="settings-row"><ShortcutEditor id="overlay-shortcut-editor" label={he.overlayShortcutLabel} description={he.overlayShortcutDescription} value={settings.overlayShortcut} onSave={setOverlayShortcut} /></div>
+      <div className="settings-row"><ShortcutEditor id="recording-shortcut-editor" label={he.recordingShortcutLabel} description={he.recordingShortcutDescription} value={settings.shortcut} onSave={(value) => updateSetting("shortcut", value)} /></div>
+      <div className="settings-row"><ShortcutEditor id="overlay-shortcut-editor" label={he.overlayShortcutLabel} description={he.overlayShortcutDescription} value={settings.overlayShortcut} onSave={(value) => updateSetting("overlayShortcut", value)} /></div>
       <div className="settings-row">
         <div className="settings-row-copy">
           <span id={overlayPositionId} className="settings-row-title">{he.overlayPositionLabel}</span>

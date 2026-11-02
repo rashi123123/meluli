@@ -10,11 +10,9 @@ export type InvokeChannelName =
   | typeof IPC_CHANNELS.dictationEnabled
   | typeof IPC_CHANNELS.dictationChunk
   | typeof IPC_CHANNELS.transcriptionCancel
-  | typeof IPC_CHANNELS.modelStatus
   | typeof IPC_CHANNELS.modelDownload
   | typeof IPC_CHANNELS.modelRemove
   | typeof IPC_CHANNELS.historyList
-  | typeof IPC_CHANNELS.historyGet
   | typeof IPC_CHANNELS.historySearch
   | typeof IPC_CHANNELS.historyUpdate
   | typeof IPC_CHANNELS.historyRestoreOriginal
@@ -39,8 +37,6 @@ export type InvokeChannelName =
   | typeof IPC_CHANNELS.permissionOpenAccessibilitySettings
   | typeof IPC_CHANNELS.permissionRequestHoldKey
   | typeof IPC_CHANNELS.permissionOpenHoldKeySettings
-  | typeof IPC_CHANNELS.shortcutGet
-  | typeof IPC_CHANNELS.shortcutSet
   | typeof IPC_CHANNELS.appState
   | typeof IPC_CHANNELS.appIsMockMode
   | typeof IPC_CHANNELS.appVersion
@@ -74,11 +70,9 @@ export const INVOKE_CHANNEL_ACCESS: Readonly<Record<InvokeChannelName, InvokeCha
   [IPC_CHANNELS.dictationEnabled]: "shared",
   [IPC_CHANNELS.dictationChunk]: "shared",
   [IPC_CHANNELS.transcriptionCancel]: "shared",
-  [IPC_CHANNELS.modelStatus]: "main-only",
   [IPC_CHANNELS.modelDownload]: "main-only",
   [IPC_CHANNELS.modelRemove]: "main-only",
   [IPC_CHANNELS.historyList]: "main-only",
-  [IPC_CHANNELS.historyGet]: "main-only",
   [IPC_CHANNELS.historySearch]: "main-only",
   [IPC_CHANNELS.historyUpdate]: "main-only",
   [IPC_CHANNELS.historyRestoreOriginal]: "main-only",
@@ -103,8 +97,6 @@ export const INVOKE_CHANNEL_ACCESS: Readonly<Record<InvokeChannelName, InvokeCha
   [IPC_CHANNELS.permissionOpenAccessibilitySettings]: "main-only",
   [IPC_CHANNELS.permissionRequestHoldKey]: "main-only",
   [IPC_CHANNELS.permissionOpenHoldKeySettings]: "main-only",
-  [IPC_CHANNELS.shortcutGet]: "main-only",
-  [IPC_CHANNELS.shortcutSet]: "main-only",
   [IPC_CHANNELS.appState]: "shared",
   [IPC_CHANNELS.appIsMockMode]: "shared",
   [IPC_CHANNELS.appVersion]: "main-only",

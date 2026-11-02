@@ -6,11 +6,18 @@ import tailwindcss from "@tailwindcss/vite";
 const electronNodeTarget = "node24";
 const electronChromeTarget = "chrome156";
 
+const CONNECT_SRC = /connect-src [^;]*;/;
+
 // The dev server needs localhost in the CSP; a built renderer talks to nothing.
+export function lockConnectSrc(html: string): string {
+  if (!CONNECT_SRC.test(html)) throw new Error("The renderer has no connect-src directive to narrow.");
+  return html.replace(CONNECT_SRC, "connect-src 'self';");
+}
+
 const productionConnectSrc = {
   name: "production-connect-src",
   apply: "build" as const,
-  transformIndexHtml: (html: string) => html.replace(/connect-src [^;]*;/, "connect-src 'self';")
+  transformIndexHtml: lockConnectSrc
 };
 
 // Only a test package, built on purpose with this mode, keeps the debug switches working.

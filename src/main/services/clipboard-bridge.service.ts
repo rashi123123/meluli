@@ -4,6 +4,9 @@ import { ProcessLines } from "./process-lines";
 
 export interface ClipboardLease { restore(): Promise<void>; quarantine?(): Promise<void> }
 
+/** The clipboard could not be saved first, so nothing was pasted. Carries no clipboard content. */
+export class ClipboardUnavailableError extends Error {}
+
 /** Native pasteboard items preserve all formats; its change counter protects new copies. */
 export class ClipboardBridgeService {
   constructor(private readonly executable: string) {}
@@ -15,7 +18,7 @@ export class ClipboardBridgeService {
       const lines = new ProcessLines(child.stdout);
       let ready = false;
       let expired = false;
-      let startupFailure: Error | null = null;
+      let startupFailure: ClipboardUnavailableError | null = null;
       let closed = false;
       let restoration: Promise<void> | null = null;
       let finish: (() => void) | null = null;
@@ -29,7 +32,7 @@ export class ClipboardBridgeService {
         if (terminateTimer) clearTimeout(terminateTimer);
         if (killTimer) clearTimeout(killTimer);
         lines.close(); finish?.();
-        if (!ready) reject(startupFailure ?? new Error("Clipboard helper unavailable."));
+        if (!ready) reject(startupFailure ?? new ClipboardUnavailableError("Clipboard helper unavailable."));
       };
       const restore = (): Promise<void> => {
         if (closed) return Promise.resolve();
@@ -57,7 +60,7 @@ export class ClipboardBridgeService {
         if (ready || expired) return;
         expired = true;
         pipelineTrace("clipboard_begin", "failed", { reason: message });
-        startupFailure = new Error(message);
+        startupFailure = new ClipboardUnavailableError(message);
         clearTimeout(readyTimer);
         // Keep the insertion pending until the previous helper has restored or
         // exited. Otherwise another dictation can snapshot its temporary text.

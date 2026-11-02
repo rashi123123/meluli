@@ -35,7 +35,6 @@ import { registerOverlayHandlers } from "./handlers/overlay.handlers";
 import { registerPermissionHandlers } from "./handlers/permissions.handlers";
 import { registerRecordingHandlers } from "./handlers/recording.handlers";
 import { registerSettingsHandlers } from "./handlers/settings.handlers";
-import { registerShortcutHandlers } from "./handlers/shortcut.handlers";
 import { registerTranscriptionHandlers } from "./handlers/transcription.handlers";
 import { registerYouTubeHandlers } from "./handlers/youtube.handlers";
 import type { CallService } from "../services/calls/call.service";
@@ -54,6 +53,9 @@ import {
   createRendererSecurityEnvironment,
   isAllowedOpenExternalUrl
 } from "../security";
+import { isMockMode } from "../config/mock-mode";
+import { normalizeRecordingPcm } from "../services/recording-wav";
+import { deleteAllTranscripts, deleteTranscript } from "../services/transcript-files";
 
 interface RegisterIpcDependencies {
   database: AppDatabase;
@@ -76,10 +78,6 @@ interface RegisterIpcDependencies {
   retargetOverlay: () => Promise<void>;
   showMain: (view: MainView) => void;
   isPackaged: boolean;
-}
-
-function isMockMode(): boolean {
-  return process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1";
 }
 
 export function microphoneStatus(): "granted" | "denied" | "not-determined" | "restricted" | "unknown" {
@@ -176,7 +174,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
     const chunk = dictationChunkSchema.parse(input);
     await experiment.append(chunk.sessionId, chunk.sequence, chunk.pcm);
   });
-  let transcriptionProgressListenerAttached = false;
 
   const ensureModelProgressListener = () => {
     if (modelProgressListenerAttached) {
@@ -190,17 +187,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         IPC_CHANNELS.modelDownloadProgress,
         modelDownloadProgressSchema.parse(payload)
       );
-    });
-  };
-
-  const ensureTranscriptionProgressListener = () => {
-    if (transcriptionProgressListenerAttached) {
-      return;
-    }
-
-    transcriptionProgressListenerAttached = true;
-    dependencies.getTranscriptionService().on("progress", (payload) => {
-      dependencies.runtime.send(IPC_CHANNELS.transcriptionProgress, payload);
     });
   };
 
@@ -220,9 +206,11 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
   registerRecordingHandlers(registry, {
     onStart: async (parsed, event) => {
       const previousStatus = dependencies.runtime.getState().status;
-      dependencies.runtime.claimRecording(event.sender.id);
-      pipelineTrace("recording_start_requested", "event");
-      await dependencies.getTextInsertionService().whenCaptureSettled();
+      await dependencies.runtime.claimRecordingAfter(event.sender.id, async () => {
+        pipelineTrace("recording_start_requested", "event");
+        await dependencies.runtime.whenPasteRetrySettled();
+        return dependencies.getTextInsertionService().whenCaptureSettled();
+      });
       const { status } = dependencies.runtime.getState();
       if (previousStatus === "paused" ? status !== "paused" : status !== "idle" && status !== "error") {
         dependencies.runtime.releaseRecording(event.sender.id);
@@ -236,7 +224,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
           dependencies.getTextInsertionService().clearTargetApplication();
         }
       }
-      ensureTranscriptionProgressListener();
       void dependencies.getTranscriptionService().prewarm().catch((error) => {
         console.error("[IPC] microphone prewarm failed", {
           kind: error instanceof Error ? error.name : "UnknownError"
@@ -280,9 +267,9 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
     onSendAudio: async (parsed, event) => {
       dependencies.runtime.assertRecordingOwner(event.sender.id);
       pipelineTrace("capture", "event", { durationMs: parsed.durationMs, micReady: parsed.capturedAt?.micReady ?? null, stopped: parsed.capturedAt?.stopped ?? null });
+      if (parsed.flushIncomplete) console.warn("[recording] final audio buffer missing; the transcript may lose its last word");
       try {
         assertSafeRecordingAudioPayload(parsed);
-        ensureTranscriptionProgressListener();
         dependencies.runtime.releaseRecording(event.sender.id);
         dependencies.runtime.updateState({ status: "processing", activeSourceType: "microphone", timerStartedAt: null });
         dependencies.runtime.updateOverlaySession({ phase: "processing" });
@@ -295,9 +282,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
               dependencies.getTranscriptionWorkflow().prepareExperimentalInsertionReservation();
             }
             pipelineTrace("experimental_finalize", "start");
-            const pcm = parsed.pcm instanceof ArrayBuffer ? new Float32Array(parsed.pcm)
-              : parsed.pcm instanceof Float32Array ? parsed.pcm : Float32Array.from(parsed.pcm);
-            const result = await experiment.finish(pcm, parsed.sampleRate);
+            const result = await experiment.finish(normalizeRecordingPcm(parsed.pcm), parsed.sampleRate);
             pipelineTrace("experimental_finalize", "end");
             const transcript = await dependencies.getTranscriptionWorkflow().transcribePreparedRecording({
               // Prepared ASR does not read this legacy-named field. Preserve an
@@ -361,7 +346,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
   };
 
   registerModelHandlers(registry, {
-    onStatus: () => dependencies.getModelManager().getState(),
     onDownload: async () => {
       ensureModelProgressListener();
       const model = await dependencies.getModelManager().downloadModel();
@@ -381,7 +365,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
 
   registerHistoryHandlers(registry, {
     onList: (parsed) => dependencies.database.transcriptRepository.list(parsed.limit, parsed.cursor),
-    onGet: (id) => dependencies.database.transcriptRepository.getById(id),
     onSearch: (parsed) => dependencies.database.transcriptRepository.search(parsed.query, parsed.limit, parsed.cursor),
     onUpdate: ({ id, ...edit }) => {
       const repository = dependencies.database.transcriptRepository;
@@ -391,10 +374,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       return repository.update(id, applyTranscriptEdit(transcript, edit, { removeFillerWords }));
     },
     onRestoreOriginal: (parsed) => dependencies.database.transcriptRepository.restoreOriginal(parsed.id),
-    onDelete: (parsed) => dependencies.database.transcriptRepository.delete(parsed.id),
+    onDelete: (parsed) => deleteTranscript(dependencies.database, parsed.id),
     onDeleteAll: async () => {
       await dependencies.calls.clearAll();
-      return dependencies.database.transcriptRepository.deleteAll();
+      return deleteAllTranscripts(dependencies.database);
     }
   });
 
@@ -490,12 +473,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         return { canceled: true };
       }
 
-      ensureTranscriptionProgressListener();
       return dependencies.getTranscriptionWorkflow().transcribeImportedFile(result.filePaths[0]!);
     },
     onImportDroppedAudio: async (path) => {
       if (!(await stat(path)).isFile()) throw new Error(he.importAudioFailed);
-      ensureTranscriptionProgressListener();
       return dependencies.getTranscriptionWorkflow().transcribeImportedFile(path);
     },
     onExportTranscriptSrt: async (parsed) => {
@@ -534,7 +515,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
 
   registerYouTubeHandlers(registry, {
     onSubmit: (parsed) => {
-      ensureTranscriptionProgressListener();
       return dependencies.getYouTubeQueueService().submit(parsed.url);
     },
     onCancelActive: async () => {
@@ -544,15 +524,6 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       return canceled;
     },
     onCancelPending: () => dependencies.getYouTubeQueueService().cancelPending()
-  });
-
-  registerShortcutHandlers(registry, {
-    onGet: () => dependencies.settingsService.getSettings().shortcut,
-    onSet: (accelerator) => {
-      const next = dependencies.shortcutManager.setRecordingShortcut(accelerator);
-      dependencies.settingsService.setSetting("shortcut", next);
-      return next;
-    }
   });
 
   registerOverlayHandlers(registry, {

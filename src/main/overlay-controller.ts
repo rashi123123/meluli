@@ -8,6 +8,8 @@ export class OverlayController {
   private keyHeld = false;
   private retryHold = false;
   private closeWhenOpened = false;
+  /** Null unless a toggle press is waiting behind a paste retry. */
+  private toggleWanted: boolean | null = null;
 
   constructor(private readonly dependencies: {
     runtime: AppRuntime;
@@ -34,6 +36,7 @@ export class OverlayController {
     this.opening = true;
     try {
       const state = this.dependencies.runtime.getState();
+      if (this.dependencies.runtime.isPasteRetrying()) return;
       if (state.overlaySession && (state.status === "idle" || state.status === "error")) {
         this.dependencies.runtime.clearOverlaySession();
       }
@@ -45,9 +48,20 @@ export class OverlayController {
   }
 
   async toggleRecording(): Promise<void> {
-    if (this.opening) return;
+    if (this.opening) {
+      // Behind a running retry each press flips the waiting one, so the last press decides.
+      if (this.toggleWanted !== null) this.toggleWanted = !this.toggleWanted;
+      return;
+    }
     this.opening = true;
     try {
+      if (this.dependencies.runtime.isPasteRetrying()) {
+        this.toggleWanted = true;
+        const clear = await this.waitForPasteRetry();
+        const wanted = this.toggleWanted;
+        this.toggleWanted = null;
+        if (!clear || !wanted) return;
+      }
       const state = this.dependencies.runtime.getState();
       if (state.status === "processing" || state.status === "youtube_downloading") {
         if (state.activeSourceType === "microphone") this.dependencies.show(false);
@@ -77,6 +91,19 @@ export class OverlayController {
     }
     this.opening = true;
     try {
+      if (this.dependencies.runtime.isPasteRetrying()) {
+        const clear = await this.waitForPasteRetry();
+        if (!this.keyHeld) {
+          // The key came back during the wait, so nothing was asked of the result on screen.
+          this.closeWhenOpened = false;
+          return;
+        }
+        if (!clear) {
+          // The press is spent, so its release must not close what it stopped for.
+          this.keyHeld = false;
+          return;
+        }
+      }
       const state = this.dependencies.runtime.getState();
       if (state.status === "recording" || state.status === "paused") return;
       if (state.status === "processing" || state.status === "youtube_downloading") {
@@ -98,6 +125,7 @@ export class OverlayController {
   }
 
   endHold(): void {
+    if (!this.keyHeld) return;
     this.keyHeld = false;
     this.retryHold = false;
     if (this.dependencies.runtime.requestRecordingHold("release")) return;
@@ -121,7 +149,7 @@ export class OverlayController {
     // Never strand an open microphone or discard a pending automatic paste. A shortcut
     // mid-flight counts: a closing success timer must not clear the target it just took.
     if (this.opening || state.status === "recording" || state.status === "paused" ||
-        state.overlaySession?.phase === "processing") return false;
+        state.overlaySession?.phase === "processing" || this.dependencies.runtime.isPasteRetrying()) return false;
     this.dependencies.runtime.cancelPendingRecordingToggle();
     this.dependencies.runtime.cancelPendingRecordingHold();
     this.dependencies.runtime.clearOverlaySession();
@@ -130,9 +158,19 @@ export class OverlayController {
     return true;
   }
 
+  /**
+   * A press keeps its place behind a running retry, whose result still belongs to the session on
+   * screen. False means the result must stay up: an unknown outcome asks the user to look at the target.
+   */
+  private async waitForPasteRetry(): Promise<boolean> {
+    this.dependencies.show(false);
+    await this.dependencies.runtime.whenPasteRetrySettled();
+    return this.dependencies.runtime.getState().overlaySession?.insertionOutcome !== "unknown";
+  }
+
   private async captureTargetWhenIdle(): Promise<void> {
     const state = this.dependencies.runtime.getState();
-    if ((state.status === "idle" || state.status === "error") && !state.overlaySession) {
+    if ((state.status === "idle" || state.status === "error") && !state.overlaySession && !this.dependencies.runtime.isPasteRetrying()) {
       // Must precede show/focus, otherwise the captured target is Meluli itself.
       await this.dependencies.textInsertion().captureCurrentTargetApplication();
     }

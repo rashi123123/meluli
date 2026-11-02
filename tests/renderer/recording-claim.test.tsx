@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 
 const h = vi.hoisted(() => ({ handlers: new Map<string, (event: unknown, input: unknown) => Promise<unknown>>() }));
 vi.mock("electron", () => ({
@@ -30,8 +31,10 @@ vi.mock("@/lib/audio-capture", () => ({
 vi.mock("@/lib/sounds", () => ({ playCue: vi.fn(async () => undefined) }));
 vi.mock("@/components/ui/bar-visualizer", () => ({ BarVisualizer: () => null, useDocumentVisible: () => true }));
 
+import { RENDERER_ENTRY_PATH } from "@main/security";
 import { AppContext, type AppContextValue } from "@/context/app-context";
 import { FloatingRecorderHud } from "@/features/overlay/FloatingRecorderHud";
+import { OverlayContext } from "@/context/overlay-context";
 import { useRecording } from "@/hooks/use-recording";
 import { AppRuntime } from "@main/runtime";
 import { OverlayController } from "@main/overlay-controller";
@@ -46,7 +49,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; };
 
 function fakeWindow(id: number, role: string, sink: (channel: string, payload: unknown) => void) {
-  const mainFrame = { url: `file:///Applications/Meluli.app/Contents/Resources/app.asar/out/renderer/index.html?window=${role}` };
+  const mainFrame = { url: `${pathToFileURL(RENDERER_ENTRY_PATH)}?window=${role}` };
   const webContents = { id, mainFrame, isDestroyed: () => false, isLoadingMainFrame: () => false, on() {}, once() {}, send: sink };
   return { webContents, isDestroyed: () => false, isVisible: () => true, on() {}, hide() {}, showInactive() {} };
 }
@@ -68,7 +71,7 @@ function Hud() {
     requestPermission: async () => undefined, onTranscript: () => undefined, onError: (message: string) => { errors.push(message); setErrorMessage(message); } });
   const value = { loading: false, settings, appState: state, permissionStatus: "granted", accessibilityPermissionStatus: "granted", onboarding: deriveOnboardingDisplayState(settings, "granted"),
     errorMessage, setErrorMessage, recording, requestAccessibilityPermission: vi.fn() } as unknown as AppContextValue;
-  return <AppContext.Provider value={value}><FloatingRecorderHud /></AppContext.Provider>;
+  return <AppContext.Provider value={value}><OverlayContext.Provider value={value as never}><FloatingRecorderHud /></OverlayContext.Provider></AppContext.Provider>;
 }
 
 beforeEach(async () => {

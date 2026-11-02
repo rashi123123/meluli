@@ -71,6 +71,33 @@ describe("adaptive production client", () => {
     expect((await call).target.insertability).toBe("verified");
     return s;
   }
+  it("frees a transcript whose helper never started, and only that one", async () => {
+    const s = setup(true);
+    const first = s.client.insert("t", "hello", "startup-id");
+    const refused = expect(first).rejects.toMatchObject({ state: "not_dispatched" });
+    s.client.cancelUnresolvedInsertion();
+    await refused;
+    expect(s.requests).toHaveLength(0);
+
+    const replacement = setup(true);
+    const retried = s.client.insert("t", "hello", "startup-id");
+    replacement.ready();
+    await vi.waitFor(() => expect(replacement.requests.at(-1)).toMatchObject({ type: "insert", operationId: "startup-id" }));
+    replacement.reply("confirmed");
+    await retried;
+    await expect(s.client.insert("t", "hello", "startup-id")).rejects.toMatchObject({ state: "duplicate_blocked" });
+    expect(replacement.requests.filter(request => request.type === "insert")).toHaveLength(1);
+  });
+  it("keeps the claim on a transcript that reached the helper when the helper dies", async () => {
+    const s = await captured();
+    const sent = s.client.insert("t", "hello", "sent-id");
+    await vi.waitFor(() => expect(s.requests.at(-1)).toMatchObject({ type: "insert" }));
+    const rejected = expect(sent).rejects.toMatchObject({ state: "unresolved" });
+    s.client.cancelUnresolvedInsertion();
+    await rejected;
+    await expect(s.client.insert("t", "hello", "sent-id")).rejects.toMatchObject({ state: "duplicate_blocked" });
+    expect(s.requests.filter(request => request.type === "insert")).toHaveLength(1);
+  });
   it("asks the helper for adaptive capture", async () => {
     const s = await captured();
     expect(s.requests[0]).toMatchObject({ type: "capture", adaptive: true, method: "native_paste" });

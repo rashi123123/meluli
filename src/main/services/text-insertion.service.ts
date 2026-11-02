@@ -1,9 +1,10 @@
-import { ClipboardBridgeService, type ClipboardLease } from "./clipboard-bridge.service";
+import { ClipboardBridgeService, ClipboardUnavailableError, type ClipboardLease } from "./clipboard-bridge.service";
 import { execFile } from "node:child_process";
 import { systemPreferences } from "electron";
 import { he } from "@shared/locale";
 import { pipelineTrace } from "../pipeline-trace";
 import { NativeInsertionFailure, type NativeInsertOptions, type NativeInsertionClient } from "./native-insertion-client";
+import { isMockMode } from "../config/mock-mode";
 
 const CLIPBOARD_RESTORE_DELAY_MS = 1000;
 const TARGET_APP_DID_NOT_ACTIVATE_MESSAGE = "target app did not become active";
@@ -50,7 +51,7 @@ function parseSystemEventsTarget(output: string): TargetApplication {
   return { name, bundleId, pid: Number(pid) };
 }
 
-export type TextInsertionFailureCode = "permission" | "target_unavailable" | "target_changed" | "secure_field" | "clipboard_changed" | "paste_failed";
+export type TextInsertionFailureCode = "permission" | "target_unavailable" | "target_changed" | "secure_field" | "clipboard_changed" | "clipboard_unavailable" | "paste_failed";
 
 export class TextInsertionError extends Error {
   constructor(
@@ -81,6 +82,7 @@ function normalizeInsertionError(error: unknown): TextInsertionError {
   }
   const refusal = error instanceof NativeInsertionFailure ? NATIVE_REFUSALS[error.message] : undefined;
   if (refusal) return new TextInsertionError(...refusal);
+  if (error instanceof ClipboardUnavailableError) return new TextInsertionError("clipboard_unavailable", he.textInsertionClipboardUnavailable);
 
   const message = error instanceof Error ? error.message : String(error);
 
@@ -147,7 +149,7 @@ export class TextInsertionService {
   }
 
   captureCurrentTargetApplication(shouldCapture: () => boolean = () => true): Promise<TargetApplication | null> {
-    const capture = this.captureTarget(shouldCapture);
+    const capture = this.captureTarget(shouldCapture, this.capturing);
     const settled: Promise<void> = capture.then(() => undefined, () => undefined).finally(() => {
       if (this.capturing === settled) this.capturing = null;
     });
@@ -155,8 +157,8 @@ export class TextInsertionService {
     return capture;
   }
 
-  private async captureTarget(shouldCapture: () => boolean): Promise<TargetApplication | null> {
-    if (process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1") {
+  private async captureTarget(shouldCapture: () => boolean, previous: Promise<void> | null): Promise<TargetApplication | null> {
+    if (isMockMode()) {
       this.targetApplication = { name: "Test editor", pid: 1, bundleId: null };
       return this.targetApplication;
     }
@@ -166,6 +168,11 @@ export class TextInsertionService {
 
     const generation = ++this.captureGeneration;
     try {
+      // The helper answers one request at a time, so the newest capture follows the one ahead of it.
+      if (this.persistentNative && previous) {
+        await previous;
+        if (generation !== this.captureGeneration) return this.targetApplication;
+      }
       let nativeToken: string | null = null;
       let nativeSnapshot: Record<string, unknown> | null = null;
       const nativeFrontmost = this.persistentNative ? await this.persistentNative.capture().then(({ target, token }): TargetApplication => {
@@ -176,6 +183,8 @@ export class TextInsertionService {
         if (this.legacyFallback) return null;
         throw error;
       }) : null;
+      // A capture waiting on this one must not sit through the fallback as well.
+      if (this.persistentNative && nativeFrontmost === null && generation !== this.captureGeneration) return this.targetApplication;
       const frontmost = nativeFrontmost ?? (this.researchNativePaste ? await new Promise<TargetApplication>((resolve, reject) => {
         pipelineTrace("target_capture_native", "start");
         execFile(this.researchNativePaste!, ["--capture"], { timeout: 2_000, maxBuffer: 8192 }, (error, stdout) => {
@@ -270,7 +279,7 @@ export class TextInsertionService {
       throw new TextInsertionError("paste_failed", he.textInsertionUnsupported);
     }
 
-    if (process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1") {
+    if (isMockMode()) {
       return true; // Explicit isolated E2E mode never changes the real clipboard or frontmost app.
     }
     const hasAccessibility = systemPreferences.isTrustedAccessibilityClient(!this.persistentNative || this.legacyFallback);

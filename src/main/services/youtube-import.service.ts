@@ -1,11 +1,12 @@
 import { EventEmitter } from "node:events";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { he } from "@shared/locale";
 import { isSupportedMediaUrl, youtubeSubmitInputSchema } from "@shared/schemas";
+import { isMockMode } from "../config/mock-mode";
 
 export interface YouTubeImportDependencies {
   ytDlpBinaryPath: string;
@@ -63,6 +64,18 @@ const SOURCE_ARGS = ["--ies", ["default", ...ANY_HOST_EXTRACTORS.map(name => `-$
   "--no-playlist", "--playlist-items", "1"];
 // afconvert decodes these without ffmpeg; webm and opus would download and then fail.
 const AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio[ext=mp4]/best[ext=m4a]/best[ext=mp3]/best[ext=mp4]";
+
+// An outer bound against a stuck source, not a quota. A very long recording should still fit.
+const PROCESS_DEADLINE_MS = 6 * 60 * 60_000;
+
+/** The path comes from the helper's output, so it counts only as a file directly in the import's own folder. */
+async function confineToFolder(reportedPath: string, folder: string): Promise<string> {
+  const [file, root] = await Promise.all([realpath(reportedPath), realpath(folder)]).catch(() => {
+    throw new Error(he.youtubeDownloadFailed);
+  });
+  if (dirname(file) !== root) throw new Error(he.youtubeDownloadFailed);
+  return file;
+}
 
 export function buildYtDlpMetadataArgs(url: string): string[] {
   return ["--dump-single-json", "--skip-download", ...SOURCE_ARGS, "--no-warnings", url];
@@ -126,7 +139,7 @@ export class YouTubeImportService extends EventEmitter {
   }
 
   private get useMockMode(): boolean {
-    return process.env.IVRIT_E2E_MOCK === "1" || process.env.IVRIT_USE_MOCK_SERVICES === "1";
+    return isMockMode();
   }
 
   dispose(): void { this.disposed = true; this.cancel(); }
@@ -194,7 +207,7 @@ export class YouTubeImportService extends EventEmitter {
       }
 
       return {
-        audioPath,
+        audioPath: await confineToFolder(audioPath, tempDir),
         sourceTitle: metadata.title ?? he.youtubeFallbackTitle,
         sourceUrl: metadata.webpage_url ?? parsed.url,
         durationMs: metadata.duration ? Math.round(metadata.duration * 1000) : null,
@@ -233,6 +246,13 @@ export class YouTubeImportService extends EventEmitter {
       this.activeProcess = child;
       this.cancelRequested = false;
 
+      let timedOut = false;
+      const deadline = setTimeout(() => {
+        timedOut = true;
+        this.cancel();
+      }, PROCESS_DEADLINE_MS);
+      deadline.unref();
+
       let stdout = "";
       let stderr = "";
       let settled = false;
@@ -258,14 +278,16 @@ export class YouTubeImportService extends EventEmitter {
       });
 
       child.on("error", (error) => {
+        clearTimeout(deadline);
         this.activeProcess = null;
         this.cancelRequested = false;
         finish(() => reject(error));
       });
 
       child.on("close", (code, signal) => {
+        clearTimeout(deadline);
         this.activeProcess = null;
-        const canceled = this.cancelRequested;
+        const canceled = this.cancelRequested && !timedOut;
         this.cancelRequested = false;
 
         finish(() => {

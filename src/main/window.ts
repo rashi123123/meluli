@@ -7,7 +7,8 @@ import { getCurrentTheme, getWindowBackground } from "./theme";
 import {
   canEnableSandboxedPreload,
   createRendererSecurityEnvironment,
-  isTrustedRendererUrl
+  isTrustedRendererUrl,
+  RENDERER_ENTRY_PATH
 } from "./security";
 import type { OverlayPosition, OverlaySize } from "@shared/types";
 import type { AppWindowRole } from "./runtime";
@@ -42,7 +43,7 @@ function loadRendererWindow(window: BrowserWindow, mode: AppWindowRole): void {
     return;
   }
 
-  void window.loadFile(join(__dirname, "../renderer/index.html"), {
+  void window.loadFile(RENDERER_ENTRY_PATH, {
     query: {
       window: mode,
       theme: getCurrentTheme()

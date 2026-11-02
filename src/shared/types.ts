@@ -1,31 +1,32 @@
+import type { z } from "zod";
+import type {
+  mainViewSchema,
+  onboardingOptionalActionSchema,
+  onboardingPhaseSchema,
+  onboardingStepKeySchema,
+  onboardingSurfaceSchema,
+  onboardingTrackingEventNameSchema,
+  overlayPositionSchema
+} from "./schemas";
 import type { ThemeId } from "./themes";
 
 export type TranscriptSourceType = "microphone" | "imported_file" | "youtube" | "call";
 export type TranscriptionBackend = "ct2" | "whispercpp" | "nemo";
-export type MainView = "workspace" | "history" | "dictionary" | "settings" | "about" | "terms" | "privacy";
+export type MainView = z.infer<typeof mainViewSchema>;
 export type SpeedPreference = "accurate" | "balanced";
 export type MicrophonePermissionStatus = "granted" | "denied" | "not-determined" | "restricted" | "unknown";
 export type AccessibilityPermissionStatus = "granted" | "denied" | "unknown";
 export type ModelDownloadState = "missing" | "downloading" | "ready" | "error";
 export type AppRuntimeStatus = "idle" | "recording" | "paused" | "youtube_downloading" | "processing" | "error";
 export type OverlaySessionPhase = "recording" | "processing" | "paste_failed" | "success";
-export type OverlaySessionErrorCode = "permission" | "target_unavailable" | "target_changed" | "secure_field" | "clipboard_changed" | "paste_failed";
+export type OverlaySessionErrorCode = "permission" | "target_unavailable" | "target_changed" | "secure_field" | "clipboard_changed" | "clipboard_unavailable" | "paste_failed";
 export type OverlaySnapCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 export type OverlaySize = "compact" | "expanded";
-export type OnboardingPhase = "not_started" | "needs_mic" | "needs_hold_key" | "needs_model" | "needs_first_transcript" | "activated";
-export type OnboardingSurface = "flow" | "workspace";
-export type OnboardingStepKey = "ready" | "microphone" | "hold_key" | "local_install" | "first_transcript" | "celebration";
-export type OnboardingOptionalAction = "recording_shortcut" | "overlay_accessibility";
-export type OnboardingTrackingEventName =
-  | "onboarding_started"
-  | "onboarding_step_viewed"
-  | "onboarding_step_completed"
-  | "onboarding_step_exited"
-  | "first_transcript_started"
-  | "first_transcript_completed"
-  | "optional_step_completed"
-  | "optional_step_dismissed"
-  | "secondary_source_selected";
+export type OnboardingPhase = z.infer<typeof onboardingPhaseSchema>;
+export type OnboardingSurface = z.infer<typeof onboardingSurfaceSchema>;
+export type OnboardingStepKey = z.infer<typeof onboardingStepKeySchema>;
+export type OnboardingOptionalAction = z.infer<typeof onboardingOptionalActionSchema>;
+export type OnboardingTrackingEventName = z.infer<typeof onboardingTrackingEventNameSchema>;
 
 export interface ProcessingTelemetryBucket {
   sampleCount: number;
@@ -39,7 +40,7 @@ export type ProcessingTelemetry = Record<
   Record<SpeedPreference, ProcessingTelemetryBucket>
 >;
 
-export type OverlayPosition = "last" | "top" | "bottom" | "right" | "left" | "top-right" | "top-left" | "bottom-right" | "bottom-left";
+export type OverlayPosition = z.infer<typeof overlayPositionSchema>;
 
 export interface YouTubeJobInfo {
   url: string;
@@ -89,17 +90,6 @@ export interface WorkerReadyV2 {
   capabilities: {
     vad: WorkerVadCapability;
   };
-}
-
-export interface WhisperCppVadConfig {
-  enabled: boolean;
-  modelPath: string;
-  threshold: number;
-  minSpeechDurationMs: number;
-  minSilenceDurationMs: number;
-  maxSpeechDurationSec: number | null;
-  speechPadMs: number;
-  segmentOverlapSec: number;
 }
 
 export interface TranscriptRecord {
@@ -254,6 +244,8 @@ export interface RecordingAudioPayload {
   durationMs: number;
   /** Epoch milliseconds for the timing trace. */
   capturedAt?: { micReady: number; stopped: number };
+  /** The microphone's last samples, about 128 ms at most, never arrived. The rest is here. */
+  flushIncomplete?: true;
 }
 
 export interface TranscriptionStartInput {
@@ -285,12 +277,4 @@ export interface ModelDownloadProgress {
   bytesDownloaded: number;
   totalBytes: number | null;
   percent: number | null;
-}
-
-export interface TranscriptionEventPayload {
-  transcript: TranscriptRecord;
-}
-
-export interface TranscriptionErrorPayload {
-  message: string;
 }

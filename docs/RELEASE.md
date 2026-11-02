@@ -52,9 +52,13 @@ python3 scripts/export-source.py <commit> /absolute/path/to/Meluli-source.zip
 python3 scripts/check-release-output.py /absolute/path/to/Meluli-source.zip
 ```
 
-The same check accepts a folder, such as a packaged `.app`, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
+On a packaged `.app` the check also reads the fuses, the built CSP and the entitlements. The same check accepts a folder, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
 
 There is no Homebrew cask.
+
+## Pinned build inputs
+
+Dependabot reaches npm and GitHub Actions only. Before a release, check uv, Deno and Python in `scripts/build-youtube-helper.sh` and `native/youtube-requirements.txt` against their upstream releases, and update any pin older than 90 days or with a published security fix.
 
 ## Before delivery
 

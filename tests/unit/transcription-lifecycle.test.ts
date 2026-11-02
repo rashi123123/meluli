@@ -36,6 +36,7 @@ beforeEach(() => {
   spawnMock.mockReturnValue(child);
   const settings = appSettingsSchema.parse({ modelState: { filePath: modelPath, status: "ready" } });
   service = new TranscriptionService({
+    getModelPath: async () => modelPath,
     binaryPaths: { resourcesBasePath: modelPath, whispercppWorkerBinaryPath: process.execPath, ytDlpBinaryPath: "", denoBinaryPath: "" },
   }, { getSettings: () => settings } as SettingsService);
 });
@@ -49,6 +50,7 @@ afterEach(() => {
 
 async function startWarmup() {
   const task = service.prewarm();
+  await flush();
   reply({ type: "ready", protocolVersion: 2, workerVersion: "test", backend: "whispercpp", capabilities: { vad: { supported: false, mode: "none", requiresModelPath: false } } });
   await flush();
   const request = requests.find(item => item.type === "warmup");
@@ -101,9 +103,30 @@ describe("transcription worker lifecycle (simulated protocol, no ASR)", () => {
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
   });
 
+  it("ignores a partial message without settling the job", async () => {
+    const { task, jobId } = await startWarmup();
+    reply({ type: "partial", jobId, text: "טקסט" });
+    await flush();
+    let settled = false;
+    void task.finally(() => { settled = true; });
+    await flush();
+    expect(settled).toBe(false);
+    reply({ type: "warmed", jobId });
+    await task;
+  });
+
+  it.each(["ct2", "nemo"])("refuses a worker that reports the %s backend", async (backend) => {
+    const task = service.prewarm();
+    const refused = expect(task).rejects.toThrow();
+    await flush();
+    reply({ type: "ready", protocolVersion: 2, workerVersion: "test", backend, capabilities: { vad: { supported: false, mode: "none", requiresModelPath: false } } });
+    await refused;
+  });
+
   it("cancels while waiting for startup and settles every pending promise", async () => {
     const transcription = service.transcribe({ wavPath: "/fixture.wav", sourceType: "microphone", durationMs: 1000 });
     const canceled = expect(transcription).rejects.toMatchObject({ name: "TranscriptionCanceledError" });
+    await flush();
     expect(service.cancel()).toBe(true);
     await canceled;
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
@@ -174,7 +197,8 @@ describe("transcription worker lifecycle (simulated protocol, no ASR)", () => {
         .toEqual({ HOME: "/Users/me", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin" });
       const research = new TranscriptionService({
         binaryPaths: { resourcesBasePath: modelPath, whispercppWorkerBinaryPath: process.execPath, ytDlpBinaryPath: "", denoBinaryPath: "" },
-        workerEnv: { MELULI_RESEARCH_BEAM: "3" }
+        workerEnv: { MELULI_RESEARCH_BEAM: "3" },
+        getModelPath: async () => modelPath
       }, { getSettings: () => appSettingsSchema.parse({ modelState: { filePath: modelPath, status: "ready" } }) } as SettingsService);
       const warmup = research.prewarm();
       await flush();

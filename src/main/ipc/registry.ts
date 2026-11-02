@@ -12,7 +12,6 @@ export class IpcRegistry {
 
   constructor(
     private readonly options: {
-      logErrors?: boolean;
       validateEvent?: (channel: InvokeChannelName, event: IpcMainInvokeEvent) => void;
     } = {}
   ) {}
@@ -29,7 +28,7 @@ export class IpcRegistry {
       } catch (error) {
         const appError = AppError.fromUnknown(error);
 
-        if (this.options.logErrors !== false && !(error instanceof AppError)) {
+        if (!(error instanceof AppError)) {
           console.error(`[ipc] ${channel} failed`, { code: appError.code });
         }
 

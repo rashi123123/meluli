@@ -1,6 +1,7 @@
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpathSync } from "node:fs";
 import { APP_SUPPORT_DIR_NAME } from "@shared/constants";
+import { isMockMode } from "./mock-mode";
 
 function canonicalPath(path: string): string {
   const suffix: string[] = [];
@@ -20,7 +21,7 @@ function canonicalPath(path: string): string {
 export function resolveUserDataPath(appDataPath: string, env: NodeJS.ProcessEnv): string {
   const legacyPath = join(appDataPath, APP_SUPPORT_DIR_NAME);
   const override = env.MELULI_USER_DATA?.trim();
-  const mock = env.IVRIT_E2E_MOCK === "1" || env.IVRIT_USE_MOCK_SERVICES === "1";
+  const mock = isMockMode(env);
   if (!override) {
     if (mock) throw new Error("Mock runs require an isolated MELULI_USER_DATA directory.");
     return legacyPath;

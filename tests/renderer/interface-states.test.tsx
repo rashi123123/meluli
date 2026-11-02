@@ -2,6 +2,7 @@ import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { AppContext, type AppContextValue } from "@/context/app-context";
+import { OverlayContext } from "@/context/overlay-context";
 import { appSettingsSchema } from "@shared/schemas";
 import { deriveOnboardingDisplayState } from "@shared/onboarding";
 import { FileDropCell } from "@/features/workspace/FileDropCell";
@@ -39,14 +40,14 @@ function fixture(): AppContextValue {
   settings.modelState.downloadState = "ready";
   return {
     loading: false, settings, appState: { status: "idle", timerStartedAt: null }, permissionStatus: "granted", accessibilityPermissionStatus: "granted",
-    modelProgress: null, storagePaths: null, lastTranscript: transcript, onboarding: deriveOnboardingDisplayState(settings, "granted"), onboardingMetrics: null,
+    modelProgress: null, storagePaths: null, lastTranscript: transcript, onboarding: deriveOnboardingDisplayState(settings, "granted"),
     activeView: "workspace", setActiveView: vi.fn(), errorMessage: null, setErrorMessage: vi.fn(),
-    recording: { isPreparing: false, mediaStream: null, isOwner: true, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn().mockResolvedValue(false), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
+    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn().mockResolvedValue(false), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
     transcripts: { latestTranscript: transcript, items: [], selectedId: null, selectedTranscript: null, searchQuery: "", setSearchQuery: vi.fn(), setSelectedId: vi.fn(), prependTranscript: vi.fn(), updateTranscript: vi.fn(), restoreTranscript: vi.fn(), deleteTranscript: vi.fn(), deleteAllTranscripts: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), hasMore: false, isLoading: false },
-    refreshSettings: vi.fn(), updateSetting: vi.fn(), setRecordingShortcut: vi.fn(), setOverlayShortcut: vi.fn(), requestMicrophonePermission: vi.fn(), requestAccessibilityPermission: vi.fn(), downloadModel: vi.fn(), removeModel: vi.fn(), importAudio: vi.fn(), importDroppedAudio: vi.fn(), submitYouTubeUrl: vi.fn(), cancelActiveYouTube: vi.fn(), cancelPendingYouTube: vi.fn(), revealStorage: vi.fn(), rerunOnboarding: vi.fn(), resetEverything: vi.fn(), trackOnboardingStepViewed: vi.fn().mockResolvedValue(undefined), completeOnboardingStep: vi.fn(), continueOnboardingLater: vi.fn(), goBackOnboardingStep: vi.fn(), resumeOnboardingFlow: vi.fn(), completeOnboardingOptionalAction: vi.fn(), dismissOnboardingOptionalAction: vi.fn()
+    refreshSettings: vi.fn(), updateSetting: vi.fn(), requestMicrophonePermission: vi.fn(), requestAccessibilityPermission: vi.fn(), downloadModel: vi.fn(), removeModel: vi.fn(), importAudio: vi.fn(), importDroppedAudio: vi.fn(), submitYouTubeUrl: vi.fn(), cancelActiveYouTube: vi.fn(), cancelPendingYouTube: vi.fn(), revealStorage: vi.fn(), rerunOnboarding: vi.fn(), resetEverything: vi.fn(), trackOnboardingStepViewed: vi.fn().mockResolvedValue(undefined), completeOnboardingStep: vi.fn(), continueOnboardingLater: vi.fn(), goBackOnboardingStep: vi.fn(), resumeOnboardingFlow: vi.fn(), dismissOnboardingOptionalAction: vi.fn()
   };
 }
-async function render(node: ReactNode) { await act(async () => root.render(<AppContext.Provider value={context}>{node}</AppContext.Provider>)); }
+async function render(node: ReactNode) { await act(async () => root.render(<AppContext.Provider value={context}><OverlayContext.Provider value={context}>{node}</OverlayContext.Provider></AppContext.Provider>)); }
 const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(item => item.getAttribute("aria-label") === label || item.textContent === label) ?? null as unknown as HTMLButtonElement;
 const unavailable = (item: Element) => item.getAttribute("aria-disabled") === "true";
 beforeEach(() => {
@@ -248,6 +249,15 @@ describe("setup component states", () => {
     const settings = context.settings; context.settings = null; await render(<SettingsView />);
     context.settings = settings; await render(<SettingsView />); expect(host.querySelector("select")).toBeTruthy();
   });
+  it.each([["recording-shortcut-editor", "shortcut"], ["overlay-shortcut-editor", "overlayShortcut"]] as const)("%s saves through the shared settings update", async (id, key) => {
+    await render(<SettingsView />);
+    const input = host.querySelector<HTMLInputElement>(`#${id}`)!;
+    await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, shiftKey: true, bubbles: true })); });
+    const row = input.closest(".settings-row")!;
+    const save = [...row.querySelectorAll("button")].find((item) => item.textContent === he.save)!;
+    await act(async () => { save.click(); });
+    expect(context.updateSetting).toHaveBeenCalledExactlyOnceWith(key, expect.stringContaining("K"));
+  });
 });
 
 describe("floating recorder presentation states", () => {
@@ -265,7 +275,7 @@ describe("floating recorder presentation states", () => {
     const label = status === "recording" || status === "paused" ? he.stopRecording : status === "processing" ? he.processingCancel : he.startRecording;
     expect(button(label)).toBeTruthy();
   });
-  it.each(["permission", "target_unavailable", "paste_failed"] as const)("%s recovery retains copy and retry", async lastErrorCode => {
+  it.each(["permission", "target_unavailable", "clipboard_unavailable", "paste_failed"] as const)("%s recovery retains copy and retry", async lastErrorCode => {
     context.appState.overlaySession = { id: "recovery", phase: "paste_failed", transcriptId: "test", transcriptText: "טקסט שנשמר", targetAppName: null, lastErrorCode };
     context.accessibilityPermissionStatus = "denied";
     await render(<FloatingRecorderHud />);

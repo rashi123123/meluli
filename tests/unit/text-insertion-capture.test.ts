@@ -6,7 +6,8 @@ const { trusted } = vi.hoisted(() => ({ trusted: vi.fn((_prompt: boolean) => tru
 vi.mock("electron", () => ({ systemPreferences: { isTrustedAccessibilityClient: trusted } }));
 import { TextInsertionService } from "@main/services/text-insertion.service";
 import { NativeInsertionFailure } from "@main/services/native-insertion-client";
-import type { ClipboardBridgeService } from "@main/services/clipboard-bridge.service";
+import { ClipboardUnavailableError, type ClipboardBridgeService } from "@main/services/clipboard-bridge.service";
+import { he } from "@shared/locale";
 let service: TextInsertionService;
 beforeEach(() => { callbacks.length = 0; service = new TextInsertionService({} as ClipboardBridgeService); });
 describe("target capture ordering (simulated OS responses)", () => {
@@ -180,6 +181,76 @@ describe("production native paste with the AppleScript fallback (simulated respo
     await vi.waitFor(() => expect(callbacks.length).toBeGreaterThan(index));
     callbacks[index](stderr ? new Error(stderr) : null, index === 0 ? legacyCapture : "", stderr);
   };
+
+  describe("a capture that arrives while the helper is answering another", () => {
+    const held = () => {
+      const replies: Array<(value: { target: typeof target; token: string }) => void> = [];
+      const failures: Array<(error: Error) => void> = [];
+      const capture = () => new Promise<{ target: typeof target; token: string }>((resolve, reject) => { replies.push(resolve); failures.push(reject); });
+      return { capture, replies, failures };
+    };
+    const newest = { name: "Newest", bundleId: "org.example.newest", pid: 54321 };
+
+    it("waits its turn on the helper and keeps the verified path for the paste", async () => {
+      const { capture, replies } = held();
+      const { capture: native, insert } = production({ capture });
+      const blur = service.captureCurrentTargetApplication();
+      const press = service.captureCurrentTargetApplication();
+      await vi.waitFor(() => expect(native).toHaveBeenCalledOnce());
+      await Promise.resolve();
+      expect(native).toHaveBeenCalledOnce();
+      replies[0]!({ target, token: "blur" });
+      await vi.waitFor(() => expect(native).toHaveBeenCalledTimes(2));
+      replies[1]!({ target: newest, token: "press" });
+      await Promise.all([blur, press]);
+      expect(callbacks).toHaveLength(0);
+      expect(service.getCapturedTargetApplicationName()).toBe("Newest");
+      await service.insertIntoCapturedTarget("שלום");
+      expect(insert.mock.calls[0]).toContain("press");
+      expect(callbacks).toHaveLength(0);
+    });
+
+    it("sends only the newest of the waiting captures to the helper", async () => {
+      const { capture, replies } = held();
+      const { capture: native } = production({ capture });
+      const all = [service.captureCurrentTargetApplication(), service.captureCurrentTargetApplication(), service.captureCurrentTargetApplication()];
+      await vi.waitFor(() => expect(native).toHaveBeenCalledOnce());
+      replies[0]!({ target, token: "first" });
+      await vi.waitFor(() => expect(native).toHaveBeenCalledTimes(2));
+      replies[1]!({ target: newest, token: "third" });
+      await Promise.all(all);
+      expect(native).toHaveBeenCalledTimes(2);
+      expect(callbacks).toHaveLength(0);
+      expect(service.getCapturedTargetApplicationName()).toBe("Newest");
+    });
+
+    it("still takes the fallback when the capture it waited on stalled the helper", async () => {
+      const { capture, failures } = held();
+      const { capture: native } = production({ capture });
+      const stalled = service.captureCurrentTargetApplication();
+      const press = service.captureCurrentTargetApplication();
+      await vi.waitFor(() => expect(native).toHaveBeenCalledOnce());
+      native.mockRejectedValueOnce(new NativeInsertionFailure("unresolved", "Native insertion requires manual recovery; no automatic restart."));
+      failures[0]!(new NativeInsertionFailure("not_dispatched", "Native response deadline; inspect target before recovery."));
+      await answerOsaScript(0);
+      await Promise.all([stalled, press]);
+      expect(callbacks).toHaveLength(1);
+      expect(service.getCapturedTargetApplicationName()).toBe("Editor");
+    });
+  });
+
+  it("names a clipboard it could not preserve, sends nothing and leaves Retry to the person", async () => {
+    const { begin, capture, insert, overlay } = production();
+    begin.mockRejectedValueOnce(new ClipboardUnavailableError("Clipboard helper unavailable."));
+    await service.captureCurrentTargetApplication();
+    await expect(service.insertIntoCapturedTarget("שלום")).rejects.toMatchObject({ code: "clipboard_unavailable", message: he.textInsertionClipboardUnavailable });
+    expect(insert).not.toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledOnce();
+    expect(overlay).toHaveBeenCalledOnce();
+    expect(service.getLastInsertionOutcome()).toBe("not_dispatched");
+    expect(service.hasUnknownNativeOutcome()).toBe(false);
+    expect(service.getCapturedTargetApplicationName()).toBe("Editor");
+  });
 
   it("uses the verified path without AppleScript and restores the clipboard at once", async () => {
     const { begin, insert, restore } = production();

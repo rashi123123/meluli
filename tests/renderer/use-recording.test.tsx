@@ -140,6 +140,41 @@ describe("failed transcription", () => {
     expect(recording.sendAudio).toHaveBeenCalledTimes(2);
     expect(hook.current!.heldRecording?.reason).toBe("failed");
   });
+  it("does not report expiry for audio that is being sent again right now", async () => {
+    recording.sendAudio.mockRejectedValueOnce(new Error("engine"));
+    await mount();
+    await run(value => value.startRecording());
+    await run(value => value.stopRecording());
+    onError.mockClear();
+    let answer = (_: unknown) => {};
+    recording.sendAudio.mockReturnValueOnce(new Promise(resolve => { answer = resolve; }));
+    await run(async value => {
+      const resend = value.resendHeldRecording();
+      await vi.waitFor(() => expect(recording.sendAudio).toHaveBeenCalledTimes(2));
+      await vi.advanceTimersByTimeAsync(HELD_RECORDING_TTL_MS);
+      expect(onError).not.toHaveBeenCalled();
+      answer({ id: "t", text: "שלום" });
+      await resend;
+    });
+    expect(onTranscript).toHaveBeenCalledOnce();
+    expect(hook.current!.heldRecording).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(HELD_RECORDING_TTL_MS); });
+    expect(onError).not.toHaveBeenCalled();
+  });
+  it("still expires audio whose resend could not begin", async () => {
+    recording.sendAudio.mockRejectedValueOnce(new Error("engine"));
+    await mount();
+    await run(value => value.startRecording());
+    await run(value => value.stopRecording());
+    onError.mockClear();
+    overlay.retarget.mockRejectedValueOnce(new Error("no target"));
+    await run(value => value.resendHeldRecording());
+    expect(hook.current!.heldRecording).toEqual({ reason: "failed", durationMs: 8_000 });
+    onError.mockClear();
+    await act(async () => { await vi.advanceTimersByTimeAsync(HELD_RECORDING_TTL_MS); });
+    expect(hook.current!.heldRecording).toBeNull();
+    expect(onError).toHaveBeenCalledExactlyOnceWith(he.recordingHeldExpired);
+  });
   it("does not offer to retry silence, which would give the same answer", async () => {
     recording.sendAudio.mockRejectedValueOnce(new Error(he.transcriptionEmptyResult));
     await mount();
@@ -223,6 +258,66 @@ describe("cancelling", () => {
     expect(recording.sendAudio).not.toHaveBeenCalled();
     expect(recording.stop).toHaveBeenCalledOnce();
     await run(value => value.resendHeldRecording());
+    expect(recording.sendAudio).toHaveBeenCalledOnce();
+  });
+  it("honours a cancel that arrives while the stop is still flushing the microphone", async () => {
+    await mount();
+    await run(value => value.startRecording());
+    let flush = (_: unknown) => {};
+    capture.stop.mockReturnValueOnce(new Promise(resolve => { flush = resolve; }));
+    let kept: boolean | null = null;
+    await run(async value => {
+      const stopping = value.stopRecording();
+      const canceling = value.cancelRecording().then(result => { kept = result; });
+      await Promise.resolve();
+      flush(payload(8_000));
+      await Promise.all([stopping, canceling]);
+    });
+    expect(recording.sendAudio).not.toHaveBeenCalled();
+    expect(kept).toBe(true);
+    expect(hook.current!.heldRecording).toEqual({ reason: "canceled", durationMs: 8_000 });
+    expect(recording.stop).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+  });
+  it("stays quiet when the flush it canceled fails", async () => {
+    await mount();
+    await run(value => value.startRecording());
+    capture.stop.mockReturnValueOnce(new Promise((_, reject) => { window.setTimeout(() => reject(new Error("flush")), 10); }));
+    await run(async value => {
+      const stopping = value.stopRecording();
+      const canceling = value.cancelRecording();
+      await vi.advanceTimersByTimeAsync(10);
+      await Promise.all([stopping, canceling]);
+    });
+    expect(recording.sendAudio).not.toHaveBeenCalled();
+    expect(recording.stop).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+  });
+  it("leaves a cancel after the audio was sent to the processing path", async () => {
+    await mount();
+    await run(value => value.startRecording());
+    let answer = (_: unknown) => {};
+    recording.sendAudio.mockReturnValueOnce(new Promise(resolve => { answer = resolve; }));
+    await run(async value => {
+      const stopping = value.stopRecording();
+      await vi.waitFor(() => expect(recording.sendAudio).toHaveBeenCalledOnce());
+      await value.cancelRecording();
+      answer({ id: "t", text: "שלום" });
+      await stopping;
+    });
+    expect(onTranscript).toHaveBeenCalledOnce();
+    expect(recording.stop).not.toHaveBeenCalled();
+  });
+  it("forgets an earlier flush cancel on the next stop", async () => {
+    await mount();
+    await run(value => value.startRecording());
+    await run(async value => {
+      const stopping = value.stopRecording();
+      await value.cancelRecording();
+      await stopping;
+    });
+    await run(value => value.startRecording());
+    await run(value => value.stopRecording());
     expect(recording.sendAudio).toHaveBeenCalledOnce();
   });
   it("lets a short recording go, since there is little to lose", async () => {

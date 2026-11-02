@@ -1,6 +1,5 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { Worker } from "node:worker_threads";
 import { Notification, BrowserWindow } from "electron";
 import { getHebrewErrorMessage } from "@shared/error-utils";
 import {
@@ -34,161 +33,10 @@ import {
 import type { NormalizedTranscriptionResult } from "./transcription.service";
 import { AppRuntime } from "../runtime";
 import { TextInsertionError, TextInsertionService } from "./text-insertion.service";
+import { encodeWavFromRecordingPayload, normalizeRecordingPcm } from "./recording-wav";
+import { writeTranscriptMirror } from "./transcript-files";
 import { beginPipelineTrace, pipelineTrace } from "../pipeline-trace";
 import type { InsertionJournal } from "./insertion-journal";
-
-const WAV_ENCODER_WORKER_SOURCE = String.raw`
-const { parentPort } = require("node:worker_threads");
-
-function encodeWavFromFloat32Buffer(pcmBuffer, sampleRate) {
-  const pcm = new Float32Array(pcmBuffer);
-  const wavBuffer = new ArrayBuffer(44 + pcm.length * 2);
-  const buffer = Buffer.from(wavBuffer);
-  buffer.write("RIFF", 0);
-  buffer.writeUInt32LE(buffer.length - 8, 4);
-  buffer.write("WAVE", 8);
-  buffer.write("fmt ", 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(sampleRate * 2, 28);
-  buffer.writeUInt16LE(2, 32);
-  buffer.writeUInt16LE(16, 34);
-  buffer.write("data", 36);
-  buffer.writeUInt32LE(pcm.length * 2, 40);
-
-  for (let index = 0; index < pcm.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, pcm[index] || 0));
-    buffer.writeInt16LE(Math.round(sample * 0x7fff), 44 + index * 2);
-  }
-  return wavBuffer;
-}
-
-parentPort.on("message", ({ pcmBuffer, sampleRate }) => {
-  try {
-    if (!(pcmBuffer instanceof ArrayBuffer)) {
-      throw new Error("Expected audio PCM as an ArrayBuffer.");
-    }
-
-    const wavBuffer = encodeWavFromFloat32Buffer(pcmBuffer, sampleRate);
-    parentPort.postMessage({ wavBuffer }, [wavBuffer]);
-  } catch (error) {
-    parentPort.postMessage({
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
-`;
-
-function normalizeRecordingPcm(pcm: RecordingAudioPayload["pcm"]): Float32Array {
-  if (pcm instanceof Float32Array) {
-    return pcm;
-  }
-
-  if (pcm instanceof ArrayBuffer) {
-    return new Float32Array(pcm);
-  }
-
-  return Float32Array.from(pcm);
-}
-
-function toTransferableArrayBuffer(view: Float32Array): ArrayBuffer {
-  if (view.buffer instanceof ArrayBuffer && view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
-    return view.buffer;
-  }
-
-  const copy = new Uint8Array(view.byteLength);
-  copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
-  return copy.buffer;
-}
-
-async function encodeWavFromRecordingPayload(payload: RecordingAudioPayload, signal: AbortSignal): Promise<Buffer> {
-  markPerformanceAudit("recording-audio:encode:start", {
-    durationMs: Math.round(payload.durationMs),
-    sampleRate: payload.sampleRate
-  });
-  const pcmBuffer = toTransferableArrayBuffer(normalizeRecordingPcm(payload.pcm));
-
-  return new Promise<Buffer>((resolve, reject) => {
-    const worker = new Worker(WAV_ENCODER_WORKER_SOURCE, { eval: true });
-    let settled = false;
-    let timeout: ReturnType<typeof setTimeout>;
-    const aborted = () => settleWithError(new TranscriptionCanceledError());
-    const cleanup = () => { clearTimeout(timeout); signal.removeEventListener("abort", aborted); };
-
-    const settleWithError = (error: Error) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      cleanup();
-      void worker.terminate();
-      reject(error);
-    };
-
-    worker.once("message", (message: { wavBuffer?: ArrayBuffer; error?: string }) => {
-      if (settled) {
-        return;
-      }
-
-      if (message.error) {
-        settleWithError(new Error(message.error));
-        return;
-      }
-
-      if (!(message.wavBuffer instanceof ArrayBuffer)) {
-        settleWithError(new Error("Worker returned an invalid WAV buffer."));
-        return;
-      }
-
-      settled = true;
-      cleanup();
-      void worker.terminate();
-      markPerformanceAudit("recording-audio:encode:end", {
-        wavBytes: message.wavBuffer.byteLength
-      });
-      resolve(Buffer.from(message.wavBuffer));
-    });
-
-    worker.once("error", (error) => {
-      settleWithError(error);
-    });
-
-    worker.once("exit", (code) => {
-      if (!settled) {
-        settleWithError(new Error(`WAV encoder worker exited with code ${code}.`));
-      }
-    });
-
-    // Cold worker startup can be delayed by host scheduling/disk pressure. Give
-    // startup its own bounded budget; encoding keeps the shorter deadline.
-    timeout = setTimeout(() => settleWithError(new Error(he.audioConversionFailed)), 45_000);
-    worker.once("online", () => {
-      if (settled) return;
-      clearTimeout(timeout);
-      markPerformanceAudit("recording-audio:encoder-online");
-      timeout = setTimeout(() => settleWithError(new Error(he.audioConversionFailed)), 15_000);
-    });
-    signal.addEventListener("abort", aborted, { once: true });
-    if (signal.aborted) { aborted(); return; }
-    worker.postMessage(
-      {
-        pcmBuffer,
-        sampleRate: payload.sampleRate
-      },
-      [pcmBuffer]
-    );
-  });
-}
-
-async function writeTranscriptMirror(transcript: TranscriptRecord, transcriptsDir: string): Promise<void> {
-  await mkdir(transcriptsDir, { recursive: true });
-  const safeTimestamp = new Date(transcript.createdAt).toISOString().replace(/[:.]/g, "-");
-  const fileName = `${safeTimestamp}-${transcript.id}.txt`;
-  await writeFile(join(transcriptsDir, fileName), transcript.text, { encoding: "utf8", mode: 0o600 });
-}
 
 export interface TranscriptionWorkflowDependencies {
   database: AppDatabase;
@@ -323,7 +171,6 @@ export class TranscriptionWorkflowService {
         lastErrorCode: null
       });
     }
-    this.dependencies.runtime.send(IPC_CHANNELS.transcriptionProgress, { stage: "processing" });
 
     try {
       const asrStage = prepared ? "prepared_result" : "asr";
@@ -471,14 +318,6 @@ export class TranscriptionWorkflowService {
     }
   }
 
-  async transcribeStandalone(input: TranscriptionStartInput): Promise<TranscriptRecord> {
-    try {
-      return await this.transcribeAndStore(input);
-    } finally {
-      this.dependencies.onSettled?.();
-    }
-  }
-
   transcribeRecordingAudio(payload: RecordingAudioPayload): Promise<TranscriptRecord> {
     return this.track(() => this.transcribeRecordingAudioInternal(payload));
   }
@@ -587,19 +426,27 @@ export class TranscriptionWorkflowService {
 
   /** The user asked again from the HUD, which is what permits bringing the target back to the front. */
   async retryPaste(text: string): Promise<boolean> {
+    const { runtime } = this.dependencies;
+    if (runtime.isPasteRetrying()) throw new TextInsertionError("paste_failed", he.textInsertionFailed);
+    const sessionId = runtime.getState().overlaySession?.id;
+    // The result describes this session's text, so a later session must not inherit it.
+    const stillCurrent = () => runtime.getState().overlaySession?.id === sessionId;
+    runtime.setPasteRetrying(true);
     try {
       const inserted = await this.dependencies.textInsertionService.insertIntoCapturedTarget(text, undefined, { explicit: true });
-      this.dependencies.runtime.updateOverlaySession({ phase: "success", lastErrorCode: null, insertionOutcome: this.deliveredOutcome() });
+      if (stillCurrent()) runtime.updateOverlaySession({ phase: "success", lastErrorCode: null, insertionOutcome: this.deliveredOutcome() });
       return inserted;
     } catch (error) {
       const unknown = this.dependencies.textInsertionService.hasUnknownNativeOutcome?.() ?? false;
       const code = error instanceof TextInsertionError ? error.code : "paste_failed";
-      this.dependencies.runtime.updateOverlaySession({
+      if (stillCurrent()) runtime.updateOverlaySession({
         lastErrorCode: code,
         ...(unknown ? { manualCopyOnly: true, insertionOutcome: "unknown" as const }
           : isTerminalRefusal(code) ? { manualCopyOnly: true, insertionOutcome: "not_dispatched" as const } : {})
       });
       throw error;
+    } finally {
+      runtime.setPasteRetrying(false);
     }
   }
 
@@ -704,8 +551,10 @@ export class TranscriptionWorkflowService {
   }
 
   /** A call has no overlay, paste or runtime status of its own, so only the storing steps apply. */
-  async saveCallTranscript(input: TranscriptionStartInput, result: NormalizedTranscriptionResult): Promise<void> {
-    const transcript = this.dependencies.transcriptionService.buildTranscriptRecord(input, result);
+  /** The call's id keys the row, so a retry after this save cannot store the same call twice. */
+  async saveCallTranscript(callId: string, input: TranscriptionStartInput, result: NormalizedTranscriptionResult): Promise<void> {
+    if (this.dependencies.database.transcriptRepository.getById(callId)) return;
+    const transcript = { ...this.dependencies.transcriptionService.buildTranscriptRecord(input, result), id: callId };
     transcriptRecordSchema.parse(transcript);
     this.dependencies.database.transcriptRepository.create(transcript);
     await writeTranscriptMirror(transcript, this.dependencies.database.paths.transcriptsDir)

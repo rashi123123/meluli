@@ -132,6 +132,136 @@ describe("floating recorder control", () => {
     expect(f.insertion.clearTargetApplication).not.toHaveBeenCalled();
     expect(f.hide).not.toHaveBeenCalled();
   });
+  describe("while a manual paste retry is running", () => {
+    const flush = async () => { for (let index = 0; index < 8; index++) await Promise.resolve(); };
+    function retrying() {
+      const f = fixture();
+      f.runtime.setOverlayReady();
+      f.runtime.startOverlaySession("Editor");
+      f.runtime.updateOverlaySession({ phase: "paste_failed", transcriptText: "טקסט" });
+      const session = f.runtime.getState().overlaySession;
+      f.runtime.setPasteRetrying(true);
+      const hold = vi.spyOn(f.runtime, "requestRecordingHold");
+      return { ...f, session, hold };
+    }
+
+    it.each(["retarget", "open"] as const)("%s neither captures nor clears anything", async action => {
+      const f = retrying();
+      await f.controller[action]();
+      expect(f.insertion.captureCurrentTargetApplication).not.toHaveBeenCalled();
+      expect(f.runtime.getState().overlaySession).toEqual(f.session);
+    });
+
+    it.each(["toggleRecording", "beginHold"] as const)("%s shows the window and touches nothing until the retry ends", async action => {
+      const f = retrying();
+      void f.controller[action]();
+      await flush();
+      expect(f.show).toHaveBeenCalledExactlyOnceWith(false);
+      expect(f.insertion.captureCurrentTargetApplication).not.toHaveBeenCalled();
+      expect(f.toggle).not.toHaveBeenCalled();
+      expect(f.hold).not.toHaveBeenCalled();
+      expect(f.runtime.getState().overlaySession).toEqual(f.session);
+    });
+
+    it("keeps a toggle press and starts it once the retry ends", async () => {
+      const f = retrying();
+      const press = f.controller.toggleRecording();
+      await flush();
+      f.runtime.setPasteRetrying(false);
+      await press;
+      expect(f.runtime.getState().overlaySession).toBeNull();
+      expect(f.insertion.captureCurrentTargetApplication).toHaveBeenCalledOnce();
+      expect(f.toggle).toHaveBeenCalledOnce();
+    });
+
+    it("lets a second press take back the one waiting behind the retry", async () => {
+      const f = retrying();
+      const press = f.controller.toggleRecording();
+      await flush();
+      await f.controller.toggleRecording();
+      f.runtime.setPasteRetrying(false);
+      await press;
+      expect(f.toggle).not.toHaveBeenCalled();
+      expect(f.runtime.getState().overlaySession?.id).toBe(f.session?.id);
+      expect(f.insertion.captureCurrentTargetApplication).not.toHaveBeenCalled();
+    });
+
+    it("starts after a third press, which asks again", async () => {
+      const f = retrying();
+      const press = f.controller.toggleRecording();
+      await flush();
+      await f.controller.toggleRecording();
+      await f.controller.toggleRecording();
+      f.runtime.setPasteRetrying(false);
+      await press;
+      expect(f.toggle).toHaveBeenCalledOnce();
+    });
+
+    it("leaves an unknown paste result on screen for a waiting toggle", async () => {
+      const f = retrying();
+      const press = f.controller.toggleRecording();
+      await flush();
+      f.runtime.updateOverlaySession({ manualCopyOnly: true, insertionOutcome: "unknown" });
+      f.runtime.setPasteRetrying(false);
+      await press;
+      expect(f.toggle).not.toHaveBeenCalled();
+      expect(f.runtime.getState().overlaySession?.insertionOutcome).toBe("unknown");
+    });
+
+    it("leaves an unknown paste result on screen for a held key, through its release", async () => {
+      const f = retrying();
+      const press = f.controller.beginHold();
+      await flush();
+      f.runtime.updateOverlaySession({ manualCopyOnly: true, insertionOutcome: "unknown" });
+      f.runtime.setPasteRetrying(false);
+      await press;
+      f.controller.endHold();
+      expect(f.hold).not.toHaveBeenCalledWith("press");
+      expect(f.runtime.getState().overlaySession?.insertionOutcome).toBe("unknown");
+    });
+
+    it("keeps a held key and starts it once the retry ends", async () => {
+      const f = retrying();
+      const press = f.controller.beginHold();
+      await flush();
+      f.runtime.setPasteRetrying(false);
+      await press;
+      expect(f.insertion.captureCurrentTargetApplication).toHaveBeenCalledOnce();
+      expect(f.hold).toHaveBeenCalledExactlyOnceWith("press");
+    });
+
+    it("drops a held key let go during the wait and leaves the result showing", async () => {
+      const f = retrying();
+      const press = f.controller.beginHold();
+      await flush();
+      f.controller.endHold();
+      f.hold.mockClear();
+      f.runtime.setPasteRetrying(false);
+      await press;
+      expect(f.hold).not.toHaveBeenCalled();
+      expect(f.hide).not.toHaveBeenCalled();
+      expect(f.runtime.getState().overlaySession).toEqual(f.session);
+      expect(f.insertion.captureCurrentTargetApplication).not.toHaveBeenCalled();
+    });
+
+    it("does not let the window close over a result it has yet to learn", () => {
+      const f = retrying();
+      expect(f.controller.hide()).toBe(false);
+      expect(f.hide).not.toHaveBeenCalled();
+      expect(f.runtime.getState().overlaySession).toEqual(f.session);
+      f.runtime.setPasteRetrying(false);
+      expect(f.controller.hide()).toBe(true);
+    });
+  });
+
+  it("captures again once the retry has settled", async () => {
+    const f = fixture();
+    f.runtime.setPasteRetrying(true);
+    f.runtime.setPasteRetrying(false);
+    await f.controller.toggleRecording();
+    expect(f.insertion.captureCurrentTargetApplication).toHaveBeenCalledOnce();
+  });
+
   it("can dismiss a saved result after paste failure", () => {
     const f = fixture();
     f.runtime.startOverlaySession("TextEdit");

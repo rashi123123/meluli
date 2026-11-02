@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppStateSnapshot, CallState, TranscriptSegment } from "../../src/shared/types";
 import { CallService, MAX_CALL_MS, type CallServiceDependencies } from "../../src/main/services/calls/call.service";
 import type { CallAudioStopped } from "../../src/main/services/calls/call-audio.client";
+import { WAV_HEADER_BYTES } from "../../src/main/services/calls/call-pieces";
 
 class FakeRuntime extends EventEmitter {
   state = { status: "idle" } as AppStateSnapshot;
@@ -211,6 +212,29 @@ describe("CallService", () => {
     await vi.waitFor(() => { expect(callState().notice).toBe("partial_audio"); });
   });
 
+  it("remembers a microphone fault from while the call was starting", async () => {
+    const start = audio.start.bind(audio);
+    audio.start = async directory => { audio.onFault!("microphone"); return start(directory); };
+    await startCall();
+    await service.stop();
+    await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    await vi.waitFor(() => { expect(callState().notice).toBe("partial_audio"); });
+  });
+
+  it("does not carry a start fault over to the next call", async () => {
+    const start = audio.start.bind(audio);
+    audio.start = async directory => { audio.onFault!("microphone"); audio.start = start; return false; };
+    await startCall();
+    expect(callState().recording).toBeNull();
+    clock += 60 * 60 * 1000;
+    audio.onApps!([]);
+    await startCall();
+    await service.stop();
+    await vi.waitFor(() => { expect(saved).toHaveLength(1); });
+    await vi.waitFor(() => { expect(callState().processing).toBeNull(); });
+    expect(callState().notice).not.toBe("partial_audio");
+  });
+
   it("picks up a call left by a crash", async () => {
     await startCall();
     const directory = audio.directory!;
@@ -219,6 +243,31 @@ describe("CallService", () => {
     await service.initialize();
     await vi.waitFor(() => { expect(saved).toHaveLength(1); });
     expect(directory).toContain(root);
+  });
+
+  it("dates a crashed call by the audio it left", async () => {
+    await startCall();
+    const directory = audio.directory!;
+    const [id] = await readdir(root);
+    await writeFile(join(directory, "mic.wav"), Buffer.alloc(WAV_HEADER_BYTES + 32_000 * 90));
+    await writeFile(join(directory, "system.wav"), Buffer.alloc(WAV_HEADER_BYTES + 32_000 * 30));
+    transcribePiece.mockImplementation(() => new Promise(() => undefined));
+    service = build();
+    await service.initialize();
+    const record = JSON.parse(await readFile(join(root, id!, "call.json"), "utf8"));
+    expect(record.endedAt - record.startedAt).toBe(90_000);
+  });
+
+  it("leaves a crashed call undated when it left no audio", async () => {
+    await startCall();
+    const directory = audio.directory!;
+    const [id] = await readdir(root);
+    await rm(join(directory, "mic.wav"), { force: true });
+    await rm(join(directory, "system.wav"), { force: true });
+    service = build();
+    await service.initialize();
+    const record = JSON.parse(await readFile(join(root, id!, "call.json"), "utf8"));
+    expect(record.endedAt).toBeNull();
   });
 
   it("leaves nothing behind after delete-all, even mid-recording", async () => {

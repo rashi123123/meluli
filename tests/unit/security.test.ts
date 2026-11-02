@@ -1,5 +1,6 @@
 /* @vitest-environment node */
 
+import { pathToFileURL } from "node:url";
 import type { IpcMainInvokeEvent, PermissionCheckHandlerHandlerDetails, WebContents } from "electron";
 import { describe, expect, it } from "vitest";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
@@ -36,15 +37,39 @@ describe("renderer security environment", () => {
   });
 
   it("refuses a file URL that names a host", () => {
-    const environment = createRendererSecurityEnvironment({ isPackaged: true });
+    const environment = createRendererSecurityEnvironment({ isPackaged: true, rendererEntryPath: "/app/renderer/index.html" });
     expect(isTrustedRendererUrl("file:///app/renderer/index.html?window=main", "main", environment)).toBe(true);
     expect(isTrustedRendererUrl("file://share.example/renderer/index.html?window=main", "main", environment)).toBe(false);
   });
 });
 
+describe("trusted renderer entry", () => {
+  const rendererEntryPath = "/Applications/מלולי Beta.app/Contents/Resources/app.asar/out/renderer/index.html";
+  const environment = createRendererSecurityEnvironment({ isPackaged: true, rendererEntryPath });
+
+  it("accepts the entry the app loads, also from a path that needs encoding", () => {
+    expect(isTrustedRendererUrl(`${pathToFileURL(rendererEntryPath)}?window=main`, "main", environment)).toBe(true);
+  });
+
+  it("accepts the URL Electron makes from a path with a literal percent sign", () => {
+    const environment = createRendererSecurityEnvironment({ isPackaged: true, rendererEntryPath: "/Downloads/100%/out/renderer/index.html" });
+    expect(isTrustedRendererUrl("file:///Downloads/100%/out/renderer/index.html?window=main", "main", environment)).toBe(true);
+  });
+
+  it.each([
+    "file:///tmp/out/renderer/index.html?window=main",
+    "file:///Applications/Other.app/Contents/Resources/app.asar/out/renderer/index.html?window=main",
+    "file://elsewhere/Applications/מלולי Beta.app/Contents/Resources/app.asar/out/renderer/index.html?window=main",
+    "file:///Applications/x%2f..%2frenderer/index.html?window=main"
+  ])("refuses a file that only ends like the entry: %s", (url) => {
+    expect(isTrustedRendererUrl(url, "main", environment)).toBe(false);
+  });
+});
+
 describe("IPC sender validation", () => {
   const environment = createRendererSecurityEnvironment({
-    isPackaged: true
+    isPackaged: true,
+    rendererEntryPath: "/app/renderer/index.html"
   });
 
   it("rejects main window access to overlay-only channels", () => {

@@ -13,7 +13,6 @@ export function registerHistoryHandlers(
   registry: IpcRegistry,
   dependencies: {
     onList: (input: ReturnType<typeof transcriptListQuerySchema.parse>) => TranscriptListResult | Promise<TranscriptListResult>;
-    onGet: (id: string) => TranscriptRecord | null | Promise<TranscriptRecord | null>;
     onSearch: (input: ReturnType<typeof transcriptSearchQuerySchema.parse>) => TranscriptListResult | Promise<TranscriptListResult>;
     onUpdate: (input: ReturnType<typeof transcriptUpdateSchema.parse>) => TranscriptRecord | null | Promise<TranscriptRecord | null>;
     onRestoreOriginal: (input: ReturnType<typeof transcriptRestoreSchema.parse>) => TranscriptRecord | null | Promise<TranscriptRecord | null>;
@@ -22,7 +21,6 @@ export function registerHistoryHandlers(
   }
 ): void {
   registry.register(IPC_CHANNELS.historyList, (input) => dependencies.onList(transcriptListQuerySchema.parse(input ?? {})));
-  registry.register(IPC_CHANNELS.historyGet, (id) => dependencies.onGet(String(id)));
   registry.register(IPC_CHANNELS.historySearch, (input) =>
     dependencies.onSearch(transcriptSearchQuerySchema.parse(input ?? {}))
   );

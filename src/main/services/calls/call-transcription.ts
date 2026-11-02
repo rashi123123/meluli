@@ -1,10 +1,9 @@
 import { open, rm, stat, writeFile } from "node:fs/promises";
 import type { TranscriptSegment } from "@shared/types";
-import { frameBytes, frameLevel, pieceToCallMs, planPieces, FRAME_MS, SAMPLE_RATE, type CallPiece } from "./call-pieces";
+import { frameBytes, frameLevel, pieceToCallMs, planPieces, FRAME_MS, SAMPLE_RATE, WAV_HEADER_BYTES, type CallPiece } from "./call-pieces";
 import type { CallRecord, CallStore, CallTrack } from "./call-store";
 import { mergeTracks } from "./call-transcript";
 
-const WAV_HEADER_BYTES = 44;
 const READ_BYTES = 1 << 20;
 const TRACKS: CallTrack[] = ["system", "mic"];
 
@@ -15,6 +14,13 @@ export interface PieceTranscriber {
   /** Spaces out retries, so a model that stays busy cannot spin this loop. */
   pauseAfterCancel(): Promise<void>;
   isCanceled(error: unknown): boolean;
+}
+
+/** How long the longest track runs. A crash leaves no end time, but the audio is still on disk. */
+export async function recordedLengthMs(store: CallStore, id: string): Promise<number> {
+  const sizes = await Promise.all(TRACKS.map(async (track) => (await stat(store.trackPath(id, track)).catch(() => null))?.size ?? 0));
+  const bytes = Math.max(...sizes) - WAV_HEADER_BYTES;
+  return bytes > 0 ? Math.round((bytes / (2 * SAMPLE_RATE)) * 1000) : 0;
 }
 
 async function readLevels(path: string): Promise<Float32Array> {

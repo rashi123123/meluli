@@ -70,6 +70,25 @@ describe("microphone lifecycle (simulated devices)", () => {
     expect(context.close).toHaveBeenCalledTimes(1);
     expect(worklet.port.close).toHaveBeenCalledTimes(1);
   });
+  it("keeps the audio and flags it when the final buffer never arrives", async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AudioCaptureController();
+      await controller.start();
+      worklet.port.postMessage.mockImplementation(() => {});
+      worklet.port.onmessage?.(new MessageEvent("message", { data: new Float32Array([0.1, 0.2]) }));
+      const stopping = controller.stop();
+      await vi.advanceTimersByTimeAsync(1_000);
+      const payload = await stopping;
+      expect(payload.flushIncomplete).toBe(true);
+      expect(Array.from(payload.pcm as Float32Array)).toEqual(Array.from(new Float32Array([0.1, 0.2])));
+    } finally { vi.useRealTimers(); }
+  });
+  it("does not flag a recording whose final buffer arrived", async () => {
+    const controller = new AudioCaptureController();
+    await controller.start();
+    expect((await controller.stop()).flushIncomplete).toBeUndefined();
+  });
   it("opens the input before building the graph, which would slow it down", async () => {
     let resolveStream!: (stream: MediaStream) => void;
     getUserMedia.mockImplementation(() => new Promise<MediaStream>(resolve => { resolveStream = resolve; }));

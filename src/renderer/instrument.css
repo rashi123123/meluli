@@ -76,7 +76,6 @@
   --motion-spring: linear(0, .02, .08 5%, .32 12%, .66 22%, .87 32%, 1 44%, 1.035 54%, 1.03 64%, 1.008 78%, 1);
   --motion-press: 150ms;
   --motion-notice-in: 180ms;
-  --motion-notice-out: 120ms;
   --motion-dialog-in: 200ms;
   --motion-dialog-out: 150ms;
   --motion-reduced: 120ms;

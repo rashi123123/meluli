@@ -3,14 +3,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { he } from "@shared/locale";
 import { appSettingsSchema } from "@shared/schemas";
-import {
-  isWorkerReadyV2,
-  normalizeTranscriptSegments,
-  normalizeTranscriptText,
-  normalizeTranscriptionResult,
-  TranscriptionCanceledError,
-  TranscriptionService
-} from "@main/services/transcription.service";
+import { isWorkerReadyV2, TranscriptionCanceledError, TranscriptionService } from "@main/services/transcription.service";
+import { normalizeTranscriptSegments, normalizeTranscriptText, normalizeTranscriptionResult } from "@main/services/transcription-normalize";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -87,6 +81,21 @@ describe("TranscriptionCanceledError", () => {
   });
 });
 
+describe("a model that is not ready", () => {
+  const service = () => new TranscriptionService({
+    getModelPath: () => Promise.reject(new Error(he.localModelMissingError)),
+    binaryPaths: { resourcesBasePath: "/tmp/resources", whispercppWorkerBinaryPath: "/tmp/whispercpp-worker", ytDlpBinaryPath: "", denoBinaryPath: "" }
+  }, { getSettings: () => appSettingsSchema.parse({}) } as never);
+
+  it("stops a transcription with the model manager's message", async () => {
+    await expect(service().transcribe({ wavPath: "/tmp/fixture.wav", sourceType: "microphone" })).rejects.toThrow(he.localModelMissingError);
+  });
+
+  it("hands the same failure to the prewarm caller, which catches it", async () => {
+    await expect(service().prewarm()).rejects.toThrow(he.localModelMissingError);
+  });
+});
+
 describe("buildTranscriptRecord", () => {
   it("persists the actual backend and model id", () => {
     const settings = appSettingsSchema.parse({
@@ -94,6 +103,7 @@ describe("buildTranscriptRecord", () => {
     });
     const service = new TranscriptionService(
       {
+        getModelPath: async () => "/tmp/model",
         binaryPaths: {
           resourcesBasePath: "/tmp/resources",
           whispercppWorkerBinaryPath: "/tmp/whispercpp-worker",
@@ -130,6 +140,7 @@ describe("buildTranscriptRecord", () => {
     });
     const service = new TranscriptionService(
       {
+        getModelPath: async () => "/tmp/model",
         binaryPaths: {
           resourcesBasePath: "/tmp/resources",
           whispercppWorkerBinaryPath: "/tmp/whispercpp-worker",
@@ -159,7 +170,7 @@ describe("buildTranscriptRecord", () => {
   it("labels call transcripts and keeps the speaker on every segment", () => {
     const settings = appSettingsSchema.parse({ removeFillerWords: false, spokenCommands: true });
     const service = new TranscriptionService(
-      { binaryPaths: { resourcesBasePath: "/tmp/resources", whispercppWorkerBinaryPath: "/tmp/whispercpp-worker", ytDlpBinaryPath: "/tmp/yt-dlp", denoBinaryPath: "/tmp/yt-dlp" } },
+      { getModelPath: async () => "/tmp/model", binaryPaths: { resourcesBasePath: "/tmp/resources", whispercppWorkerBinaryPath: "/tmp/whispercpp-worker", ytDlpBinaryPath: "/tmp/yt-dlp", denoBinaryPath: "/tmp/yt-dlp" } },
       { getSettings: () => settings } as never
     );
     const record = service.buildTranscriptRecord({ wavPath: "", sourceType: "call", durationMs: 60_000 }, {

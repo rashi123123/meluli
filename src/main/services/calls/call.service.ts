@@ -4,7 +4,7 @@ import type { AppStateSnapshot, CallNotice, CallState, TranscriptSegment } from 
 import type { CallAudioClient, HelperApp } from "./call-audio.client";
 import { CallDetector, type AppActivity } from "./call-detector";
 import { CallStore, createCallRecord, type CallRecord } from "./call-store";
-import { transcribeCall, type PieceTranscriber } from "./call-transcription";
+import { recordedLengthMs, transcribeCall, type PieceTranscriber } from "./call-transcription";
 
 export const MAX_CALL_MS = 4 * 60 * 60_000;
 const MIN_FREE_TO_START = 1024 ** 3;
@@ -77,6 +77,7 @@ export class CallService {
   /** Calls the disk would not update. The audio stays, and they wait here for a retry instead of looping. */
   private readonly unsaved = new Map<string, CallRecord>();
   private starting = false;
+  private startFault = false;
   private stopping = false;
   private draining = false;
   private disposed = false;
@@ -112,6 +113,8 @@ export class CallService {
       if (record.status !== "recording" || this.hasLiveOwner(record)) continue;
       record.status = "pending";
       record.partial = true;
+      const lengthMs = await recordedLengthMs(this.store, record.id);
+      if (lengthMs > 0) record.endedAt = record.startedAt + lengthMs;
       await this.store.save(record);
     }
     this.setState({ failures: this.failuresOf(records) });
@@ -200,7 +203,10 @@ export class CallService {
       }
       await this.store.create(record);
       if (await this.freeBytes(this.dependencies.root).catch(() => 0) < MIN_FREE_TO_START) throw new Error("low disk");
+      this.startFault = false;
       if (!await this.dependencies.audio.start(this.store.directory(record.id), app.prefixes)) throw new Error("start failed");
+      // The helper reports a failed microphone and then starts anyway, so this may already be one-sided.
+      record.partial = this.startFault;
       this.active = { record, app, lastDiskCheck: this.now() };
       this.setState({ recording: { app: app.kind, startedAt: record.startedAt } });
     } catch (error) {
@@ -226,6 +232,7 @@ export class CallService {
 
   private markPartial(): void {
     if (this.active) this.active.record.partial = true;
+    else this.startFault = true;
   }
 
   private onHelperGone(): void {

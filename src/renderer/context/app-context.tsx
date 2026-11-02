@@ -10,7 +10,6 @@ import type {
   ModelDownloadProgress,
   OnboardingOptionalAction,
   OnboardingStepKey,
-  OnboardingTrackingMetrics,
   StoragePathsInfo,
   TranscriptEdit,
   TranscriptRecord
@@ -42,7 +41,6 @@ export interface RecordingContextValue {
   isResending: boolean;
   mediaStream: MediaStream | null;
   heldRecording: HeldRecording | null;
-  isOwner: boolean;
   startRecording: () => Promise<void>;
   pauseRecording: () => Promise<void>;
   resumeRecording: () => Promise<void>;
@@ -69,7 +67,6 @@ export interface AppContextValue {
   storagePaths: StoragePathsInfo | null;
   lastTranscript: TranscriptRecord | null;
   onboarding: ReturnType<typeof deriveOnboardingDisplayState> | null;
-  onboardingMetrics: OnboardingTrackingMetrics | null;
   activeView: MainView;
   setActiveView: (view: MainView) => void;
   errorMessage: string | null;
@@ -78,8 +75,6 @@ export interface AppContextValue {
   recording: RecordingContextValue;
   refreshSettings: () => Promise<void>;
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
-  setRecordingShortcut: (shortcut: string) => Promise<void>;
-  setOverlayShortcut: (shortcut: string) => Promise<void>;
   requestMicrophonePermission: (options?: { advanceOnboarding?: boolean }) => Promise<MicrophonePermissionStatus>;
   requestAccessibilityPermission: () => Promise<AccessibilityPermissionStatus>;
   downloadModel: () => Promise<void>;
@@ -97,7 +92,6 @@ export interface AppContextValue {
   continueOnboardingLater: (step: OnboardingStepKey) => Promise<void>;
   goBackOnboardingStep: () => Promise<void>;
   resumeOnboardingFlow: () => Promise<void>;
-  completeOnboardingOptionalAction: (action: OnboardingOptionalAction) => Promise<void>;
   dismissOnboardingOptionalAction: (action: OnboardingOptionalAction) => Promise<void>;
 }
 

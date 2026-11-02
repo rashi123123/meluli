@@ -110,7 +110,14 @@ export class NativeInsertionClient {
     if (this.attemptedOperations.has(operationId)) throw new NativeInsertionFailure("duplicate_blocked", "Operation already attempted; inspect the target.");
     if (this.attemptedOperations.size >= 10000) throw new NativeInsertionFailure("not_dispatched", "Native session capacity reached.");
     this.attemptedOperations.add(operationId);
-    const reply = await this.call({ type: "insert", operationId, targetToken: token, text, ...(options.explicit ? { explicit: true } : {}) });
+    let reply: NativeInsertionReply;
+    try {
+      reply = await this.call({ type: "insert", operationId, targetToken: token, text, ...(options.explicit ? { explicit: true } : {}) });
+    } catch (error) {
+      // The helper never got this request. Every other failure may have reached it and stays claimed.
+      if (this.adaptive && error instanceof NativeInsertionFailure && error.state === "not_dispatched") this.attemptedOperations.delete(operationId);
+      throw error;
+    }
     if (reply.state === "confirmed" || reply.state === "unverified") return reply.state;
     // Nothing was sent, so the same transcript may be offered again.
     if (this.adaptive && reply.state === "not_dispatched") this.attemptedOperations.delete(operationId);

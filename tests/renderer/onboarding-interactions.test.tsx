@@ -41,7 +41,7 @@ beforeEach(() => {
   context = {
     settings, permissionStatus: "not-determined", onboarding: deriveOnboardingDisplayState(settings, "not-determined"), modelProgress: null,
     appState: { status: "idle", timerStartedAt: null },
-    recording: { isPreparing: false, mediaStream: null, isOwner: false, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
+    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
     trackOnboardingStepViewed: vi.fn().mockResolvedValue(undefined), completeOnboardingStep: vi.fn().mockResolvedValue(undefined),
     continueOnboardingLater: vi.fn().mockResolvedValue(undefined), goBackOnboardingStep: vi.fn().mockResolvedValue(undefined),
     requestMicrophonePermission: vi.fn().mockResolvedValue("granted"), downloadModel: vi.fn().mockResolvedValue(undefined), setErrorMessage: vi.fn()

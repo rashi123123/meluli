@@ -29,6 +29,7 @@ export class AppRuntime extends EventEmitter {
   /** Audio the overlay keeps in memory. The audio itself never reaches this process. */
   private heldRecording: "failed" | "canceled" | null = null;
   private recordingOwner: number | null = null;
+  private pasteRetry: { settled: Promise<void>; finish: () => void } | null = null;
 
   claimRecording(senderId: number): void {
     const { status } = this.state;
@@ -37,6 +38,31 @@ export class AppRuntime extends EventEmitter {
       throw new Error("כבר יש הקלטה או עיבוד פעילים.");
     }
     this.recordingOwner = senderId;
+  }
+
+  /** Claims now, so nothing else starts during the wait, then checks that the window outlived it. */
+  async claimRecordingAfter(senderId: number, wait: () => Promise<void>): Promise<void> {
+    this.claimRecording(senderId);
+    await wait();
+    this.assertRecordingOwner(senderId);
+  }
+
+  /** A manual paste retry runs at status idle, so this is what keeps shortcuts out of it. */
+  isPasteRetrying(): boolean {
+    return this.pasteRetry !== null;
+  }
+
+  setPasteRetrying(retrying: boolean): void {
+    this.pasteRetry?.finish();
+    this.pasteRetry = null;
+    if (!retrying) return;
+    let finish = () => {};
+    const settled = new Promise<void>((resolve) => { finish = resolve; });
+    this.pasteRetry = { settled, finish };
+  }
+
+  whenPasteRetrySettled(): Promise<void> {
+    return this.pasteRetry?.settled ?? Promise.resolve();
   }
 
   assertRecordingOwner(senderId: number): void {

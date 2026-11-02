@@ -1,3 +1,5 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath, format } from "node:url";
 import type { IpcMainInvokeEvent, Session, WebContents } from "electron";
 import { AppError } from "@shared/errors/app-error";
 import { ERROR_CODES } from "@shared/errors/error-codes";
@@ -14,7 +16,8 @@ import type { AppRuntime, AppWindowRole } from "./runtime";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const FILE_ORIGIN = "file://";
-const RENDERER_ENTRY_SUFFIX = "/renderer/index.html";
+/** The window loads this file and the sender check trusts it, so the two cannot drift apart. */
+export const RENDERER_ENTRY_PATH = join(dirname(fileURLToPath(import.meta.url)), "../renderer/index.html");
 const WINDOW_ROLE_QUERY_KEY = "window";
 const MAX_TEXT_INSERT_LENGTH = 20_000;
 const MAX_RECORDING_AUDIO_DURATION_MS = 20 * 60_000;
@@ -33,6 +36,7 @@ export function canEnableSandboxedPreload(): boolean {
 export interface RendererSecurityEnvironment {
   isPackaged: boolean;
   devServerUrl: URL | null;
+  rendererEntryPath: string;
   allowedOrigins: ReadonlySet<string>;
 }
 
@@ -79,12 +83,14 @@ export function resolveDevServerUrl(
 export function createRendererSecurityEnvironment(options: {
   isPackaged: boolean;
   rawDevServerUrl?: string | null;
+  rendererEntryPath?: string;
 }): RendererSecurityEnvironment {
   const devServerUrl = resolveDevServerUrl(options.rawDevServerUrl ?? null, options.isPackaged);
 
   return {
     isPackaged: options.isPackaged,
     devServerUrl,
+    rendererEntryPath: options.rendererEntryPath ?? RENDERER_ENTRY_PATH,
     allowedOrigins: new Set([devServerUrl?.origin ?? FILE_ORIGIN])
   };
 }
@@ -150,7 +156,9 @@ export function isTrustedRendererUrl(
     return parsed.origin === environment.devServerUrl.origin;
   }
 
-  return parsed.protocol === "file:" && !parsed.host && parsed.pathname.endsWith(RENDERER_ENTRY_SUFFIX);
+  // Built the way loadFile builds it, which leaves a literal % alone. fileURLToPath would throw on one.
+  const entry = new URL(format({ protocol: "file:", slashes: true, pathname: environment.rendererEntryPath }));
+  return parsed.protocol === "file:" && parsed.host === "" && parsed.pathname === entry.pathname;
 }
 
 export function assertValidIpcSender(
