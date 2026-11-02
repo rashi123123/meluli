@@ -86,3 +86,52 @@ Also seen and not fully explained: encoder runs of 5.2–5.8 s, about five times
 These are fake-device figures: a real microphone opens more slowly. Timing the shortcut includes about 100 ms of test tooling. Typical stop-to-text stages were 8 ms capture, 60 ms WAV, 1200 ms inference, 10 ms formatting and database, and 280 ms paste and verification.
 
 With `MELULI_DICTATION_TIMING=1` and the profile on an external disk, a synchronous trace write added about 300 ms to a quarter of shortcut presses, so compare latency with it off.
+
+## Phase 4 latency experiments
+
+Measured on 31 October 2026 on the same fanless MacBook Air. The goal was stop-to-text under 800 ms with no loss of accuracy or reliability. No tested option reaches it within the gates. The default model and production settings did not change.
+
+**Gates.** Fixed before the runs, on 226 speech clips: pooled WER and CER at most +0.30 points, paired bootstrap 95% upper bound on WER at most +1.00, no group worse than +1.00, no new text on silence, no new invalid UTF-8, no more repeats or truncations. Baseline pooled WER is 22.40%. Any failure rejects the option whatever its speed. Latency is paced and interleaved on 20 clips of 2–5 s, n = 60 per arm, with nearest-rank p95.
+
+The budget is about 700 ms of inference, not 460 ms. Text is visible about 45 ms after insertion starts; most of the 171 ms insertion stage is verification after that point.
+
+| Option | Baseline p50 / p95 | Option p50 / p95 | Speedup | WER change | Result |
+|---|---|---|---|---|---|
+| Silence gate | 1156 / 1241 | 1167 / 1238; silence 15 ms | 0 on speech | 0.00, identical text | Pass, not shipped |
+| Silero edge trim | Not measured | Not measured | None expected | −0.23 | Pass, no gain |
+| Threads 1 / 4 | 1164 / 1222 | 1153 / 1237, 1144 / 1211 | Under 2% | 0.00, identical text | Pass, no gain |
+| Greedy | 1164 / 1222 | 1141 / 1218 | 2% | −2.49; mixed +3.70 | Fail |
+| No timestamps | 1164 / 1222 | 1145 / 1240 | 2% | −0.85; mixed +5.93, silence text | Fail |
+| Window 1024 with gate | 1156 / 1241 | 774 / 864 | 33% | 0.00; technical +1.65, invalid UTF-8 on 2 clips | Fail |
+| Window 768 with gate | 1156 / 1241 | 591 / 671 | 49% | −0.10 to −0.16; mixed +3.70, technical +3.31 | Fail |
+| Window 512 with gate | 1156 / 1241 | 416 / 486, max 2511 | 64% | +1.11 to +1.41 without gate | Fail |
+| Core ML on GPU | 1143 / 1212 | 1167 / 1233 | None | Not gated | No gain |
+| Core ML requesting the Neural Engine | 1143 / 1212 | 1102 / 1170, 2.44 GB | 4% | Sweep stopped | Reject |
+| Core ML on CPU | 1140 / 1249 | 1142 / 1547, 2.44 GB | None | −0.29; silence text on 3, invalid UTF-8 on 1 | Fail |
+| Zipformer2 66M streaming | 1164 / 1222 | 19 / 37 after stop, 345 MB | 98% | +2.78; mixed +8.89, technical +4.13 | Fail |
+| Full attention, no flash | Not measured | Not measured | Not measured | +0.23; CER, confidence bound, silence text and repeats fail | Fail |
+
+Text cut at the last detected speech passes every gate at −0.20 points, so a speculative run at a pause could keep accuracy. In simulation from measured speech spans and a 1200 ms run, a 300 ms trigger saves 200 ms if the user stops 500 ms after speaking, 400 ms at 700 ms and 700 ms at 1000 ms. It saves nothing at 300 ms or less. This has not been built. How long people wait before stopping is not known, and the short clips understate wasted runs.
+
+**Window sizes.** Flash attention pads cross-attention to a multiple of 256 without masking, so other sizes produce garbage. A short window also contaminates a later full window in the same state, so window runs used a separate state.
+
+**Neural Engine.** The Core ML compute plan places all 2443 non-constant encoder operations on the CPU. A later run in that mode took about 72 s per clip with `ANECompilerService` active and machine memory under pressure from unrelated leftover processes. It was stopped, so that mode has no accuracy result. It remains rejected on the plan alone.
+
+**Endurance.** Metal and Core ML CPU alternated in AB-BA blocks of 50 on the same clips, 200 dictations per arm per mode. No run failed and every clip kept one text per mode and arm.
+
+| Arm and rhythm | p50 | p95 | Max | Heavy thermal pressure |
+|---|---|---|---|---|
+| Metal, 4 s gaps | 1140 | 1249 | 1417 | 0 of 200 |
+| Metal, back to back | 1348 | 2590 | 4075 | 68 of 200 |
+| Core ML CPU, 4 s gaps | 1142 | 1547 | 7434 | 0 of 200 |
+| Core ML CPU, back to back | 1530 | 4598 | 10813 | 24 of 200 |
+
+Moving the encoder to the CPU does not avoid sustained slowdown. Each block started after cooling to nominal pressure. The first back-to-back block of each arm was the slowest, at p50 1799 and 3398, and later blocks stayed near 1300; the cause was not established.
+
+**Warm starts.** With the model in the page cache, loading took 330–800 ms and the first run matched later runs at 1135–1303 ms, so warming gives no measurable gain. Cold load after a reboot was not measured here.
+
+**Long clips.** Clips joined from unrelated FLEURS speakers lost about 25% of words, and up to 76% on one clip. The same text spoken continuously kept 103% of words, and consecutive natural clips up to 47 s kept 101%. This points to speaker changes in the joined clips. It has not been tested on a long real dictation.
+
+**Silence gate.** This was a development experiment and is not in this repository. It ran Silero on the finished audio and skipped the model when no speech was found, so audio with speech reached the model unchanged. On the real worker the text matched with the gate on, off and with a missing gate model. Silent clips returned in 11–366 ms. The baseline already gave empty text on these 9 silent clips, so the gain is one avoided model run.
+
+**Limits.** Mixed and technical audio is synthetic. FLEURS and HebDB references are not audited, which inflates absolute WER. Greedy needs real recordings before any further decision. No test used a physical microphone. Kol-stream was not run because testing it means executing third-party Python code, so its published numbers are unverified.
