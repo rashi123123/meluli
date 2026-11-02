@@ -1,21 +1,111 @@
-# Building a Preview
+# Releasing Meluli
 
-No public Release exists yet. This guide covers building and installing locally. Read [known limitations](KNOWN-LIMITATIONS.md) first.
+No public Release exists yet. A trusted release comes only from [the release workflow](#signed-release), signed with a Developer ID and notarized. Everything built on a developer's machine is an ad hoc Preview, covered from [Install a local Preview](#install-a-local-preview) on. Read [known limitations](KNOWN-LIMITATIONS.md) first.
 
 ## Delivery contract
 
-The target deliverables are an unsigned Apple Silicon app in DMG and ZIP, SHA-256 checksums, source code under MIT, third-party notices and Hebrew/English documentation. Users must not need a separately installed Python or Node runtime. Downloaded model weights are separate from the installer; experimental engines do not belong in the app bundle.
+The deliverables are an Apple Silicon app in DMG and ZIP, SHA-256 checksums, an update feed, source code under MIT, third-party notices and Hebrew/English documentation. Users must not need a separately installed Python or Node runtime. Downloaded model weights are separate from the installer; experimental engines do not belong in the app bundle.
 
-## Install the local Preview candidate
+## Signed release
+
+`.github/workflows/release.yml` runs in the public repository when a version tag is pushed. It has four stages, and each one needs the one before it:
+
+1. **Validate.** The same checks as every push.
+2. **Build**, in the `release-signing` environment. Stops if the tag is not on `main`, or if any signing input is missing. It never falls back to an unsigned build. Signs with the Developer ID, notarizes and staples the app and the DMG, and writes the feed and checksums.
+3. **Verify**, on a separate machine with no secrets. `scripts/verify-release-artifacts.sh` checks both archives, proves they hold one build, runs every native helper and launches the app with an empty profile.
+4. **Publish**, in the `release-publish` environment. Uploads a draft, downloads it again and compares checksums, and only then makes it public.
+
+A tag with a suffix, such as `v0.1.0-preview.2`, publishes a prerelease. GitHub never counts a prerelease as `latest`, so the update feed cannot offer it. The app reads the feed from `releases/latest`, and a repository with no full release answers 404, which the app treats as nothing to do.
+
+### What the Apple Developer account needs
+
+Only someone with access to the account can do these. Nothing here can be done from the repository.
+
+1. Join the Apple Developer Program. A free account cannot create a Developer ID certificate. An organization account needs a D-U-N-S number first.
+2. As the Account Holder, create a **Developer ID Application** certificate under Certificates, IDs & Profiles. Use a certificate signing request from Keychain Access on a Mac you trust. An Apple Development certificate does not work.
+3. In Keychain Access, export the certificate and its private key as a `.p12` with a strong password. Keep the `.p12` and its password in a password manager or other offline backup.
+4. In App Store Connect, under Users and Access → Integrations → Team Keys, create a key with the Developer role. Download the `.p8`, which Apple offers only once, and note the Key ID and Issuer ID.
+5. Note the Team ID from the Membership page, and the exact certificate name, for example `Example Name (ABCDE12345)`, from `security find-identity -v -p codesigning`.
+6. Accept any pending agreement in the Apple Developer account. An unaccepted agreement makes notarization fail.
+
+No App ID or provisioning profile is needed: Meluli uses no capability that requires one.
+
+Developer ID certificates last five years. Renew under the same team. The designated requirement names the team, not the certificate, so a renewal keeps updates and macOS permissions working. Moving to another team does not.
+
+### What the GitHub repository needs
+
+Create two environments under Settings → Environments in the public repository. Restrict both to tags matching `v*`, and add yourself as a required reviewer on `release-publish`, so nothing goes public without a click. Add a reviewer on `release-signing` too if you want to approve each use of the certificate. Under Settings → General → Releases, turn on immutable releases, so a published version cannot be replaced.
+
+Set these secrets on the `release-signing` environment. Run each command in its own terminal, so nothing lands in a shared history. `gh` reads the value from standard input:
+
+```sh
+base64 -i DeveloperID.p12 | gh secret set MAC_CERTIFICATE_P12_BASE64 --env release-signing --repo rashi123123/meluli
+gh secret set MAC_CERTIFICATE_PASSWORD --env release-signing --repo rashi123123/meluli
+base64 -i AuthKey_XXXXXXXXXX.p8 | gh secret set APPLE_API_KEY_P8_BASE64 --env release-signing --repo rashi123123/meluli
+gh secret set APPLE_API_KEY_ID --env release-signing --repo rashi123123/meluli
+gh secret set APPLE_API_ISSUER --env release-signing --repo rashi123123/meluli
+```
+
+Set these as repository variables, because the verify stage has no environment. Neither one is a secret; both appear in every signed app:
+
+```sh
+gh variable set APPLE_TEAM_ID --repo rashi123123/meluli --body "ABCDE12345"
+gh variable set APPLE_SIGNING_IDENTITY --repo rashi123123/meluli --body "Example Name (ABCDE12345)"
+```
+
+`APPLE_SIGNING_IDENTITY` leaves out the `Developer ID Application:` prefix, because electron-builder adds it. Delete the local `.p12` and `.p8` from Downloads once they are stored.
+
+### Cut a release
+
+1. Set the version in `package.json`, update `CHANGELOG.md`, and merge to `main`.
+2. Tag that commit and push the tag: `git tag v1.2.3 && git push origin v1.2.3`.
+3. Watch the run. After Verify passes, approve `release-publish`.
+4. Run the [clean Mac check](#clean-mac-check) on the published files before announcing the release.
+
+If a stage fails, nothing is public. Fix the cause, delete the tag, and tag again. To stop offering a published release, mark it as a prerelease, which sends `latest` back to the previous one. Because updates only move forward, anyone who already took it stays on it until a higher version ships.
+
+### Updates
+
+The feed is `releases.json`, attached to each release. Only a build made with `MELULI_OFFICIAL_BUILD=1` carries the feed's address, so a build from source never looks for updates. `src/main/services/update-feed.ts` reads the feed first, over HTTPS and from GitHub's hosts only, and hands off to the system updater only when the feed names this repository's archive for a newer version. The system updater then checks the archive's designated requirement against the running app.
+
+The first signed release cannot reach ad hoc copies. Those users install it by hand once, and macOS asks for microphone and Accessibility again, because the signature changed. History and settings stay, because the application support folder does not change. From then on, updates keep permissions.
+
+Never change `appId`, the application support folder name, the signing team, or the ZIP name in `scripts/package-release.sh` and `src/main/services/update-feed.ts` without a migration.
+
+### Clean Mac check
+
+CI proves the signature, not the experience. Before announcing a release, use a Mac or a macOS virtual machine that has never had Xcode or the Command Line Tools. `xcode-select -p` must fail. A virtual machine can check everything here except the physical microphone.
+
+Download the DMG, `SHA256SUMS.txt`, the ZIP, `releases.json` and `scripts/clean-mac-check.sh` with Safari, into one folder. Turn Wi-Fi off, then run:
+
+```sh
+sh clean-mac-check.sh 1.2.3
+```
+
+Then, by hand:
+
+1. Open the DMG, drag Meluli to Applications, and open it. macOS may ask once whether to open a downloaded app. It must not say the developer cannot be verified.
+2. Turn Wi-Fi on. Setup is two screens: Welcome starts the download, and the microphone check leads to Home.
+3. Press the record button on Home, say something, and confirm the transcript appears. Nothing has asked for Accessibility yet.
+4. Allow Accessibility from the card on Home. Focus a text field in another app, press Control+Shift+R, speak, and press it again. Confirm the text arrives exactly once.
+5. Turn Wi-Fi off, quit, reopen, and confirm dictation still works.
+6. In Settings, allow the hold key and turn on call suggestions, and confirm each asks for its own permission and that neither asked before this.
+7. For a second release: install the older one and leave it running. It checks 30 seconds after launch and every six hours. When Settings offers the new version, install it there, and confirm that history, the permissions and paste all survive.
+
+Record the macOS version, the Mac and the result in the release notes. Do not claim a macOS version that has not been through this.
+
+## Install a local Preview
 
 1. Verify the archives against the accompanying `SHA256SUMS.txt` with `shasum -a 256 -c SHA256SUMS.txt` from the delivery folder.
 2. Open the DMG and drag Meluli to Applications, or extract the ZIP and move `Meluli.app` there.
 3. This Preview is ad hoc signed and not notarized. If macOS blocks this app after a launch attempt, use System Settings → Privacy & Security → Open Anyway for this app. Do not disable Gatekeeper globally.
-4. Allow microphone and Accessibility permissions when requested. Hold-to-talk also needs Input Monitoring. First setup downloads the separately pinned model, approximately 874 MB; a network filter may require allowing Meluli. Dictation and file imports then work locally. Link imports need the optional helper and network access.
+4. Allow the microphone when asked. Starting setup downloads the separately pinned model, approximately 874 MB; a network filter may require allowing Meluli. Pasting into other apps needs Accessibility, which Home and the floating window offer. The hold key, turned on in Settings, also needs Input Monitoring. Dictation and file imports then work locally. Link imports need the optional helper and network access.
 5. Focus a text field, press Control+Shift+R, speak, and press it again to stop. Control+Shift+H opens the floating panel; Escape cancels without transcription, and a recording of three seconds or more can be restored for six seconds.
 6. If paste fails, the saved result remains in history and the floating panel exposes recovery controls. Do not repeatedly retry without checking whether the target already contains the result.
 
 There is no public download URL yet. Only the Apple M3/macOS configuration named in the known limitations has been exercised.
+
+A signed release replaces steps 1 and 3: Gatekeeper accepts it, and step 1 stays as an optional check.
 
 ## Before packaging
 
@@ -39,9 +129,9 @@ pnpm exec electron-builder --mac dmg zip --arm64 --publish never
 
 `pnpm run build:app` renders the interface icons from the SF Symbols on the build machine, so a build needs macOS. `pnpm build` performs all preparation and packaging in sequence. The ASR build pins a source commit and SHA-256, statically links Whisper/GGML, embeds Metal shaders and verifies that dynamic dependencies are macOS frameworks only. The link-import helper is optional and left out of `pnpm build`; `pnpm run fetch:yt-dlp` builds it from hash-locked Python packages and project-local managed Python, with a pinned Deno. Do not include it in a public package without legal advice.
 
-The bundle identifier is `io.github.rashi123123.meluli`. Preview signing is ad hoc, not a Developer ID signature; the app is not notarized. A model download is required on first setup. Keep the model outside the installer to avoid duplicating it on each app update.
+The bundle identifier is `io.github.rashi123123.meluli`. These commands sign ad hoc, not with a Developer ID, and the result is not notarized, so never publish it as a release. `scripts/package-release.sh` is the only path to a trusted build, and it refuses to run without every signing input. A model download is required on first setup. Keep the model outside the installer to avoid duplicating it on each app update.
 
-Automatic updates read a static `releases.json` from `UPDATE_FEED_URL` in `src/shared/constants.ts`. After packaging, upload the ZIP, then run `node scripts/write-update-feed.mjs <zip-url>` and upload the result. Every release must keep the same bundle identifier and signing certificate, or installed copies refuse it. Back up the certificate's private key: losing it means everyone reinstalls by hand. Copies signed ad hoc, and copies run from an external drive, are not supported targets for an update.
+Copies signed ad hoc, and copies run from an external drive or anywhere outside Applications, never check for updates.
 
 The worker hash in `resources/licenses/whispercpp/runtime.json` depends on the build path, so a rebuild elsewhere can change it. Do not commit that change on its own.
 
@@ -52,7 +142,7 @@ python3 scripts/export-source.py <commit> /absolute/path/to/Meluli-source.zip
 python3 scripts/check-release-output.py /absolute/path/to/Meluli-source.zip
 ```
 
-On a packaged `.app` the check also reads the fuses, the built CSP and the entitlements. The same check accepts a folder, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
+On a packaged `.app` the check also reads the fuses, the built CSP and the entitlements. `check-release-output.py --release <version> <team id> /absolute/path/to/Meluli.app` adds what a trusted build must also prove: every Mach-O is arm64, signed by the team with a Developer ID, hardened and timestamped, links only system libraries, and the bundle passes Gatekeeper with a stapled ticket and carries the feed. The same check accepts a folder, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
 
 There is no Homebrew cask.
 
@@ -64,6 +154,6 @@ Dependabot reaches npm and GitHub Actions only. Before a release, check uv, Deno
 
 Install the finished DMG/ZIP into a clean temporary profile, launch and relaunch it, exercise recording and paste, test offline inference, verify data preservation and idle release, and record all remaining limitations. Generate checksums only after all bundle modifications are finished. Verify both archives contain the same app build. Do not advertise untested macOS versions or Intel support.
 
-Unsigned Preview installation may trigger Gatekeeper. Explain the macOS Privacy & Security “Open Anyway” flow for the specific delivered app. Do not instruct users to disable Gatekeeper globally. The release is not notarized and should not be described as signed or Apple-approved.
+Preview installation may trigger Gatekeeper. Explain the macOS Privacy & Security “Open Anyway” flow for the specific delivered app. Do not instruct users to disable Gatekeeper globally. A Preview is not notarized and should not be described as signed or Apple-approved.
 
 The final report must separate source/test readiness, package readiness, real performance evidence and unresolved acceptance items. Do not label the release complete while an installation, dictation, data-loss or privacy blocker remains.

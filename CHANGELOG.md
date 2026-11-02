@@ -2,6 +2,9 @@
 
 ## 0.1.0-preview.2 — unreleased
 
+- Build releases in GitHub Actions: signed with a Developer ID, notarized, verified on a second machine with no secrets, then published with checksums. A missing credential stops the run. No unsigned build can come out of it.
+- Shorten setup to two screens. Welcome starts the engine download, and the microphone check leads straight to Home. The hold key waits in Settings, and Home offers Accessibility without blocking dictation in the app.
+- Read the update feed over HTTPS from GitHub's hosts only, and accept it only when it names this repository's archive for a newer version. Prereleases and builds from source are never offered as updates.
 - Remove deleted transcripts from the database, its search index and its log, and remove their TXT copies. Delete-all also removes migration backups. This is not secure erasure.
 - Write subtitle exports readable by their owner only.
 - Close link import routes to local hosts, and bound its processes and the time and size of audio conversion.

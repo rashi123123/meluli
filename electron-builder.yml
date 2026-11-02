@@ -7,6 +7,8 @@ directories:
 files:
   - out/**
   - package.json
+  # SQLite ships a binary per platform. Notarization signs what is here, and a release is arm64 only.
+  - "!**/node_modules/better-sqlite3/prebuilds/!(darwin-arm64.node)"
 asarUnpack:
   - "**/*.node"
 extraResources:

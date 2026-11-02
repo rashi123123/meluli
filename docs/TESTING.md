@@ -29,6 +29,8 @@ Manual checks that automation cannot make, on a released build with its own perm
 3. **Sleep and wake.** Close the lid mid-recording. After waking, the recording must be held with an offer to send it, and the shortcut must work.
 4. **Permissions.** Turn off Accessibility for Meluli while it runs, then dictate: nothing pastes, the transcript stays and the window offers the permission. Do the same with the microphone.
 
+A signed release has its own evidence. The release workflow checks each archive with `scripts/verify-release-artifacts.sh`, and [the clean Mac check](RELEASE.md#clean-mac-check) covers what CI cannot see. `tests/unit/release-bundle-check.test.ts` stands in for Apple's tools, so it proves the checks reject bad bundles, not that a real bundle passes.
+
 Calls need a packaged build on macOS 14.2 or later, and real audio: `meluli-callaudio --self-test` proves only that the helper starts. Use a separate bundle identifier so the permission of the installed app is not touched. Check, in a real call on each platform: the suggestion, both tracks, the permission refusal notice, stopping on leaving and by hand, and that dictation during transcription stays fast.
 
 ## Real transcription and release acceptance

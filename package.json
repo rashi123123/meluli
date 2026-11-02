@@ -37,6 +37,8 @@
     "build:native-helpers": "bash scripts/build-native-helpers.sh",
     "symbols": "swift -module-cache-path .build/swift-cache scripts/export-sf-symbols.swift",
     "licenses": "node scripts/collect-notices.mjs",
+    "package:release": "bash scripts/package-release.sh",
+    "verify:release": "bash scripts/verify-release-artifacts.sh",
     "prepare:runtime": "pnpm run build:asr-worker && pnpm run build:native-helpers && pnpm run licenses"
   },
   "dependencies": {

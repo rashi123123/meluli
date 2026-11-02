@@ -14,8 +14,9 @@ Meluli is a Preview. This page lists what is known not to work, or has not been 
 ## Platform
 
 - Only an Apple M3 with 24 GB on macOS 27.0.1 has been exercised. Intel Macs are not supported. Older macOS releases, Bluetooth microphones, real sleep and wake, and sustained physical dictation are unverified. Packaged tests used Chromium's fake microphone with recorded speech swapped in afterwards, so physical capture on a released build still needs the manual check in [testing](TESTING.md).
-- Builds are ad hoc signed and not notarized, so Gatekeeper may block them. Hardened runtime and the Electron fuses that block run-as-Node, `NODE_OPTIONS` and the inspector are on. An ad hoc signature still needs library validation off.
-- Automatic updates stay off until `UPDATE_FEED_URL` points at a public feed. Electron refuses an update signed ad hoc, so a release also needs a stable code-signing certificate. A self-signed one is enough for this and does not replace notarization.
+- No signed release exists yet. The release workflow needs an Apple Developer ID, and it has never run with one. Until then builds are ad hoc signed and not notarized, so Gatekeeper may block them. Hardened runtime and the Electron fuses that block run-as-Node, `NODE_OPTIONS` and the inspector are on. An ad hoc signature still needs library validation off; a Developer ID build keeps it on.
+- Automatic updates work only on a signed build from the release workflow, installed in Applications. Ad hoc copies never check. The first signed version has to be installed by hand once, and macOS asks for its permissions again.
+- No installation has been tested on a Mac without developer tools. The steps are in [the release guide](RELEASE.md#clean-mac-check).
 
 ## Data
 
