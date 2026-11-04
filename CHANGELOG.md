@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.1.0-preview.2 — unreleased
+## 0.1.0-preview.3 — 2026-11-04
+
+- Ship the first Developer ID signed, notarized DMG and ZIP from the release workflow. Earlier copies were signed ad hoc, so they cannot update to this one: install it by hand once, and macOS asks for the microphone and Accessibility again. History and settings stay.
+- Install with Homebrew: `brew install --cask rashi123123/meluli/meluli`.
+
+## 0.1.0-preview.2 — 2026-11-02
+
+Published as source only, with no app.
+
 
 - Build releases in GitHub Actions: signed with a Developer ID, notarized, verified on a second machine with no secrets, then published with checksums. A missing credential stops the run. No unsigned build can come out of it.
 - Shorten setup to two screens. Welcome starts the engine download, and the microphone check leads straight to Home. The hold key waits in Settings, and Home offers Accessibility without blocking dictation in the app.

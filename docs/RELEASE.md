@@ -144,7 +144,7 @@ python3 scripts/check-release-output.py /absolute/path/to/Meluli-source.zip
 
 On a packaged `.app` the check also reads the fuses, the built CSP and the entitlements. `check-release-output.py --release <version> <team id> /absolute/path/to/Meluli.app` adds what a trusted build must also prove: every Mach-O is arm64, signed by the team with a Developer ID, hardened and timestamped, links only system libraries, and the bundle passes Gatekeeper with a stapled ticket and carries the feed. The same check accepts a folder, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
 
-The cask lives in [rashi123123/homebrew-meluli](https://github.com/rashi123123/homebrew-meluli). A daily workflow there moves it to the newest Release with a DMG and takes the hash from `SHA256SUMS.txt`, so the tag needs no extra step. It installs nothing until the first signed Release exists.
+The cask lives in [rashi123123/homebrew-meluli](https://github.com/rashi123123/homebrew-meluli). A daily workflow there moves it to the newest Release with a DMG and takes the hash from `SHA256SUMS.txt`, so the tag needs no extra step.
 
 ## Pinned build inputs
 
