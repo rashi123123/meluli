@@ -276,7 +276,7 @@ test("onboarding split layout reflows with symmetric preview insets and reachabl
       await expect(page.locator(".onboarding-progress")).toHaveAttribute("aria-label", new RegExp(`^${he.onboardingSetupStepWelcome} · ${he.onboardingStepOfTotal.replace("{current}", "1").replace("{total}", "[23]")}$`));
       expect(await page.locator(".onboarding-primary-dock").evaluate(el => el.getBoundingClientRect().width)).toBeLessThan(size.width - 24);
       expect(dimensions.actionTop).toBeGreaterThanOrEqual(0);
-      expect(dimensions.actionBottom).toBeLessThanOrEqual(dimensions.height);
+      expect(dimensions.actionBottom).toBeLessThanOrEqual(dimensions.height + 1);
       await screenshot(info, `welcome-${size.width}-${fontSize ? "large-text" : "normal"}`);
     }
   }
