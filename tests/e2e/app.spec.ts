@@ -5,7 +5,8 @@ type AppGlobal = typeof globalThis & { ivritMenuBar: IvritMenuBarApi };
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 
 // These scenarios share one activation/history flow; avoid restarting later steps
 // against a fresh unactivated profile after an earlier failure.
@@ -17,23 +18,22 @@ let userDataPath: string;
 
 test.beforeAll(async () => {
   userDataPath = mkdtempSync(join(tmpdir(), "meluli-e2e-"));
-  electronApp = await electron.launch({
+  ({ app: electronApp, page } = await launchApp({
     args: ["."],
     env: {
       ...process.env,
       IVRIT_E2E_MOCK: "1",
       MELULI_USER_DATA: userDataPath
     }
-  });
+  }));
 
-  page = await electronApp.firstWindow();
   await page.waitForURL(/index\.html/);
   await page.waitForLoadState("domcontentloaded");
 });
 
 test.afterAll(async () => {
   if (electronApp) {
-    await electronApp.close();
+    await closeApp(electronApp);
   }
   if (userDataPath) rmSync(userDataPath, { recursive: true, force: true });
 });

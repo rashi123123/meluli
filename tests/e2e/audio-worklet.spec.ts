@@ -3,17 +3,17 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, _electron as electron } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 
 test("built AudioWorklet loads under the app CSP, captures samples and acknowledges its final flush", async () => {
   const profile = mkdtempSync(join(tmpdir(), "meluli-audio-module-"));
   const assets = readdirSync("out/renderer/assets");
   const module = assets.find(name => /^audio-worklet-.*\.js$/.test(name));
   expect(module, "The worklet must be emitted as compiled JavaScript").toBeDefined();
-  const app = await electron.launch({ args: [".", "--autoplay-policy=no-user-gesture-required"],
+  const { app, page } = await launchApp({ args: [".", "--autoplay-policy=no-user-gesture-required"],
     env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile } });
   try {
-    const page = await app.firstWindow();
     await page.waitForURL(/index\.html/);
     await page.waitForLoadState("domcontentloaded");
     const result = await page.evaluate(async module => {
@@ -46,5 +46,5 @@ test("built AudioWorklet loads under the app CSP, captures samples and acknowled
       } finally { try { oscillator.stop(); } catch { /* Not started if module loading failed. */ } await context.close(); }
     }, module!);
     expect(result).toBeGreaterThan(2048);
-  } finally { await app.close(); rmSync(profile, { recursive: true, force: true }); }
+  } finally { await closeApp(app); rmSync(profile, { recursive: true, force: true }); }
 });
