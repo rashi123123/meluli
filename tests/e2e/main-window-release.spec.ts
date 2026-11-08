@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 import type { IvritMenuBarApi } from "../../src/shared/preload-api";
 import { he } from "../../src/shared/locale";
 type AppGlobal = typeof globalThis & { ivritMenuBar: IvritMenuBarApi };
@@ -22,8 +23,7 @@ async function reopen() {
 
 test.beforeAll(async () => {
   profile = mkdtempSync(join(tmpdir(), "meluli-release-"));
-  app = await electron.launch({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile, MELULI_MAIN_RELEASE_MS: String(releaseMs) } });
-  page = await app.firstWindow();
+  ({ app, page } = await launchApp({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile, MELULI_MAIN_RELEASE_MS: String(releaseMs) } }));
   await page.waitForFunction(() => Boolean((globalThis as AppGlobal).ivritMenuBar));
   await page.evaluate(async () => {
     const api = (globalThis as AppGlobal).ivritMenuBar;
@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   await page.reload();
   await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeVisible();
 });
-test.afterAll(async () => { if (app) await app.close(); if (profile) rmSync(profile, { recursive: true, force: true }); });
+test.afterAll(async () => { await closeApp(app); if (profile) rmSync(profile, { recursive: true, force: true }); });
 
 test("a hidden main window is released and reopens on the view it showed", async () => {
   await page.getByRole("button", { name: he.history, exact: true }).click();

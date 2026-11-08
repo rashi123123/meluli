@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, _electron as electron, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page, type TestInfo } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 import type { IvritMenuBarApi } from "../../src/shared/preload-api";
 import { DEFAULT_MODEL_FILENAME, DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "../../src/shared/constants";
 import { installTestMicrophone } from "./helpers/microphone";
@@ -14,14 +15,13 @@ const faults: string[] = [];
 test.beforeEach(async () => {
   faults.length = 0;
   profile = mkdtempSync(join(tmpdir(), "meluli-onboarding-"));
-  app = await electron.launch({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile }, colorScheme: "dark" });
-  page = await app.firstWindow();
+  ({ app, page } = await launchApp({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile }, colorScheme: "dark" }));
   page.on("pageerror", error => faults.push(error.message));
   await page.waitForURL(/index\.html/);
   await expect(page.getByText(he.onboardingWelcomeTitle)).toBeVisible();
 });
 test.afterEach(async () => {
-  if (app) await app.close();
+  await closeApp(app);
   if (profile) rmSync(profile, { recursive: true, force: true });
   expect(faults, "No unhandled renderer exception during the flow").toEqual([]);
 });

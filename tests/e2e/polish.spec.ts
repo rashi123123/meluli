@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 import type { IvritMenuBarApi } from "../../src/shared/preload-api";
 import { he } from "../../src/shared/locale";
 import { THEMES } from "../../src/shared/themes";
@@ -9,8 +10,7 @@ let app: ElectronApplication, page: Page, profile: string;
 type AppGlobal = typeof globalThis & { ivritMenuBar: IvritMenuBarApi };
 test.beforeEach(async () => {
   profile = mkdtempSync(join(tmpdir(), "meluli-polish-"));
-  app = await electron.launch({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile } });
-  page = await app.firstWindow();
+  ({ app, page } = await launchApp({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile } }));
   await page.waitForFunction(() => Boolean((globalThis as AppGlobal).ivritMenuBar));
   await expect(page.getByText(he.onboardingWelcomeTitle)).toBeVisible();
   await page.evaluate(async () => {
@@ -21,7 +21,7 @@ test.beforeEach(async () => {
   await page.reload();
   await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeVisible();
 });
-test.afterEach(async () => { await app?.close(); if (profile) rmSync(profile, { recursive: true, force: true }); });
+test.afterEach(async () => { await closeApp(app); if (profile) rmSync(profile, { recursive: true, force: true }); });
 
 test("enabled primary text has readable contrast and keyboard focus", async ({}, info) => {
   await page.getByRole("button", { name: he.settings, exact: true }).click();
