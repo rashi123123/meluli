@@ -44,10 +44,10 @@ test("enabled primary text has readable contrast and keyboard focus", async ({},
   await save.press("Enter");
   await expect(page.locator("#recording-shortcut-editor")).toBeFocused();
   await expect(save).not.toBeVisible();
-  await page.getByRole("button", { name: "איפוס…", exact: true }).click();
+  await page.getByRole("button", { name: he.settingsResetTrigger, exact: true }).click();
   await expect(page.getByRole("button", { name: he.settingsResetCancel, exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "איפוס…", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: he.settingsResetTrigger, exact: true })).toBeFocused();
   await expect(page).toHaveTitle("הגדרות — מלולי");
 });
 
@@ -150,7 +150,8 @@ test("sidebar aligns navigation, identifies the active page, and reflows while r
     const icon = button.querySelector<HTMLElement>(".sf-symbol")!;
     return { x: rect.x, width: rect.width, height: rect.height, left: style.paddingLeft, right: style.paddingRight, icon: icon.getBoundingClientRect().right, mask: getComputedStyle(icon).maskImage };
   }));
-  expect(geometry).toHaveLength(4);
+  // Home, History, Dictionary and Actions, then Settings at the foot.
+  expect(geometry).toHaveLength(5);
   for (const row of geometry) {
     expect(row.left).toBe(row.right);
     expect(row.x).toBeCloseTo(geometry[0].x, 0);

@@ -35,8 +35,9 @@ async function assertCardInsets() {
       return { copy: { x: copy.x, right: copy.right, bottom: copy.bottom }, preview: { x: preview.x, right: preview.right, top: preview.top }, pad: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft], width: innerWidth };
     });
     expect(new Set(geometry.pad).size).toBe(1);
-    if (geometry.width > 800) expect(geometry.copy.x).toBeGreaterThan(geometry.preview.right);
-    else { expect(geometry.copy.x).toBeCloseTo(geometry.preview.x, 0); expect(geometry.preview.top).toBeGreaterThan(geometry.copy.bottom); }
+    // Every setup step stacks its copy above the preview, both centred.
+    expect((geometry.copy.x + geometry.copy.right) / 2).toBeCloseTo((geometry.preview.x + geometry.preview.right) / 2, 0);
+    expect(geometry.preview.top).toBeGreaterThan(geometry.copy.bottom);
     await expect(page.locator(".desktop-sidebar")).toHaveCount(0);
     return;
   }
@@ -106,10 +107,14 @@ test("onboarding handles denied permission, failed model install, retry and firs
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
   await expect(page.locator(".microphone-error")).toBeVisible();
   await assertCardInsets();
-  await expect(page.getByRole("button", { name: "פתיחת הגדרות המיקרופון", exact: true })).toBeVisible();
+  // A denied microphone is fixed in System Settings, so the step's one action opens it.
+  await expect(page.getByRole("button", { name: he.onboardingPasteOpenSettings, exact: true })).toBeVisible();
   expect((await settings()).onboarding.phase).toBe("needs_mic");
   await screenshot(info, "microphone-denied");
-  await page.getByRole("button", { name: he.onboardingMicrophoneAction, exact: true }).click();
+  // Granting it there and coming back refreshes the permission when the window regains focus,
+  // and the step starts its check on its own.
+  await app.evaluate(({ ipcMain }) => { ipcMain.removeHandler("permission:microphone-status"); ipcMain.handle("permission:microphone-status", () => "granted"); });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByText("המיקרופון עובד", { exact: true })).toBeVisible();
   expect((await settings()).onboarding.phase).toBe("needs_mic");
   await screenshot(info, "microphone-live");
@@ -198,6 +203,9 @@ test("a profile stored on the old hold key step resumes at the engine and can wa
   await page.getByRole("button", { name: he.onboardingResumeSetup }).click();
   await expect(page.getByText(he.onboardingModelTitle, { exact: true })).toBeVisible();
   await screenshot(info, "model-resumed");
+  // Paste sits between the microphone and the engine.
+  await page.getByRole("button", { name: he.back, exact: true }).click();
+  await expect(page.getByText(he.onboardingPasteTitle, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.back, exact: true }).click();
   await expect(page.getByText(he.onboardingMicrophoneTitle, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.back, exact: true }).click();
@@ -207,7 +215,8 @@ test("a profile stored on the old hold key step resumes at the engine and can wa
 test("the welcome step has one way forward, and deferring later is persisted", async () => {
   await expect(page.getByRole("button", { name: he.onboardingContinueLater })).toHaveCount(0);
   await page.getByRole("button", { name: he.onboardingStartSetup }).click();
-  await page.getByRole("button", { name: he.onboardingContinueLater }).click();
+  // The microphone step offers "not now" in place of "continue later".
+  await page.getByRole("button", { name: he.onboardingNotNow, exact: true }).click();
   await page.reload();
   // The mock download finished behind the skipped step, so nothing is left to resume.
   await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeEnabled();
@@ -282,7 +291,7 @@ test("settings persist, native file import exports timed SRT, and history search
   await expect.poll(async () => (await settings()).removeFillerWords).toBe(!initial);
   await page.reload(); await page.getByRole("button", { name: he.settings, exact: true }).click();
   await expect(page.getByRole("switch", { name: he.removeFillerWords, exact: true })).toHaveAttribute("aria-checked", String(!initial));
-  await page.getByRole("button", { name: "איפוס…", exact: true }).click();
+  await page.getByRole("button", { name: he.settingsResetTrigger, exact: true }).click();
   await expect(page.getByText(he.settingsResetConfirmTitle, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: he.settingsResetCancel, exact: true }).click();
   expect((await settings()).onboarding.phase).toBe("activated");
@@ -304,14 +313,14 @@ test("settings persist, native file import exports timed SRT, and history search
       return pick ? { popup: () => pick() } : build(template);
     }) as unknown as typeof Menu.buildFromTemplate;
   }, he.downloadSrt);
-  await page.getByRole("button", { name: he.importAudioCompact, exact: true }).click();
+  await page.getByRole("button", { name: he.importAudio, exact: true }).click();
   await expect(page.locator(".transcript-heading")).toContainText("layout-test.wav");
   await expect(page.locator(".transcript-content")).toContainText("layout-test");
   await page.getByRole("button", { name: he.exportMenu, exact: true }).click();
   await expect.poll(() => { try { return readFileSync(output, "utf8"); } catch { return ""; } }).toContain(" --> ");
   await page.getByRole("button", { name: he.history, exact: true }).click();
   await page.getByPlaceholder(he.searchPlaceholder).fill("אין-תוצאה-כזאת");
-  await expect(page.locator(".history-browser").getByText("לא נמצאו תמלולים לחיפוש הזה.")).toBeVisible();
+  await expect(page.locator(".history-browser .history-empty")).toContainText(he.searchNoResults("אין-תוצאה-כזאת"));
   await page.getByRole("button", { name: he.clearSearch, exact: true }).click();
   await expect(page.locator('[aria-pressed="true"]')).toBeVisible();
   await screenshot(info, "history-import");
@@ -351,7 +360,7 @@ test("download hands off to Home immediately and progress never interrupts navig
   });
   await page.getByRole("button", { name: he.onboardingInstallAction, exact: true }).click();
   await expect(page.getByRole("heading", { name: "בית", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "הקלטה תתאפשר כשמנוע התמלול יסיים לרדת", exact: true })).toBeDisabled();
   await expect(page.locator(".workspace-setup-status")).toContainText("מורידים את מנוע התמלול");
   await page.getByRole("button", { name: he.settings, exact: true }).click();
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send("model:download-progress", { percent: 25, bytesDownloaded: 25, totalBytes: 100 }));
