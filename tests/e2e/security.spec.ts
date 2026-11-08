@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 import { join } from "node:path";
 
 let electronApp: ElectronApplication;
@@ -9,22 +10,21 @@ let userDataPath: string;
 
 test.beforeAll(async () => {
   userDataPath = mkdtempSync(join(tmpdir(), "meluli-e2e-"));
-  electronApp = await electron.launch({
+  ({ app: electronApp, page } = await launchApp({
     args: ["."],
     env: {
       ...process.env,
       IVRIT_E2E_MOCK: "1",
       MELULI_USER_DATA: userDataPath
     }
-  });
+  }));
 
-  page = await electronApp.firstWindow();
   await page.waitForFunction(() => Boolean((globalThis as typeof globalThis & { ivritMenuBar?: unknown }).ivritMenuBar));
 });
 
 test.afterAll(async () => {
   if (electronApp) {
-    await electronApp.close();
+    await closeApp(electronApp);
   }
   if (userDataPath) rmSync(userDataPath, { recursive: true, force: true });
 });

@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, expect, _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { test, expect, type ElectronApplication, type Page } from "@playwright/test";
+import { closeApp, launchApp } from "./helpers/launch";
 import type { IvritMenuBarApi } from "../../src/shared/preload-api";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "../../src/shared/constants";
 import { he } from "../../src/shared/locale";
@@ -11,8 +12,7 @@ let app: ElectronApplication, page: Page, profile: string;
 
 test.beforeAll(async () => {
   profile = mkdtempSync(join(tmpdir(), "meluli-interface-"));
-  app = await electron.launch({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile }, colorScheme: "dark" });
-  page = await app.firstWindow();
+  ({ app, page } = await launchApp({ args: ["."], env: { ...process.env, IVRIT_E2E_MOCK: "1", MELULI_USER_DATA: profile }, colorScheme: "dark" }));
   await page.waitForFunction(() => Boolean((globalThis as AppGlobal).ivritMenuBar));
   await page.evaluate(async () => {
     const api = (globalThis as AppGlobal).ivritMenuBar;
@@ -22,7 +22,7 @@ test.beforeAll(async () => {
   await page.reload();
   await expect(page.getByRole("button", { name: he.startRecording, exact: true })).toBeVisible();
 });
-test.afterAll(async () => { if (app) await app.close(); if (profile) rmSync(profile, { recursive: true, force: true }); });
+test.afterAll(async () => { await closeApp(app); if (profile) rmSync(profile, { recursive: true, force: true }); });
 
 async function displayState(snapshot: AppStateSnapshot, overlay = false) {
   await app.evaluate(({ BrowserWindow }, input) => {
@@ -58,8 +58,11 @@ test("runtime states keep the device's shape, RTL geometry and reachable control
       expect(cell.right).toBeLessThanOrEqual(geometry.device.right + 1);
     }
     if (["recording", "paused"].includes(status)) {
+      const fill = () => page.locator(".record-action").evaluate(el => getComputedStyle(el).backgroundImage);
+      await page.mouse.move(0, 0); // the pointer may still rest on this button from the previous state
+      const resting = await fill();
       await page.locator(".record-action").hover();
-      await expect(page.locator(".record-action")).toHaveCSS("background-image", /rgb\(39, 38, 43\)/);
+      await expect.poll(fill).not.toBe(resting);
     }
     if (["recording", "paused", "processing", "youtube_downloading"].includes(status)) await expect(page.locator(".control-dock")).toBeVisible();
     await page.screenshot({ path: info.outputPath(`main-${status}.png`) });
@@ -67,10 +70,9 @@ test("runtime states keep the device's shape, RTL geometry and reachable control
   await displayState({ status: "idle", timerStartedAt: null });
 });
 
-test("the toolbar centers the search and shows no page title", async () => {
-  const toolbar = (await page.locator(".desktop-toolbar").boundingBox())!;
-  const search = (await page.locator(".toolbar-search").boundingBox())!;
-  expect(search.x + search.width / 2).toBeCloseTo(toolbar.x + toolbar.width / 2, 0);
+// Search lives in History and waits for something to search; its centering is checked once transcripts exist.
+test("the toolbar shows no page title and no search on Home", async () => {
+  await expect(page.locator(".toolbar-search")).toHaveCount(0);
   expect((await page.locator(".desktop-toolbar h2").boundingBox())!.width).toBeLessThanOrEqual(1);
 });
 
@@ -139,14 +141,19 @@ test("new transcripts appear in the home grid and open their complete history re
     await page.getByRole("button", { name: he.startRecording, exact: true }).click();
     await page.getByRole("button", { name: he.stopRecording, exact: true }).click();
     await expect(page.locator(".transcript-content")).toContainText("תמלול דמה מקומי");
-    await expect(page.locator(".transcript-preview")).toHaveCount(index + 1);
+    // The transcript open above the list is left out of it until it is closed.
+    await expect(page.locator(".transcript-preview")).toHaveCount(index);
     await page.getByRole("button", { name: "סגירת תמלול אחרון" }).click();
+    await expect(page.locator(".transcript-preview")).toHaveCount(index + 1);
   }
   await page.screenshot({ path: info.outputPath("home-grid.png") });
   await page.locator(".transcript-preview").nth(1).click();
   await expect(page.getByRole("heading", { name: "היסטוריה", exact: true })).toBeFocused();
   await expect(page.locator(".history-reader")).toContainText("תמלול דמה מקומי");
   await expect(page.locator('.history-browser [aria-pressed="true"]')).toBeVisible();
+  const toolbar = (await page.locator(".desktop-toolbar").boundingBox())!;
+  const search = (await page.locator(".toolbar-search").boundingBox())!;
+  expect(search.x + search.width / 2).toBeCloseTo(toolbar.x + toolbar.width / 2, 0);
   expect(await page.locator(".instrument-content").evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath("history-reader.png") });
   for (const width of [560, 320]) {
@@ -158,10 +165,12 @@ test("new transcripts appear in the home grid and open their complete history re
   }
   await page.evaluate(() => document.documentElement.style.fontSize = "");
   await app.evaluate(({ BrowserWindow }, size) => { const main = BrowserWindow.getAllWindows()[0]; main.setSize(size.width, size.height); main.setMinimumSize(720, 560); }, DEFAULT_WINDOW_SIZE);
-  await page.keyboard.press("Escape");
+  // Search lives in History.
+  await page.getByRole("button", { name: he.history, exact: true }).click();
   await page.getByPlaceholder("חיפוש בתמלולים").fill("אין תוצאה כזאת");
-  await expect(page.locator(".history-empty")).toHaveText("לא נמצאו תמלולים לחיפוש הזה.");
+  await expect(page.locator(".history-browser .history-empty")).toContainText(he.searchNoResults("אין תוצאה כזאת"));
   await page.getByRole("button", { name: "ניקוי שדה החיפוש" }).click();
+  await page.getByRole("button", { name: he.workspace, exact: true }).click();
   await expect(page.locator(".transcript-preview")).toHaveCount(3);
   await page.reload();
   await expect(page.locator(".transcript-preview")).toHaveCount(3);
