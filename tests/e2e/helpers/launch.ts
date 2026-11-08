@@ -6,11 +6,15 @@ type LaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>;
 const FIRST_WINDOW_MS = Number(process.env.MELULI_E2E_FIRST_WINDOW_MS) || 20_000;
 const CLOSE_MS = 10_000;
 
-/** Launches the app and waits for its first window. On a cold CI runner Electron now and then starts without ever
- * opening one; that copy is described, killed and launched once more, so the hang never reaches the test. */
+/** Launches the app and waits for its first window. Should Electron still start without one, that copy is
+ * described, killed and launched once more, so the hang never reaches the test. */
 export async function launchApp(options: LaunchOptions): Promise<{ app: ElectronApplication; page: Page }> {
+  // Every test profile shares Electron's saved window state. After a few launches end uncleanly, AppKit asks
+  // whether to reopen windows in a modal no one can see, and every later launch waits on it. Xcode launches
+  // without state restoration the same way.
+  const launch = { ...options, args: [...(options.args ?? []), "-ApplePersistenceIgnoreState", "YES"] };
   for (let attempt = 1; ; attempt++) {
-    const app = await electron.launch(options);
+    const app = await electron.launch(launch);
     const output: string[] = [];
     const keep = (chunk: Buffer) => { output.push(chunk.toString()); };
     app.process().stdout?.on("data", keep);
