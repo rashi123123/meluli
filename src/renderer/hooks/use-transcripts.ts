@@ -2,15 +2,12 @@ import { startTransition, useDeferredValue, useEffect, useEffectEvent, useRef, u
 import type { TranscriptEdit, TranscriptRecord } from "@shared/types";
 
 interface UseTranscriptsOptions {
-  enabled?: boolean;
-  loadLatest?: boolean;
+  /** Load and page the history list; the latest transcript always loads. */
   loadHistory?: boolean;
 }
 
 export function useTranscripts(options: UseTranscriptsOptions = {}) {
-  const enabled = options.enabled ?? true;
-  const loadLatest = enabled && (options.loadLatest ?? true);
-  const loadHistory = enabled && (options.loadHistory ?? true);
+  const loadHistory = options.loadHistory ?? true;
   const [items, setItems] = useState<TranscriptRecord[]>([]);
   const [latestTranscript, setLatestTranscript] = useState<TranscriptRecord | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -23,6 +20,8 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
   const latestRequest = useRef(0);
   const pagePending = useRef(false);
   const itemsRef = useRef<TranscriptRecord[]>([]);
+  /** The search the loaded rows and their cursor came from; "" is the plain list. */
+  const loadedQuery = useRef("");
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -46,10 +45,6 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
 
   const refreshLatestTranscript = useEffectEvent(async () => {
     if (!mounted.current) return;
-    if (!loadLatest) {
-      setLatestTranscript(null);
-      return;
-    }
     const request = ++latestRequest.current;
     try {
       const response = await window.ivritMenuBar.history.list(1, null);
@@ -61,20 +56,15 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
     }
   });
 
-  const loadPage = useEffectEvent(async (append: boolean) => {
+  /** `keepLoaded` holds on to older rows already on screen, so a new transcript does not cut the list back to its first page. */
+  const loadPage = useEffectEvent(async (append: boolean, keepLoaded = false) => {
     if (!mounted.current) return;
-    if (!enabled) {
-      replaceItems([]);
-      setNextCursor(null);
-      setSelectedId(null);
-      setLatestTranscript(null);
-      return;
-    }
     if (!loadHistory) {
       setIsLoading(false);
       return;
     }
-    if (append && (pagePending.current || nextCursor === null)) return;
+    // The cursor belongs to the rows on screen, so it cannot page through a different search.
+    if (append && (pagePending.current || nextCursor === null || loadedQuery.current !== deferredSearch)) return;
     const request = ++historyRequest.current;
     pagePending.current = true;
     setErrorMessage(null);
@@ -86,10 +76,18 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
         : await window.ivritMenuBar.history.list(20, cursor);
 
       if (request !== historyRequest.current) return;
-      const merged = append ? [...itemsRef.current, ...response.items] : response.items;
+      const oldest = response.items.at(-1);
+      // Only rows past this page, which are older than its last one, are still known to belong in the list,
+      // and only when they came from this same search.
+      const kept = !append && keepLoaded && oldest && response.nextCursor !== null && loadedQuery.current === deferredSearch
+        ? itemsRef.current.filter((item) => item.createdAt <= oldest.createdAt && !response.items.some((fresh) => fresh.id === item.id))
+        : [];
+      const merged = append ? [...itemsRef.current, ...response.items] : [...response.items, ...kept];
       const deduped = Array.from(new Map(merged.map((item) => [item.id, item])).values());
       replaceItems(deduped);
-      setNextCursor(response.nextCursor);
+      loadedQuery.current = deferredSearch;
+      // The kept rows end where the list already ended, so its cursor still stands.
+      setNextCursor(kept.length ? nextCursor : response.nextCursor);
       setSelectedId((current) => deduped.some(item => item.id === current) ? current : deduped[0]?.id ?? null);
       if (!append && !deferredSearch) {
         latestRequest.current += 1;
@@ -106,32 +104,11 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
   });
 
   useEffect(() => {
-    if (!enabled) {
-      replaceItems([]);
-      setLatestTranscript(null);
-      setSelectedId(null);
-      setNextCursor(null);
-      setIsLoading(false);
-      return;
-    }
-
-    if (!loadLatest) {
-      return;
-    }
-
     void refreshLatestTranscript();
     return () => { latestRequest.current += 1; };
-  }, [enabled, loadLatest]);
+  }, []);
 
   useEffect(() => {
-    if (!enabled) {
-      replaceItems([]);
-      setSelectedId(null);
-      setNextCursor(null);
-      setIsLoading(false);
-      return;
-    }
-
     if (!loadHistory) {
       setIsLoading(false);
       return;
@@ -146,7 +123,7 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
     };
     // `loadPage` is created via `useEffectEvent` and is stable across renders.
     // Including it in the dependency array can cause unnecessary re-runs in dev.
-  }, [deferredSearch, enabled, loadHistory]);
+  }, [deferredSearch, loadHistory]);
 
   const prependTranscript = (transcript: TranscriptRecord, select = true) => {
     invalidateRequests();
@@ -155,7 +132,7 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
     setLatestTranscript(transcript);
     if (select) setSelectedId(transcript.id);
     // Reapply the current search and recover any older rows from a superseded load.
-    if (loadHistory) void loadPage(false);
+    if (loadHistory) void loadPage(false, true);
   };
 
   const replaceTranscript = (next: TranscriptRecord) => {
@@ -180,10 +157,6 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
   };
 
   const deleteTranscript = async (id: string) => {
-    if (!enabled) {
-      return false;
-    }
-
     const deleted = await window.ivritMenuBar.history.delete(id);
     if (!deleted || !mounted.current) return deleted;
 
@@ -197,14 +170,6 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
   };
 
   const deleteAllTranscripts = async () => {
-    if (!enabled) {
-      replaceItems([]);
-      setLatestTranscript(null);
-      setSelectedId(null);
-      setNextCursor(null);
-      return;
-    }
-
     const deleted = await window.ivritMenuBar.history.deleteAll();
     if (!deleted) throw new Error("התמלולים לא נמחקו. אפשר לנסות שוב.");
     if (!mounted.current) return;
@@ -225,6 +190,7 @@ export function useTranscripts(options: UseTranscriptsOptions = {}) {
     setSearchQuery,
     setSelectedId,
     prependTranscript,
+    replaceTranscript,
     updateTranscript,
     restoreTranscript,
     deleteTranscript,

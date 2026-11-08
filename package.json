@@ -1,7 +1,7 @@
 {
   "name": "meluli",
   "private": true,
-  "version": "0.1.0-preview.3",
+  "version": "0.2.0",
   "description": "Local Hebrew dictation for Apple Silicon Macs",
   "productName": "Meluli",
   "main": "./out/main/index.js",
@@ -21,14 +21,16 @@
     "dev": "pnpm run symbols && pnpm run rebuild:electron && electron-vite dev",
     "build:app": "pnpm run typecheck && pnpm run symbols && electron-vite build",
     "build": "pnpm run prepare:runtime && pnpm run build:app && electron-builder --mac dmg zip --arm64 --publish never",
+    "lab": "pnpm run symbols && vite --config vite.lab.config.ts --open /lab.html",
     "preview": "pnpm run symbols && pnpm run rebuild:electron && electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.native-host.json",
     "lint": "eslint src",
     "test": "node scripts/run-tests.mjs",
     "test:watch": "node scripts/run-tests.mjs --watch",
     "test:e2e": "pnpm run build:app && playwright test",
     "clean": "rm -rf dist dist-electron release coverage .vite",
     "build:asr-worker": "node scripts/build-cpp-worker.mjs",
+    "build:stream-worker": "node scripts/build-stream-worker.mjs",
     "fetch:model": "node --experimental-strip-types scripts/fetch-model.mjs",
     "fetch:yt-dlp": "bash scripts/build-youtube-helper.sh",
     "rebuild:native": "pnpm rebuild better-sqlite3",
@@ -39,9 +41,10 @@
     "licenses": "node scripts/collect-notices.mjs",
     "package:release": "bash scripts/package-release.sh",
     "verify:release": "bash scripts/verify-release-artifacts.sh",
-    "prepare:runtime": "pnpm run build:asr-worker && pnpm run build:native-helpers && pnpm run licenses"
+    "prepare:runtime": "pnpm run build:asr-worker && pnpm run build:stream-worker && pnpm run build:native-helpers && pnpm run licenses"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "better-sqlite3": "13.0.3",
     "zod": "4.6.7"
   },
@@ -62,6 +65,7 @@
     "electron-vite": "^4.0.0",
     "eslint": "10.12.0",
     "eslint-plugin-react-hooks": "7.1.1",
+    "glimm": "0.4.0",
     "jsdom": "^26.1.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

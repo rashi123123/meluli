@@ -286,6 +286,25 @@ describe("floating recorder control", () => {
     expect(f.insertion.captureCurrentTargetApplication).not.toHaveBeenCalled();
     expect(f.toggle).not.toHaveBeenCalled();
   });
+  it("passes a hold made while a dictation is being written to the window, keeping the paste target", async () => {
+    const f = fixture();
+    f.runtime.setOverlayReady();
+    f.runtime.updateState({ status: "processing", activeSourceType: "microphone" });
+    const send = vi.spyOn(f.runtime, "sendTo");
+    await f.controller.beginHold();
+    f.controller.endHold();
+    expect(f.insertion.captureCurrentTargetApplication).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith("overlay", IPC_CHANNELS.recordingHoldRequested, "press");
+    expect(send).toHaveBeenCalledWith("overlay", IPC_CHANNELS.recordingHoldRequested, "release");
+  });
+  it("still ignores a hold while a file or video is being transcribed", async () => {
+    const f = fixture();
+    f.runtime.setOverlayReady();
+    f.runtime.updateState({ status: "processing", activeSourceType: "imported_file" });
+    const send = vi.spyOn(f.runtime, "sendTo");
+    await f.controller.beginHold();
+    expect(send).not.toHaveBeenCalledWith("overlay", IPC_CHANNELS.recordingHoldRequested, "press");
+  });
 });
 
 describe("display-safe floating position", () => {

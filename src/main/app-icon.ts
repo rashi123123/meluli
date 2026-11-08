@@ -1,12 +1,11 @@
 import { app, nativeImage, type NativeImage } from "electron";
 import { join } from "node:path";
+import { resourcesRoot } from "./config/paths";
 
 let cachedIcon: NativeImage | null = null;
 
 export function resolveAppIconPath(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, "icons", "meluli-dock.png")
-    : join(process.cwd(), "resources", "icons", "meluli-dock.png");
+  return join(resourcesRoot(app), "icons", "meluli-dock.png");
 }
 
 export function createAppIcon(): NativeImage {

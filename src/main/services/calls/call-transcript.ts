@@ -1,5 +1,5 @@
 import type { CallSpeaker, TranscriptSegment } from "@shared/types";
-import { he } from "@shared/locale";
+import { formatClock, speakerLabel } from "../transcript-format";
 
 const ECHO_OVERLAP = 0.5;
 const ECHO_SIMILARITY = 0.6;
@@ -66,18 +66,10 @@ export function groupTurns(segments: TranscriptSegment[]): CallTurn[] {
 }
 
 export function formatCallTime(seconds: number): string {
-  const total = Math.floor(Math.max(0, seconds));
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const hours = Math.floor(total / 3600);
-  const minutes = pad(Math.floor((total % 3600) / 60));
-  return hours > 0 ? `${hours}:${minutes}:${pad(total % 60)}` : `${minutes}:${pad(total % 60)}`;
+  return formatClock(Math.floor(Math.max(0, seconds)));
 }
 
-export function speakerLabel(speaker: CallSpeaker): string {
-  return speaker === "me" ? he.callSpeakerMe : he.callSpeakerOthers;
-}
-
-export function formatTurn(turn: CallTurn, text = turn.text): string {
+function formatTurn(turn: CallTurn, text = turn.text): string {
   return `[${formatCallTime(turn.start)}] ${speakerLabel(turn.speaker)}: ${text}`;
 }
 

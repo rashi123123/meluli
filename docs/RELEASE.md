@@ -1,10 +1,10 @@
 # Releasing Meluli
 
-No public Release exists yet. A trusted release comes only from [the release workflow](#signed-release), signed with a Developer ID and notarized. Everything built on a developer's machine is an ad hoc Preview, covered from [Install a local Preview](#install-a-local-preview) on. Read [known limitations](KNOWN-LIMITATIONS.md) first.
+A trusted release comes only from [the release workflow](#signed-release), signed with a Developer ID and notarized. Everything built on a developer's machine is an ad hoc Preview, covered from [Install a local Preview](#install-a-local-preview) on. Read [known limitations](KNOWN-LIMITATIONS.md) first.
 
 ## Delivery contract
 
-The deliverables are an Apple Silicon app in DMG and ZIP, SHA-256 checksums, an update feed, source code under MIT, third-party notices and Hebrew/English documentation. Users must not need a separately installed Python or Node runtime. Downloaded model weights are separate from the installer; experimental engines do not belong in the app bundle.
+The deliverables are an Apple Silicon app in DMG and ZIP, SHA-256 checksums, an update feed, source code under MIT, third-party notices and Hebrew/English documentation. Users must not need a separately installed Python or Node runtime. Downloaded model weights are separate from the installer. The experimental streaming engine's worker ships in the bundle, and its model downloads only after it is chosen in Settings.
 
 ## Signed release
 
@@ -53,7 +53,7 @@ gh variable set APPLE_TEAM_ID --repo rashi123123/meluli --body "ABCDE12345"
 gh variable set APPLE_SIGNING_IDENTITY --repo rashi123123/meluli --body "Example Name (ABCDE12345)"
 ```
 
-`APPLE_SIGNING_IDENTITY` leaves out the `Developer ID Application:` prefix, because electron-builder adds it. Delete the local `.p12` and `.p8` from Downloads once they are stored.
+`APPLE_SIGNING_IDENTITY` leaves out the `Developer ID Application:` prefix, because the packaging script adds it. Delete the local `.p12` and `.p8` from Downloads once they are stored.
 
 ### Cut a release
 
@@ -66,11 +66,11 @@ If a stage fails, nothing is public. Fix the cause, delete the tag, and tag agai
 
 ### Updates
 
-The feed is `releases.json`, attached to each release. Only a build made with `MELULI_OFFICIAL_BUILD=1` carries the feed's address, so a build from source never looks for updates. `src/main/services/update-feed.ts` reads the feed first, over HTTPS and from GitHub's hosts only, and hands off to the system updater only when the feed names this repository's archive for a newer version. The system updater then checks the archive's designated requirement against the running app.
+The feed is `releases.json`, attached to each release. Only a build made with `MELULI_OFFICIAL_BUILD=1` carries the feed's address, so a build from source never looks for updates. `src/main/services/update-feed.ts` reads the feed first, over HTTPS and from GitHub's hosts only, and hands off to the native updater (`native/host/app/Updater.swift`) only when the feed names this repository's archive for a newer version. The updater then checks that the archive's app satisfies the running app's designated requirement and carries the same identifier and the named version, and keeps the old app until the new one is in place.
 
 The first signed release cannot reach ad hoc copies. Those users install it by hand once, and macOS asks for microphone and Accessibility again, because the signature changed. History and settings stay, because the application support folder does not change. From then on, updates keep permissions.
 
-Never change `appId`, the application support folder name, the signing team, or the ZIP name in `scripts/package-release.sh` and `src/main/services/update-feed.ts` without a migration.
+Never change the bundle identifier, the application support folder name, the signing team, or the ZIP name in `scripts/meluli2/package-native-release.sh` and `src/main/services/update-feed.ts` without a migration.
 
 ### Clean Mac check
 
@@ -85,9 +85,9 @@ sh clean-mac-check.sh 1.2.3
 Then, by hand:
 
 1. Open the DMG, drag Meluli to Applications, and open it. macOS may ask once whether to open a downloaded app. It must not say the developer cannot be verified.
-2. Turn Wi-Fi on. Setup is two screens: Welcome starts the download, and the microphone check leads to Home.
-3. Press the record button on Home, say something, and confirm the transcript appears. Nothing has asked for Accessibility yet.
-4. Allow Accessibility from the card on Home. Focus a text field in another app, press Control+Shift+R, speak, and press it again. Confirm the text arrives exactly once.
+2. Turn Wi-Fi on and go through setup: Welcome starts the download, then the microphone check and the paste step, which asks for Accessibility.
+3. Press the record button on Home, say something, and confirm the transcript appears.
+4. Focus a text field in another app, press Control+Shift+R, speak, and press it again. Confirm the text arrives exactly once.
 5. Turn Wi-Fi off, quit, reopen, and confirm dictation still works.
 6. In Settings, allow the hold key and turn on call suggestions, and confirm each asks for its own permission and that neither asked before this.
 7. For a second release: install the older one and leave it running. It checks 30 seconds after launch and every six hours. When Settings offers the new version, install it there, and confirm that history, the permissions and paste all survive.
@@ -103,13 +103,13 @@ Record the macOS version, the Mac and the result in the release notes. Do not cl
 5. Focus a text field, press Control+Shift+R, speak, and press it again to stop. Control+Shift+H opens the floating panel; Escape cancels without transcription, and a recording of three seconds or more can be restored for six seconds.
 6. If paste fails, the saved result remains in history and the floating panel exposes recovery controls. Do not repeatedly retry without checking whether the target already contains the result.
 
-There is no public download URL yet. Only the Apple M3/macOS configuration named in the known limitations has been exercised.
+Only the Apple M3/macOS configuration named in the known limitations has been exercised.
 
 A signed release replaces steps 1 and 3: Gatekeeper accepts it, and step 1 stays as an optional check.
 
 ## Before packaging
 
-- Selected engine: Whisper Turbo Q8 via whisper.cpp 1.9.5; the primary 44-clip quality gate is recorded in [BENCHMARKS.md](BENCHMARKS.md).
+- Default engine: Whisper Turbo Q8 via whisper.cpp 1.9.5; the primary 44-clip quality gate is recorded in [BENCHMARKS.md](BENCHMARKS.md). The experimental streaming engine (sherpa-onnx) has its own measurements there.
 - Build the local worker and native clipboard helper for arm64.
 - Include only required runtime binaries, icons and model metadata.
 - Pin model and tool revisions; verify downloaded bytes before use.
@@ -123,13 +123,12 @@ Install Xcode Command Line Tools, CMake, Node.js 22.12+ and the declared pnpm ve
 ```sh
 pnpm install --frozen-lockfile
 pnpm run prepare:runtime
-pnpm run build:app
-pnpm exec electron-builder --mac dmg zip --arm64 --publish never
+node scripts/meluli2/build-native-app.mjs --minify
 ```
 
-`pnpm run build:app` renders the interface icons from the SF Symbols on the build machine, so a build needs macOS. `pnpm build` performs all preparation and packaging in sequence. The ASR build pins a source commit and SHA-256, statically links Whisper/GGML, embeds Metal shaders and verifies that dynamic dependencies are macOS frameworks only. The link-import helper is optional and left out of `pnpm build`; `pnpm run fetch:yt-dlp` builds it from hash-locked Python packages and project-local managed Python, with a pinned Deno. Do not include it in a public package without legal advice.
+This builds `.build/native-app/Meluli Native Test.app`, a development build with its own bundle identifier, profile folder and keychain item, so it never opens your real history, settings or saved keys. It renders the interface icons from the SF Symbols on the build machine, so a build needs macOS. `--release` builds the app under its real identity and is for the release workflow only: a release build opens the real profile. `pnpm build` still produces the Electron development package. The ASR build pins a source commit and SHA-256, statically links Whisper/GGML, embeds Metal shaders and verifies that dynamic dependencies are macOS frameworks only. The link-import helper is optional and left out of `pnpm build`; `pnpm run fetch:yt-dlp` builds it from hash-locked Python packages and project-local managed Python, with a pinned Deno. Do not include it in a public package without legal advice.
 
-The bundle identifier is `io.github.rashi123123.meluli`. These commands sign ad hoc, not with a Developer ID, and the result is not notarized, so never publish it as a release. `scripts/package-release.sh` is the only path to a trusted build, and it refuses to run without every signing input. A model download is required on first setup. Keep the model outside the installer to avoid duplicating it on each app update.
+The bundle identifier is `io.github.rashi123123.meluli`. These commands sign ad hoc, not with a Developer ID, and the result is not notarized, so never publish it as a release. `scripts/meluli2/package-native-release.sh` is the only path to a trusted build, and it refuses to run without every signing input. A model download is required on first setup. Keep the model outside the installer to avoid duplicating it on each app update.
 
 Copies signed ad hoc, and copies run from an external drive or anywhere outside Applications, never check for updates.
 
@@ -142,7 +141,7 @@ python3 scripts/export-source.py <commit> /absolute/path/to/Meluli-source.zip
 python3 scripts/check-release-output.py /absolute/path/to/Meluli-source.zip
 ```
 
-On a packaged `.app` the check also reads the fuses, the built CSP and the entitlements. `check-release-output.py --release <version> <team id> /absolute/path/to/Meluli.app` adds what a trusted build must also prove: every Mach-O is arm64, signed by the team with a Developer ID, hardened and timestamped, links only system libraries, and the bundle passes Gatekeeper with a stapled ticket and carries the feed. The same check accepts a folder, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
+On a packaged `.app` the check also reads the built CSP and the entitlements, and, for an Electron build, the fuses. `check-release-output.py --release <version> <team id> /absolute/path/to/Meluli.app` adds what a trusted build must also prove: every Mach-O is arm64, signed by the team with a Developer ID, hardened and timestamped, links only system libraries, and the bundle passes Gatekeeper with a stapled ticket and carries the feed. The same check accepts a folder, but there it also flags third-party files: test keys in yt-dlp's dependencies, its CA bundle, and paths inside Electron and SQLite. Review those by hand; only the ZIP result is a pass or fail.
 
 The cask lives in [rashi123123/homebrew-meluli](https://github.com/rashi123123/homebrew-meluli). A daily workflow there moves it to the newest Release with a DMG and takes the hash from `SHA256SUMS.txt`, so the tag needs no extra step.
 

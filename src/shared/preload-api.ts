@@ -1,5 +1,7 @@
+import type { ConnectionTestResult, Flow, FlowApp, FlowConnection, FlowRunOutcome } from "./flows";
 import type {
   AppSettings,
+  FlowsState,
   AccessibilityPermissionStatus,
   AppStateSnapshot,
   HoldKeyStatus,
@@ -11,6 +13,7 @@ import type {
   OverlaySnapCorner,
   RecordingAudioPayload,
   RecordingHoldPhase,
+  StoredRecording,
   MainView,
   StoragePathsInfo,
   TranscriptListResult,
@@ -26,13 +29,17 @@ export interface EventSubscription {
 export interface IvritMenuBarApi {
   recording: {
     experimentalEnabled?(): Promise<boolean>;
-    experimentalBegin?(): Promise<{ sessionId: string } | null>;
+    /** `live`: the streaming engine's session, which only shows text; otherwise a research archive. */
+    experimentalBegin?(): Promise<{ sessionId: string; live?: boolean } | null>;
     experimentalChunk?(input: { sessionId: string; sequence: number; pcm: Float32Array }): Promise<void>;
     onExperimentalPreview?(listener: (preview: import("./experimental-dictation").DictationPreview) => void): EventSubscription;
     start(startedAt: number): Promise<AppStateSnapshot>;
     pause(elapsedMs: number): Promise<AppStateSnapshot>;
-    stop(): Promise<AppStateSnapshot>;
+    /** `keepAudio` keeps what was written of a recording that was cut short; otherwise it is thrown away. */
+    stop(options?: { recordingId?: string; keepAudio?: boolean }): Promise<AppStateSnapshot>;
     sendAudio(payload: RecordingAudioPayload): Promise<TranscriptRecord>;
+    /** Resolves false when this run keeps no audio on disk. */
+    audioChunk?(input: { recordingId: string; sequence: number; sampleRate: number; pcm: Float32Array }): Promise<boolean>;
   };
   transcription: {
     cancel(): Promise<boolean>;
@@ -46,6 +53,14 @@ export interface IvritMenuBarApi {
     restoreOriginal(id: string): Promise<TranscriptRecord | null>;
     delete(id: string): Promise<boolean>;
     deleteAll(): Promise<boolean>;
+  };
+  recordings: {
+    list(): Promise<StoredRecording[]>;
+    transcribe(id: string): Promise<{ transcript: TranscriptRecord; replaced: boolean }>;
+    discard(id: string): Promise<void>;
+    /** The kept WAV behind a recording, for playback. Null once it is gone. */
+    audio(id: string): Promise<Uint8Array | null>;
+    onChanged(listener: () => void): EventSubscription;
   };
   settings: {
     get(): Promise<AppSettings>;
@@ -70,7 +85,8 @@ export interface IvritMenuBarApi {
   files: {
     importAudio(): Promise<ImportAudioResult>;
     importDroppedAudio(file: File): Promise<ImportAudioResult>;
-    exportTranscriptSrt(id: string): Promise<boolean>;
+    /** Opens the export menu at `anchor`, then saves the chosen format. False when nothing was saved. */
+    exportTranscript(id: string, anchor?: { x: number; y: number }): Promise<boolean>;
     revealPath(path: string): Promise<boolean>;
     openExternal(url: string): Promise<boolean>;
     storagePaths(): Promise<StoragePathsInfo>;
@@ -93,6 +109,8 @@ export interface IvritMenuBarApi {
     onHoldKeyPressed(listener: (pressed: boolean) => void): EventSubscription;
     installUpdate(): Promise<void>;
     openLicenses(): Promise<void>;
+    /** The main window says which view it shows and whether it holds work a new window would lose. */
+    reportMainWindow(state: { view: MainView; keep: boolean }): Promise<void>;
     onRecordingToggleRequested(listener: () => void): EventSubscription;
     onRecordingHoldRequested(listener: (phase: RecordingHoldPhase) => void): EventSubscription;
     onRecordingCancelRequested(listener: () => void): EventSubscription;
@@ -119,5 +137,22 @@ export interface IvritMenuBarApi {
   };
   textInsert: {
     intoFocusedField(text: string): Promise<boolean>;
+  };
+  flows: {
+    state(): Promise<FlowsState>;
+    save(flows: Flow[]): Promise<FlowsState>;
+    /** `consent` is the user's press on the button that names the host. */
+    saveConnection(connection: Omit<FlowConnection, "consentedHost">, apiKey: string | null, consent: boolean): Promise<{ consented: boolean; state: FlowsState }>;
+    deleteConnection(id: string): Promise<FlowsState>;
+    testConnection(id: string): Promise<ConnectionTestResult>;
+    testRun(flow: Flow, text: string): Promise<FlowRunOutcome>;
+    /** Transcribes a test recording without storing or pasting it. */
+    testDictation(audio: RecordingAudioPayload): Promise<string>;
+    listApps(): Promise<FlowApp[]>;
+    /** Moves a connection first; steps without their own connection use it. */
+    makeDefault(id: string): Promise<FlowsState>;
+    choose(flowId: string | null): Promise<boolean>;
+    preview(choice: "result" | "original"): Promise<void>;
+    revert(): Promise<void>;
   };
 }

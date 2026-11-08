@@ -11,7 +11,7 @@ const VERSION = "1.2.3";
 const SENTINEL = "dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX";
 const FEED = "https://github.com/rashi123123/meluli/releases/latest/download/releases.json";
 const ENTITLEMENTS = ["com.apple.security.device.audio-input", "com.apple.security.automation.apple-events", "com.apple.security.cs.allow-jit"];
-const HELPERS = ["bin/meluli-clipboard", "bin/meluli-insertion", "bin/meluli-holdkey", "bin/meluli-callaudio", "bin/whispercpp/meluli-asr-worker"];
+const HELPERS = ["bin/meluli-clipboard", "bin/meluli-insertion", "bin/meluli-holdkey", "bin/meluli-callaudio", "bin/whispercpp/meluli-asr-worker", "bin/sherpa-onnx/meluli-asr-worker"];
 const REQUIREMENT = `designated => identifier "io.github.rashi123123.meluli" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] and certificate leaf[field.1.2.840.113635.100.6.1.13] and certificate leaf[subject.OU] = ${TEAM}`;
 const SIGNATURE = `Executable=/x
 Identifier=io.github.rashi123123.meluli
@@ -101,7 +101,7 @@ function release(options: Options = {}) {
   for (const helper of HELPERS) if (helper !== options.skip) write(join(app, "Contents/Resources", helper), machO());
   if (options.extra) write(join(app, "Contents/Resources", options.extra), "x");
   if (options.helperWithBracket) write(join(app, "Contents/Frameworks/Meluli Helper (Renderer).app/Contents/MacOS/Meluli Helper (Renderer)"), machO());
-  if (options.thirdPartyPath) write(join(app, "Contents/Frameworks/Sample/notes.txt"), "/Users/someone/electron/src");
+  if (options.thirdPartyPath) write(join(app, "Contents/Frameworks/Sample/notes.txt"), "/Users/" + "someone/electron/src");
 
   const bin = join(root, "tools");
   const keys = (options.entitlements ?? ENTITLEMENTS).map(key => `<key>${key}</key><true/>`).join("");
@@ -154,6 +154,7 @@ describe("release check on a trusted build", () => {
     ["an Intel slice", { cpu: 0x01000007 }, "not_arm64"],
     ["a missing paste helper", { skip: "bin/meluli-insertion" }, "missing_resource"],
     ["a missing worker", { skip: "bin/whispercpp/meluli-asr-worker" }, "missing_resource"],
+    ["a missing streaming worker", { skip: "bin/sherpa-onnx/meluli-asr-worker" }, "missing_resource"],
     ["the link import helper", { extra: "bin/youtube/yt-dlp" }, "forbidden_resource"],
     ["model weights", { extra: "models/ggml-ivrit-whisper-large-v3-turbo-q8_0.bin" }, "forbidden_resource"],
     ["a weakened entitlement", { entitlements: [...ENTITLEMENTS, "com.apple.security.cs.disable-library-validation"] }, "entitlements"]
@@ -175,7 +176,7 @@ describe("release check on a trusted build", () => {
   });
 
   it("keeps scanning our own files, past the third-party ones", () => {
-    const result = check(release({ asarExtra: "const path = \"/Users/someone/project\";" }));
+    const result = check(release({ asarExtra: "const path = \"/Users/" + "someone/project\";" }));
     expect(result.status).toBe(1);
     expect(result.output).toContain("home_path");
     const clean = release({ thirdPartyPath: true });

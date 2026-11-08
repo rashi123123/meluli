@@ -40,11 +40,11 @@ function fixture(): AppContextValue {
   settings.modelState.downloadState = "ready";
   return {
     loading: false, settings, appState: { status: "idle", timerStartedAt: null }, permissionStatus: "granted", accessibilityPermissionStatus: "granted",
-    modelProgress: null, storagePaths: null, lastTranscript: transcript, onboarding: deriveOnboardingDisplayState(settings, "granted"),
+    modelProgress: null, lastTranscript: transcript, onboarding: deriveOnboardingDisplayState(settings, "granted"),
     activeView: "workspace", setActiveView: vi.fn(), errorMessage: null, setErrorMessage: vi.fn(),
-    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn().mockResolvedValue(false), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
-    transcripts: { latestTranscript: transcript, items: [], selectedId: null, selectedTranscript: null, searchQuery: "", setSearchQuery: vi.fn(), setSelectedId: vi.fn(), prependTranscript: vi.fn(), updateTranscript: vi.fn(), restoreTranscript: vi.fn(), deleteTranscript: vi.fn(), deleteAllTranscripts: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), hasMore: false, isLoading: false },
-    refreshSettings: vi.fn(), updateSetting: vi.fn(), requestMicrophonePermission: vi.fn(), requestAccessibilityPermission: vi.fn(), downloadModel: vi.fn(), removeModel: vi.fn(), importAudio: vi.fn(), importDroppedAudio: vi.fn(), submitYouTubeUrl: vi.fn(), cancelActiveYouTube: vi.fn(), cancelPendingYouTube: vi.fn(), revealStorage: vi.fn(), rerunOnboarding: vi.fn(), resetEverything: vi.fn(), trackOnboardingStepViewed: vi.fn().mockResolvedValue(undefined), completeOnboardingStep: vi.fn(), continueOnboardingLater: vi.fn(), goBackOnboardingStep: vi.fn(), resumeOnboardingFlow: vi.fn(), dismissOnboardingOptionalAction: vi.fn()
+    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), heldRecordingSaved: vi.fn(() => false), endHold: vi.fn(), startRecording: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn().mockResolvedValue(false), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
+    transcripts: { latestTranscript: transcript, items: [], selectedId: null, selectedTranscript: null, searchQuery: "", setSearchQuery: vi.fn(), setSelectedId: vi.fn(), prependTranscript: vi.fn(), replaceTranscript: vi.fn(), updateTranscript: vi.fn(), restoreTranscript: vi.fn(), deleteTranscript: vi.fn(), deleteAllTranscripts: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), hasMore: false, isLoading: false },
+    updateSetting: vi.fn(), requestMicrophonePermission: vi.fn(), requestAccessibilityPermission: vi.fn(), downloadModel: vi.fn(), importAudio: vi.fn(), importDroppedAudio: vi.fn(), submitYouTubeUrl: vi.fn(), cancelActiveYouTube: vi.fn(), cancelPendingYouTube: vi.fn(), revealStorage: vi.fn(), rerunOnboarding: vi.fn(), resetEverything: vi.fn(), trackOnboardingStepViewed: vi.fn().mockResolvedValue(undefined), completeOnboardingStep: vi.fn(), continueOnboardingLater: vi.fn(), goBackOnboardingStep: vi.fn(), resumeOnboardingFlow: vi.fn(), dismissOnboardingOptionalAction: vi.fn()
   };
 }
 async function render(node: ReactNode) { await act(async () => root.render(<AppContext.Provider value={context}><OverlayContext.Provider value={context}>{node}</OverlayContext.Provider></AppContext.Provider>)); }
@@ -53,7 +53,7 @@ const unavailable = (item: Element) => item.getAttribute("aria-disabled") === "t
 beforeEach(() => {
   reduced = false; context = fixture(); host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   vi.stubGlobal("matchMedia", () => ({ matches: reduced, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
-  Object.assign(window, { ivritMenuBar: { transcription: { cancel: vi.fn() }, files: { exportTranscriptSrt: vi.fn(), openExternal: vi.fn() }, overlay: { open: vi.fn() }, clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } } });
+  Object.assign(window, { ivritMenuBar: { transcription: { cancel: vi.fn() }, files: { exportTranscript: vi.fn(), openExternal: vi.fn() }, overlay: { open: vi.fn() }, clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } } });
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function(this: HTMLDialogElement) { this.open = false; } });
 });
@@ -128,13 +128,14 @@ it("keeps history loading distinct from empty and disables duplicate pagination"
   const load = [...host.querySelectorAll("button")].find(b => b.textContent === he.loadMore)!;
   expect(unavailable(load)).toBe(true);
   context.transcripts.isLoading = false; context.transcripts.searchQuery = "לא קיים";
-  await render(<HistoryPanel />); expect(host.textContent).toContain("לא נמצאו תמלולים");
+  await render(<HistoryPanel />); expect(host.textContent).toContain(he.searchNoResults("לא קיים"));
 });
 
-it("exports SRT only for a transcript with timed segments and keeps source actions", async () => {
-  await render(<TranscriptDocument transcript={transcript} />); expect(host.textContent).not.toContain(he.downloadSrt);
+it("offers one export menu for every transcript and keeps source actions", async () => {
+  await render(<TranscriptDocument transcript={transcript} />);
+  expect(button(he.exportMenu)?.getAttribute("aria-haspopup")).toBe("menu"); expect(host.textContent).not.toContain(he.downloadSrt);
   await render(<TranscriptDocument transcript={{ ...transcript, sourceType: "youtube", sourceUrl: "https://youtu.be/test", segments: [{ start: 0, end: 1, text: "תמלול" }] }} />);
-  expect(host.textContent).toContain(he.downloadSrt); expect(button(he.openOriginal)).toBeTruthy();
+  expect(button(he.exportMenu)).toBeTruthy(); expect(button(he.openOriginal)).toBeTruthy();
 });
 
 it("allows Tab out of shortcut capture and Escape restores the saved value", async () => {
@@ -189,10 +190,11 @@ it("opens the actual record selected from the home grid in history", async () =>
   expect(context.setActiveView).toHaveBeenCalledWith("history");
 });
 
-it("home search reports no matches separately from a fresh history", async () => {
-  context.transcripts.searchQuery = "לא קיים";
-  await render(<RecentTranscripts />);
-  expect(host.querySelector('[role="status"]')?.textContent).toBe("לא נמצאו תמלולים לחיפוש הזה.");
+it("leaves the transcript already open above out of Home's recent list", async () => {
+  context.transcripts.items = [transcript];
+  await render(<RecentTranscripts excludeId={transcript.id} />);
+  expect(host.querySelector(".transcript-preview")).toBeNull();
+  expect(host.querySelector('[role="status"]')?.textContent).toBe("");
 });
 
 
@@ -211,7 +213,7 @@ describe("setup component states", () => {
   it.each(["granted", "denied", "not-determined", "restricted", "unknown"] as const)("microphone permission %s remains readable", async permissionStatus => {
     await render(<MicrophoneStep permissionStatus={permissionStatus} />);
     expect(host.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe("0");
-    expect(host.querySelector('[role="status"]')?.textContent).toBe(permissionStatus === "granted" ? "המיקרופון מאושר. נבדוק ששומעים." : he.permissionNeeded);
+    expect(host.querySelector('[role="status"]')?.textContent).toBe(permissionStatus === "granted" ? "המיקרופון מאושר. נבדוק ששומעים." : permissionStatus === "denied" || permissionStatus === "restricted" ? he.microphoneDenied : he.permissionNeeded);
     expect(host.querySelector('[role="status"]')?.textContent).not.toBe("המיקרופון עובד");
   });
   it.each([
@@ -219,28 +221,41 @@ describe("setup component states", () => {
     ["listening", 0.25, "אפשר להגיד כמה מילים"],
     ["detected", 0.5, "המיקרופון עובד"]
   ] as const)("microphone %s shows its actual check state and measured level", async (status, level, message) => {
-    const stop = vi.fn();
-    await render(<MicrophoneStep permissionStatus="granted" status={status} level={level} onStop={stop} />);
+    await render(<MicrophoneStep permissionStatus="granted" status={status} level={level} />);
     expect(host.querySelector('[role="status"]')?.textContent).toBe(message);
     expect(host.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe(String(level * 100));
-    const stopButton = [...host.querySelectorAll("button")].find(node => node.textContent === "עצירת הבדיקה");
-    if (status === "requesting") expect(stopButton).toBeUndefined();
-    else { await act(async () => stopButton!.click()); expect(stop).toHaveBeenCalledOnce(); }
+    // The check has no stop button of its own: Continue ends it, and leaving the step stops it.
+    expect(host.querySelector("button")).toBeNull();
+  });
+  it.each([
+    ["has not answered yet", () => new Promise<MediaDeviceInfo[]>(() => {})],
+    ["cannot list devices", () => Promise.reject(new Error("not allowed"))]
+  ] as const)("does not call a saved microphone unavailable while the system %s", async (_, enumerateDevices) => {
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { enumerateDevices } });
+    await render(<MicrophoneStep permissionStatus="granted" deviceId="usb-mic" onSelectDevice={vi.fn()} />);
+    expect(host.textContent).not.toContain(he.microphoneUnavailable);
+  });
+  it("offers to switch away from a saved microphone the system no longer lists", async () => {
+    const devices = [{ kind: "audioinput", deviceId: "built-in", label: "MacBook Microphone" }];
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { enumerateDevices: () => Promise.resolve(devices) } });
+    await render(<MicrophoneStep permissionStatus="granted" deviceId="usb-mic" onSelectDevice={vi.fn()} />);
+    expect(host.querySelector("select option")?.textContent).toBe(he.microphoneUnavailable);
   });
   it("keeps microphone check failure readable beside the meter", async () => {
     await render(<MicrophoneStep permissionStatus="granted" status="error" error="המיקרופון נותק. חברו אותו ונסו שוב." />);
     expect(host.querySelector('[role="alert"]')?.textContent).toBe("המיקרופון נותק. חברו אותו ונסו שוב.");
     expect(host.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe("0");
   });
-  it.each(["not_started", "needs_mic", "needs_model"] as const)("onboarding %s keeps its actions available", async phase => {
+  it.each(["not_started", "needs_mic", "needs_paste", "needs_model"] as const)("onboarding %s keeps its actions available", async phase => {
     context.settings!.onboarding.phase = phase;
     context.settings!.onboarding.surface = "flow";
     context.permissionStatus = phase === "needs_mic" ? "denied" : "granted";
+    context.accessibilityPermissionStatus = phase === "needs_paste" ? "denied" : "granted";
     context.settings!.modelState.downloadState = "missing";
     context.onboarding = deriveOnboardingDisplayState(context.settings!, context.permissionStatus);
     await render(<OnboardingFlow />);
     const action = host.querySelector<HTMLButtonElement>('.onboarding-copy [data-onboarding-action="primary"]');
-    expect(action?.textContent).toBe(phase === "not_started" ? he.onboardingStartSetup : phase === "needs_mic" ? he.onboardingMicrophoneAction : he.onboardingInstallAction);
+    expect(action?.textContent).toBe(phase === "not_started" ? he.onboardingStartSetup : phase === "needs_mic" ? he.onboardingPasteOpenSettings : phase === "needs_paste" ? he.onboardingPasteAction : he.onboardingInstallAction);
     expect(host.querySelector(".onboarding-step-details")).toBeTruthy();
     expect(document.activeElement).toBe(host.querySelector("[data-onboarding-heading]"));
     expect(host.querySelector(".animate-in")).toBeNull();
@@ -266,6 +281,46 @@ describe("floating recorder presentation states", () => {
       app: { onRecordingToggleRequested: () => () => {}, onRecordingHoldRequested: (listener: (phase: "press" | "release") => void) => { holdKey = listener; return () => {}; }, onRecordingCancelRequested: (listener: () => void) => { cancelKey = listener; return () => {}; }, onRecordingUndoRequested: () => () => {}, onRecordingInterruptRequested: () => () => {} },
       overlay: { ready: vi.fn(), hide: vi.fn(), setSize: vi.fn(), onSnapPreview: () => () => {} },
       textInsert: { intoFocusedField: vi.fn() }
+    });
+  });
+  describe("flows", () => {
+    const flows = () => ({ choose: vi.fn().mockResolvedValue(true), preview: vi.fn().mockResolvedValue(undefined), revert: vi.fn().mockResolvedValue(undefined) });
+    beforeEach(() => {
+      Object.assign(window.ivritMenuBar, { flows: flows() });
+      context.settings!.flows = [{ id: "mail", name: "מייל", icon: "envelope", apps: [], delivery: "paste", enabled: true, steps: [{ id: "s", kind: "llm", instruction: "x", connectionId: null }] }];
+    });
+    it("lets the dictation switch flows from a pill that takes the timer's place", async () => {
+      context.appState = { status: "recording", timerStartedAt: Date.now(), activeSourceType: "microphone",
+        overlaySession: { id: "r", phase: "recording", transcriptId: null, transcriptText: null, targetAppName: "Mail", lastErrorCode: null, flowId: "mail", flowChoices: [{ id: "mail", name: "מייל", icon: "envelope" }] } };
+      await render(<FloatingRecorderHud />);
+      expect(host.querySelector(".hud-time")).toBeNull();
+      await act(async () => button("פעולה: מייל").click());
+      await act(async () => button("בלי פעולה").click());
+      expect(window.ivritMenuBar.flows.choose).toHaveBeenCalledWith(null);
+    });
+    it("shows a preview and pastes the result or the original", async () => {
+      context.appState = { status: "processing", timerStartedAt: 1, activeSourceType: "microphone",
+        overlaySession: { id: "p", phase: "processing", transcriptId: "t", transcriptText: "Dear Dana, I am late.", targetAppName: "Mail", lastErrorCode: null, flowId: "mail", flowStatus: "preview" } };
+      await render(<FloatingRecorderHud />);
+      expect(host.textContent).toContain("Dear Dana, I am late.");
+      await act(async () => button("הדבקה").click());
+      expect(window.ivritMenuBar.flows.preview).toHaveBeenCalledWith("result");
+      await act(async () => button("הדבקת המקור").click());
+      expect(window.ivritMenuBar.flows.preview).toHaveBeenCalledWith("original");
+    });
+    it("stays after a pasted result to offer the original back", async () => {
+      context.appState.overlaySession = { id: "a", phase: "success", insertionOutcome: "confirmed", transcriptId: "t", transcriptText: "result", targetAppName: "Mail", lastErrorCode: null, flowId: "mail", flowStatus: "applied" };
+      await render(<FloatingRecorderHud />);
+      expect(window.ivritMenuBar.overlay.hide).not.toHaveBeenCalled();
+      await act(async () => button("חזרה למקור").click());
+      expect(window.ivritMenuBar.flows.revert).toHaveBeenCalledOnce();
+    });
+    it("says the original was pasted when the flow failed", async () => {
+      context.appState.overlaySession = { id: "f", phase: "success", insertionOutcome: "confirmed", transcriptId: "t", transcriptText: "raw", targetAppName: "Mail", lastErrorCode: null, flowId: "mail", flowStatus: "failed", flowFailure: "auth" };
+      await render(<FloatingRecorderHud />);
+      expect(host.textContent).toContain("הודבק המקור");
+      expect(host.textContent).toContain("הספק דחה את המפתח");
+      expect(button("פתיחת הפעולות")).toBeTruthy();
     });
   });
   it.each(["idle", "recording", "paused", "processing", "youtube_downloading", "error"] as const)("%s presents controls without waiting for an exit", async status => {
@@ -342,6 +397,15 @@ describe("floating recorder presentation states", () => {
     await render(<FloatingRecorderHud />);
     await act(async () => holdKey("press"));
     expect(context.recording.beginHold).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain(he.holdWhileWriting);
+  });
+  it("records new speech from a held key when the failed audio already waits in history", async () => {
+    context.recording.heldRecording = { reason: "failed", durationMs: 4_000 };
+    context.recording.heldRecordingSaved = vi.fn(() => true);
+    await render(<FloatingRecorderHud />);
+    await act(async () => holdKey("press"));
+    expect(context.recording.beginHold).toHaveBeenCalledOnce();
+    expect(context.recording.resendHeldRecording).not.toHaveBeenCalled();
   });
   it("retries held audio from a held key instead of recording over it", async () => {
     context.recording.heldRecording = { reason: "failed", durationMs: 4_000 };
@@ -458,12 +522,29 @@ it("stops reading the microphone as soon as reduced motion turns on", async () =
 });
 
 it("clearing search returns focus to the field", async () => {
+  context.activeView = "history";
   context.transcripts.searchQuery = "מילה";
   await render(<App />);
   const field = host.querySelector<HTMLInputElement>("#history-search")!;
   await act(async () => button(he.clearSearch).click());
   expect(context.transcripts.setSearchQuery).toHaveBeenCalledWith("");
   expect(document.activeElement).toBe(field);
+});
+
+it("the history search shows ⌘F until there is text to clear, and only on History", async () => {
+  await render(<App />);
+  expect(host.querySelector("#history-search")).toBeNull();
+  context.activeView = "history";
+  await render(<App />);
+  const field = host.querySelector<HTMLInputElement>("#history-search")!;
+  expect(field.getAttribute("aria-keyshortcuts")).toBe("Meta+F");
+  const hint = host.querySelector(".search-shortcut");
+  expect(hint?.textContent).toBe("⌘F");
+  expect(hint?.getAttribute("aria-hidden")).toBe("true");
+  context.transcripts.searchQuery = "מילה";
+  await render(<App />);
+  expect(host.querySelector(".search-shortcut")).toBeNull();
+  expect(button(he.clearSearch)).toBeTruthy();
 });
 
 it("dismissing a notice leaves focus in the content", async () => {
@@ -497,7 +578,7 @@ it("announces copy results and search outcomes through regions that are already 
   context.transcripts.items = []; context.transcripts.searchQuery = "לא קיים";
   await render(<HistoryPanel />);
   expect(host.querySelector(".history-browser [role=\"status\"]")).toBe(status);
-  expect(status.textContent).toContain("לא נמצאו תמלולים");
+  expect(status.textContent).toContain(he.searchNoResults("לא קיים"));
 });
 
 it("shows the floating window's position on a picture of the screen", async () => {
@@ -570,8 +651,8 @@ describe("recovery on Home", () => {
     await render(<WorkspaceView />);
     expect(host.textContent).toContain(he.onboardingFirstTranscriptTitle);
     expect(host.querySelector("kbd")?.textContent).toBeTruthy();
-    expect(host.textContent).toContain(he.onboardingAccessibilityHint);
-    await act(async () => button(he.close).click());
+    expect(host.textContent).toContain(he.onboardingFirstTranscriptBodyNoPaste);
+    await act(async () => button(he.onboardingCloseGuide).click());
     expect(context.dismissOnboardingOptionalAction).toHaveBeenCalledWith("recording_shortcut");
   });
 

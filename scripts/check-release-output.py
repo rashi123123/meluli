@@ -2,7 +2,8 @@
 Usage: python3 scripts/check-release-output.py /absolute/path/to/Meluli-source.zip
        python3 scripts/check-release-output.py /absolute/path/to/Meluli.app
        python3 scripts/check-release-output.py --release <version> <team id> /absolute/path/to/Meluli.app
-A packaged app is also held to its fuses, built CSP and entitlements. --release adds everything a
+A packaged app is also held to its fuses, built CSP and entitlements; the native app (Meluli 2.0, D20)
+has no Electron framework, so it is held to its built CSP, entitlements and the absence of development keys. --release adds everything a
 trusted release needs: the Developer ID signature of every binary, notarization, and the bundle's contents.
 Prints paths, finding types and counts only, never the matched values. Exits 1 on any finding.
 """
@@ -20,10 +21,10 @@ import zipfile
 
 ALLOWED_TOP_LEVEL = {
     '.github', '.gitignore', '.npmrc', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'README.en.md', 'README.md',
-    'SECURITY.md', 'SOURCE-MANIFEST.json', 'THIRD_PARTY_NOTICES.md', 'TRADEMARKS.md', 'benchmarks', 'build', 'components.json', 'docs',
+    'CODE_OF_CONDUCT.md', 'SECURITY.md', 'SOURCE-MANIFEST.json', 'THIRD_PARTY_NOTICES.md', 'TRADEMARKS.md', 'benchmarks', 'build', 'components.json', 'docs',
     'electron-builder.yml', 'electron.vite.config.ts', 'eslint.config.mjs', 'native', 'package.json',
-    'playwright.config.ts', 'pnpm-lock.yaml', 'resources', 'scripts', 'src', 'tests', 'tsconfig.json',
-    'tsconfig.node.json', 'tsconfig.web.json', 'vitest.config.ts',
+    'playwright.config.ts', 'playwright.perf.config.ts', 'pnpm-lock.yaml', 'resources', 'scripts', 'src', 'tests', 'tsconfig.json',
+    'tsconfig.native-host.json', 'tsconfig.node.json', 'tsconfig.web.json', 'vite.lab.config.ts', 'vitest.config.ts',
 }
 FORBIDDEN_NAME = re.compile(
     r'(^|/)(\.git|\.env(\.|$)|\.DS_Store|design-demo|benchmarks/(v\d+|final|fix-paste))(/|$)'
@@ -48,7 +49,7 @@ AD_HOC_ENTITLEMENTS = ENTITLEMENTS | {'com.apple.security.cs.disable-library-val
 APP_ID = 'io.github.rashi123123.meluli'
 MINIMUM_SYSTEM_VERSION = '13.3'
 USAGE_DESCRIPTIONS = ('NSMicrophoneUsageDescription', 'NSAudioCaptureUsageDescription', 'NSAppleEventsUsageDescription')
-REQUIRED_RESOURCES = ('bin/meluli-clipboard', 'bin/meluli-insertion', 'bin/meluli-holdkey', 'bin/meluli-callaudio', 'bin/whispercpp/meluli-asr-worker')
+REQUIRED_RESOURCES = ('bin/meluli-clipboard', 'bin/meluli-insertion', 'bin/meluli-holdkey', 'bin/meluli-callaudio', 'bin/whispercpp/meluli-asr-worker', 'bin/sherpa-onnx/meluli-asr-worker')
 # Model weights download separately, and link import is left out of a public package on legal advice.
 FORBIDDEN_RESOURCE = re.compile(r'(^|/)(bin/youtube|yt-dlp|deno)(/|$)|\.(gguf|safetensors|mlmodelc)$|(^|/)ggml-[^/]*\.bin$', re.IGNORECASE)
 UPDATE_FEED = b'/releases/latest/download/releases.json'
@@ -59,6 +60,18 @@ NOTARIZED = 'source=Notarized Developer ID'
 THIRD_PARTY = re.compile(r'^Contents/Frameworks/|/node_modules/better-sqlite3/deps/')
 # The Apple certificate extension that marks a Developer ID Application leaf.
 DEVELOPER_ID_LEAF = 'certificate leaf[field.1.2.840.113635.100.6.1.13]'
+
+
+# A development build of the native app names its own profile and keychain item; a release has neither.
+DEVELOPMENT_KEYS = ('MeluliDefaultUserData', 'MeluliSafeStorageService', 'MeluliSafeStorageAccount')
+
+
+def is_native(app):
+    return (app / 'Contents/Resources/app/out/main/index.js').is_file()
+
+
+def native_file(app, *parts):
+    return (app / 'Contents/Resources/app/out' / Path(*parts)).read_bytes()
 
 
 def fuses_hold(app):
@@ -83,7 +96,7 @@ def asar_files(app, *folders):
 
 
 def built_csp_holds(app):
-    html = dict(asar_files(app, 'out', 'renderer'))['index.html']
+    html = native_file(app, 'renderer', 'index.html') if is_native(app) else dict(asar_files(app, 'out', 'renderer'))['index.html']
     directive = re.search(rb'connect-src\s+([^;]*);', html)
     return directive is not None and directive.group(1).strip() == b"'self'"
 
@@ -104,7 +117,8 @@ def entitlements_hold(app):
 
 
 def packaged_findings(app):
-    for label, holds in (('fuse_state', fuses_hold), ('built_csp', built_csp_holds), ('entitlements', entitlements_hold)):
+    checks = (('built_csp', built_csp_holds), ('entitlements', entitlements_hold))
+    for label, holds in checks if is_native(app) else (('fuse_state', fuses_hold), *checks):
         try:
             passed = holds(app)
         except (OSError, ValueError, KeyError, IndexError, struct.error, plistlib.InvalidFileException, subprocess.SubprocessError):
@@ -187,7 +201,7 @@ def info_plist_holds(app, version):
             and info.get('CFBundleShortVersionString') == version
             and info.get('CFBundleVersion') == version
             and info.get('LSMinimumSystemVersion') == MINIMUM_SYSTEM_VERSION
-            and bool(info.get('ElectronAsarIntegrity'))
+            and (not any(key in info for key in DEVELOPMENT_KEYS) if is_native(app) else bool(info.get('ElectronAsarIntegrity')))
             and all(info.get(key) for key in USAGE_DESCRIPTIONS))
 
 
@@ -214,6 +228,8 @@ def stapled_ticket_holds(app):
 
 
 def update_feed_holds(app):
+    if is_native(app):
+        return UPDATE_FEED in native_file(app, 'main', 'index.js')
     return any(UPDATE_FEED in payload for _name, payload in asar_files(app, 'out', 'main'))
 
 

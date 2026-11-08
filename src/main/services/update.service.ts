@@ -9,6 +9,8 @@ export interface UpdateDriver {
   setFeedURL(options: { url: string; serverType: "json" }): void;
   checkForUpdates(): void;
   quitAndInstall(): void;
+  /** The native host stages the downloaded update for after quitting, throwing if it cannot. */
+  prepareInstall?(): void;
   on(event: "update-available" | "update-not-available", listener: () => void): unknown;
   on(event: "update-downloaded", listener: (event: unknown, notes: string, name: string) => void): unknown;
   on(event: "error", listener: (error: Error) => void): unknown;
@@ -111,6 +113,21 @@ export class UpdateService {
 
   install(): void {
     if (this.status === "ready") this.driver.quitAndInstall();
+  }
+
+  /** Whether quitting now will install an update. Run it before the app tears anything down: an
+   * update that cannot be staged shows as failed and the app keeps running. */
+  prepareInstall(): boolean {
+    if (this.status !== "ready") return false;
+    if (!this.driver.prepareInstall) return true;
+    try {
+      this.driver.prepareInstall();
+      return true;
+    } catch (error) {
+      console.warn("[UpdateService] update install failed", error);
+      this.setStatus("failed", null);
+      return false;
+    }
   }
 
   private stopChecking(): void {

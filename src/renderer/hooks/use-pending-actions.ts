@@ -1,13 +1,14 @@
 import { useAppContext } from "@/context/app-context";
 import { getHebrewErrorMessage } from "@shared/error-utils";
 import { useRef, useState } from "react";
+import { he } from "@shared/locale";
 
 export function usePendingActions() {
   const { setErrorMessage } = useAppContext();
   const [pendingActions, setPendingActions] = useState<ReadonlySet<string>>(new Set());
   const pendingActionsRef = useRef(new Set<string>());
 
-  const runAction = async (key: string, action: () => Promise<unknown>, fallback = "הפעולה לא הושלמה. אפשר לנסות שוב.") => {
+  const runAction = async (key: string, action: () => Promise<unknown>, fallback = he.actionFailed) => {
     if (pendingActionsRef.current.has(key)) return false;
     pendingActionsRef.current.add(key);
     setPendingActions(new Set(pendingActionsRef.current));

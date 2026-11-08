@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { formatDate, formatTranscriptDurationMs } from "@/lib/format";
-import { getTranscriptTitle } from "@/lib/transcript-source";
+import { getTranscriptTitle } from "@shared/transcript-title";
 import type { TranscriptRecord } from "@shared/types";
 
 export function HistoryList({ items, selectedId, onSelect }: { items: TranscriptRecord[]; selectedId: string | null; onSelect: (id: string) => void }) {

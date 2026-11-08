@@ -1,20 +1,22 @@
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { z } from "zod";
+import { execFile, type ChildProcessWithoutNullStreams } from "node:child_process";
+import * as z from "zod";
 import type { HoldKeyChoice, HoldKeyStatus } from "@shared/types";
-import { ProcessLines } from "./process-lines";
+import { endHelper, RestartBudget, sendLine, spawnLineHelper } from "./line-helper";
+import { minimalChildEnv } from "./child-env";
 
+/** The failure reasons native/HoldKey.swift reports before it exits (checked against the Swift source in a test). */
+export const HOLD_KEY_FAILURES = ["permission", "tap", "input"] as const;
 const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
   z.object({ type: z.literal("down") }),
   z.object({ type: z.literal("up") }),
-  z.object({ type: z.literal("error"), reason: z.enum(["permission", "tap", "input"]) })
+  z.object({ type: z.literal("error"), reason: z.enum(HOLD_KEY_FAILURES) })
 ]);
+
+type HelperFailure = Extract<z.infer<typeof eventSchema>, { type: "error" }>["reason"];
 
 const MAX_LINE_LENGTH = 256;
 const PERMISSION_EXIT_CODE = 3;
-const RESTART_DELAY_MS = 1000;
-const RESTART_WINDOW_MS = 60_000;
-const MAX_RESTARTS = 3;
 const ONE_SHOT_DEADLINE_MS = 5000;
 
 /** Runs the key helper only while a key is chosen and permission exists. */
@@ -22,10 +24,11 @@ export class HoldKeyService {
   private child: ChildProcessWithoutNullStreams | null = null;
   private watching: Exclude<HoldKeyChoice, "off"> | null = null;
   private status: HoldKeyStatus = "off";
-  private restarts: number[] = [];
-  private restartTimer: NodeJS.Timeout | null = null;
+  private readonly restarts = new RestartBudget();
   private generation = 0;
   private disposed = false;
+  /** The reason in the running helper's last `error` line; the helper exits 3 after every one. */
+  private lastFailure: HelperFailure | null = null;
   onDown: (() => void) | null = null;
   onUp: (() => void) | null = null;
 
@@ -47,7 +50,7 @@ export class HoldKeyService {
 
   private oneShot(argument: "--check" | "--request"): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      execFile(this.executable, [argument], { timeout: ONE_SHOT_DEADLINE_MS }, (error, stdout) => {
+      execFile(this.executable, [argument], { timeout: ONE_SHOT_DEADLINE_MS, env: minimalChildEnv(process.env) }, (error, stdout) => {
         if (error) reject(error);
         else resolve(stdout.trim() === "granted");
       });
@@ -58,7 +61,7 @@ export class HoldKeyService {
   async sync(restarting = false): Promise<void> {
     const generation = ++this.generation;
     // A restart must count against the limit. Anything else is a fresh attempt.
-    if (!restarting) this.restarts = [];
+    if (!restarting) this.restarts.reset();
     const key = this.getKey();
     if (key === "off" || process.platform !== "darwin") {
       this.stop();
@@ -104,36 +107,22 @@ export class HoldKeyService {
   }
 
   private watch(key: Exclude<HoldKeyChoice, "off">): void {
-    const child = spawn(this.executable, [], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawnLineHelper(this.executable, { schema: eventSchema, maxLineLength: MAX_LINE_LENGTH }, {
+      isCurrent: (candidate) => this.child === candidate,
+      onEvent: (_child, event) => this.handleEvent(event),
+      onGone: (gone, code) => this.childGone(gone, code)
+    });
     this.child = child;
     this.watching = key;
-    const lines = new ProcessLines(child.stdout);
-    child.stderr.resume();
-    child.stdin.on("error", () => child.kill("SIGTERM"));
-    child.once("error", () => this.childGone(child, null));
-    child.once("close", (code) => {
-      lines.close();
-      this.childGone(child, code);
-    });
-    lines.on("line", (line) => {
-      if (this.child === child) this.handleLine(child, line);
-    });
-    child.stdin.write(`${JSON.stringify({ type: "watch", key })}\n`);
+    this.lastFailure = null;
+    sendLine(child, { type: "watch", key });
   }
 
-  private handleLine(child: ChildProcessWithoutNullStreams, line: string): void {
-    let event: z.infer<typeof eventSchema>;
-    try {
-      if (line.length > MAX_LINE_LENGTH) throw new Error("line too long");
-      event = eventSchema.parse(JSON.parse(line));
-    } catch {
-      child.kill("SIGTERM");
-      return;
-    }
-
+  private handleEvent(event: z.infer<typeof eventSchema>): void {
     if (event.type === "ready") this.setStatus("ready");
     else if (event.type === "down") this.onDown?.();
     else if (event.type === "up") this.onUp?.();
+    else this.lastFailure = event.reason;
   }
 
   private childGone(child: ChildProcessWithoutNullStreams, code: number | null): void {
@@ -145,34 +134,27 @@ export class HoldKeyService {
     this.onUp?.();
     if (this.disposed || !key) return;
 
-    if (code === PERMISSION_EXIT_CODE) {
+    // Exit 3 follows every reported failure. Only a missing permission waits for the user; a tap
+    // that failed with permission granted, or a refused line, restarts within the budget. An exit 3
+    // with no reason read keeps the old reading.
+    const failure = this.lastFailure;
+    this.lastFailure = null;
+    if (code === PERMISSION_EXIT_CODE && (failure === null || failure === "permission")) {
       this.setStatus("needs_permission");
       return;
     }
-    const now = Date.now();
-    this.restarts = this.restarts.filter((at) => now - at < RESTART_WINDOW_MS);
-    if (this.restarts.length >= MAX_RESTARTS) {
-      this.setStatus("unavailable");
-      return;
-    }
-    this.restarts.push(now);
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      void this.sync(true);
-    }, RESTART_DELAY_MS);
-    this.restartTimer.unref();
+    if (!this.restarts.schedule(() => void this.sync(true))) this.setStatus("unavailable");
   }
 
   private stop(): void {
-    if (this.restartTimer) clearTimeout(this.restartTimer);
-    this.restartTimer = null;
+    this.restarts.cancel();
     const child = this.child;
     if (!child) return;
     this.child = null;
     this.watching = null;
     this.onUp?.();
     child.stdin.end();
-    child.kill("SIGTERM");
+    endHelper(child);
   }
 
   dispose(): void {

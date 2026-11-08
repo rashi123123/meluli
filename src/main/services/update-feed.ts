@@ -1,5 +1,6 @@
-import { z } from "zod";
+import * as z from "zod";
 import { REPOSITORY_URL } from "@shared/constants";
+import { fetchPinned, isPinnedHttpsUrl } from "./pinned-fetch";
 
 const MAX_FEED_BYTES = 64 * 1024;
 const FEED_TIMEOUT_MS = 30_000;
@@ -18,12 +19,7 @@ const feedSchema = z.object({
   })).max(100)
 });
 
-function isFeedUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && FEED_HOSTS.has(url.hostname);
-  } catch { return false; }
-}
+const isFeedUrl = (value: string): boolean => isPinnedHttpsUrl(value, (hostname) => FEED_HOSTS.has(hostname));
 
 function compareIdentifier(left: string, right: string): number {
   const numeric = /^\d+$/;
@@ -85,20 +81,17 @@ async function readBounded(response: Response): Promise<string> {
 
 /** Returns the newer version the feed offers, or null. A release host without a release yet is not an error. */
 export async function findVerifiedUpdate(feedUrl: string, currentVersion: string): Promise<string | null> {
-  const signal = AbortSignal.timeout(FEED_TIMEOUT_MS);
-  let url = feedUrl;
-  for (let redirects = 0; redirects < 6; redirects++) {
-    if (!isFeedUrl(url)) throw new RejectedFeedError("Untrusted update feed host.");
-    const response = await fetch(url, { redirect: "manual", credentials: "omit", signal });
-    if (![301, 302, 303, 307, 308].includes(response.status)) {
-      if (response.status === 404) return null;
-      if (!response.ok) throw new Error(`The update feed returned HTTP ${response.status}.`);
-      return parseUpdateFeed(await readBounded(response), currentVersion);
-    }
-    const location = response.headers.get("location");
-    await response.body?.cancel();
-    if (!location) throw new RejectedFeedError("The update feed redirect has no destination.");
-    url = new URL(location, url).href;
-  }
-  throw new RejectedFeedError("Too many update feed redirects.");
+  const response = await fetchPinned(feedUrl, {
+    isAllowed: isFeedUrl,
+    signal: AbortSignal.timeout(FEED_TIMEOUT_MS),
+    messages: {
+      untrusted: "Untrusted update feed host.",
+      noDestination: "The update feed redirect has no destination.",
+      tooMany: "Too many update feed redirects."
+    },
+    error: (message) => new RejectedFeedError(message)
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`The update feed returned HTTP ${response.status}.`);
+  return parseUpdateFeed(await readBounded(response), currentVersion);
 }

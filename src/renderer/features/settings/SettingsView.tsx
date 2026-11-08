@@ -8,13 +8,18 @@ import { useMicrophoneDevices } from "@/hooks/use-microphone-devices";
 import { formatBytes } from "@/lib/bytes";
 import { UPDATE_FEED_URL } from "@shared/constants";
 import { he } from "@shared/locale";
-import type { HoldKeyChoice } from "@shared/types";
+import type { AsrEngineChoice, HoldKeyChoice } from "@shared/types";
 import { usePendingActions } from "@/hooks/use-pending-actions";
 import { OverlayPositionPicker } from "./OverlayPositionPicker";
 import { SettingsRow } from "./SettingsRow";
 import { getHebrewErrorMessage } from "@shared/error-utils";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ThemePicker } from "./ThemePicker";
+import { InlineConfirm } from "@/components/InlineConfirm";
+import { isMicrophoneBlocked } from "@/lib/microphone-permission";
+
+// macOS shows a permission prompt only once, so this lasts as long as the app does, not the page.
+const asked = { holdKey: false, accessibility: false };
 
 function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
   return <section className="settings-group"><h3>{title}</h3><div className="settings-rows">{children}</div></section>;
@@ -37,7 +42,10 @@ export function SettingsView() {
   } = useAppContext();
   const { pendingActions, pendingActionsRef, runAction, switchBusy } = usePendingActions();
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [holdKeyAsked, setHoldKeyAsked] = useState(false);
+  const [holdKeyAsked, setHoldKeyAsked] = useState(asked.holdKey);
+  const [accessibilityAsked, setAccessibilityAsked] = useState(asked.accessibility);
+  const [confirmKeepAudioOff, setConfirmKeepAudioOff] = useState(false);
+  const page = useRef<HTMLDivElement>(null);
   const resetTrigger = useRef<HTMLButtonElement>(null);
   const resetCancel = useRef<HTMLButtonElement>(null);
   const resetWasOpen = useRef(false);
@@ -47,13 +55,21 @@ export function SettingsView() {
   const overlayPositionDescriptionId = useId();
   const themeLabelId = useId();
   const launchAtLoginLabelId = useId();
+  const keepAudioLabelId = useId();
+  const keepAudioDescriptionId = useId();
   const launchAtLoginDescriptionId = useId();
   const microphoneInputId = useId();
   const microphoneInputDescriptionId = useId();
   const holdKeyInputId = useId();
+  const engineInputId = useId();
+  const engineDescriptionId = useId();
   const holdKeyDescriptionId = useId();
   const fillerWordsLabelId = useId();
   const fillerWordsDescriptionId = useId();
+  const numbersLabelId = useId();
+  const numbersDescriptionId = useId();
+  const formatForAppLabelId = useId();
+  const formatForAppDescriptionId = useId();
   const spokenCommandsLabelId = useId();
   const spokenCommandsDescriptionId = useId();
   const autoUpdateLabelId = useId();
@@ -70,6 +86,12 @@ export function SettingsView() {
     else if (resetWasOpen.current) resetTrigger.current?.focus();
     resetWasOpen.current = showResetConfirm;
   }, [showResetConfirm]);
+  // When the keep-audio confirm closes, focus goes back to its switch.
+  const keepAudioWasConfirming = useRef(false);
+  useEffect(() => {
+    if (!confirmKeepAudioOff && keepAudioWasConfirming.current) page.current?.querySelector<HTMLElement>("[data-keep-audio-switch]")?.focus();
+    keepAudioWasConfirming.current = confirmKeepAudioOff;
+  }, [confirmKeepAudioOff]);
 
   if (!settings) return null;
 
@@ -82,9 +104,9 @@ export function SettingsView() {
       : null;
 
   const modelStateLabel = {
-    missing: he.modelMissing,
+    missing: he.modelNotDownloaded,
     downloading: he.modelDownloading,
-    ready: "מוכן. התמלול רץ על המחשב שלך.",
+    ready: he.modelReadyLocal,
     error: he.modelDownloadFailed
   }[settings.modelState.downloadState];
   const modelError = settings.modelState.downloadState === "error"
@@ -92,7 +114,7 @@ export function SettingsView() {
 
   const modelState = settings.modelState.downloadState;
   const modelPercent = modelState === "downloading" ? modelProgress?.percent ?? null : null;
-  const microphoneBlocked = permissionStatus === "denied" || permissionStatus === "restricted";
+  const microphoneBlocked = isMicrophoneBlocked(permissionStatus);
   const actionBusy = switchBusy;
   const updateStatus = appState.update?.status ?? "off";
   const updateMessage = updateStatus === "downloading" ? he.updateDownloading : updateStatus === "ready" ? he.updateReady
@@ -100,42 +122,45 @@ export function SettingsView() {
   const holdKeyStatus = appState.holdKey?.status ?? "off";
   const holdKeyBlocked = settings.holdKey !== "off" && holdKeyStatus === "needs_permission";
   const holdKeyMessage = holdKeyBlocked ? he.holdKeyPermissionNeeded : holdKeyStatus === "unavailable" ? he.holdKeyUnavailable : he.holdKeyDescription;
-  // macOS asks only once, so a second click has to lead somewhere the person can act.
+  const accessibilityGranted = accessibilityPermissionStatus === "granted";
+  // A second click has to lead somewhere the person can act.
   const askHoldKey = async () => {
     if (holdKeyAsked) await window.ivritMenuBar.permissions.openHoldKeySettings();
     else {
       await window.ivritMenuBar.permissions.requestHoldKey();
-      setHoldKeyAsked(true);
+      asked.holdKey = true; setHoldKeyAsked(true);
     }
   };
+  const askAccessibility = async () => {
+    if (accessibilityAsked) await window.ivritMenuBar.permissions.openAccessibilitySettings();
+    else {
+      await requestAccessibilityPermission();
+      asked.accessibility = true; setAccessibilityAsked(true);
+    }
+  };
+  const closeKeepAudioConfirm = () => setConfirmKeepAudioOff(false);
+  const systemMicrophoneLabel = microphoneDevices.defaultLabel && microphoneDevices.defaultLabel !== he.systemMicrophone
+    ? `${he.systemMicrophone} (${microphoneDevices.defaultLabel})` : he.systemMicrophone;
 
-  return <div className="settings-groups">
-    <SettingsGroup title={he.microphoneLabel}>
-      <SettingsRow title={he.microphone} description={he.microphoneDescription}>
-        {permissionStatus === "granted" ? <>
-          <span className="permission-state" role="status"><span className="led" data-tone="ok" />מאושר</span>
-          <Button size="sm" variant="ghost" {...actionBusy("microphonePermission")} onClick={() => void runAction("microphonePermission", () => window.ivritMenuBar.permissions.openMicrophoneSettings())}>הגדרות המערכת</Button>
-        </> : microphoneBlocked ? <Button size="sm" variant="secondary" {...actionBusy("microphonePermission")} onClick={() => void runAction("microphonePermission", () => window.ivritMenuBar.permissions.openMicrophoneSettings())}>פתיחת הגדרות המערכת</Button>
-          : <Button size="sm" {...actionBusy("microphonePermission")} onClick={() => void runAction("microphonePermission", requestMicrophonePermission)}>{he.allowMicrophone}</Button>}
-      </SettingsRow>
-      <div className="settings-row">
-        <div className="settings-row-copy">
-          <label className="settings-row-title" htmlFor={microphoneInputId}>{he.microphoneInput}</label>
-          <span id={microphoneInputDescriptionId} className="settings-row-description">{he.microphoneSelectionDescription}</span>
-        </div>
-        <Select id={microphoneInputId} value={settings.microphoneDeviceId ?? ""} aria-describedby={microphoneInputDescriptionId} disabled={pendingActions.has("microphoneDeviceId")}
-          onChange={(event) => { const deviceId = event.target.value || null; void runAction("microphoneDeviceId", () => updateSetting("microphoneDeviceId", deviceId)); }}>
-          {settings.microphoneDeviceId && !microphoneDevices.devices.some((device) => device.deviceId === settings.microphoneDeviceId) ? <option value={settings.microphoneDeviceId}>{he.microphoneUnavailable}</option> : null}
-          <option value="">{he.systemMicrophone}</option>
-          {microphoneDevices.devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
-        </Select>
-      </div>
+  const modelRow = <SettingsRow title={he.modelEngine} description={<><span role="status">{modelStateLabel}</span>{modelProgressLabel ? ` (${modelProgressLabel})` : ""}{modelError && modelError !== modelStateLabel ? ` ${modelError}` : ""}</>}
+    detail={modelState === "downloading" && <div className="progress-row"><div className="progress-track" role="progressbar" aria-label={he.modelDownloading} aria-valuemin={0} aria-valuemax={100} aria-valuenow={modelPercent ?? undefined}><div className="progress-fill" style={{ transform: `scaleX(${(modelPercent ?? 0) / 100})` }} /></div></div>}>
+    {(modelState === "missing" || modelState === "error") && <Button size="sm" variant={modelState === "missing" ? "default" : "secondary"} onClick={() => void runAction("downloadModel", () => downloadModel().catch(() => undefined))}>
+      {modelState === "error" ? he.retry : he.downloadHebrewModel}
+    </Button>}
+  </SettingsRow>;
+
+  return <div className="settings-groups" ref={page}>
+    {/* Without the engine nothing works, so until it is ready it leads the page. */}
+    {modelState !== "ready" && <section className="settings-group" aria-label={he.modelEngine}><div className="settings-rows">{modelRow}</div></section>}
+
+    <SettingsGroup title={he.dictation}>
       <div className="settings-row">
         <div className="settings-row-copy">
           <label className="settings-row-title" htmlFor={holdKeyInputId}>{he.holdKeyLabel}</label>
           <span id={holdKeyDescriptionId} className="settings-row-description" role="status">{holdKeyMessage}</span>
         </div>
         <div className="settings-row-control">
+          {holdKeyBlocked && <span className="permission-state" aria-hidden="true"><span className="led" data-tone="alert" />{he.permissionBlocked}</span>}
           {holdKeyBlocked && <Button size="sm" variant="secondary" {...actionBusy("holdKeyPermission")} onClick={() => void runAction("holdKeyPermission", askHoldKey)}>{holdKeyAsked ? he.holdKeyOpenSettings : he.holdKeyAllow}</Button>}
           <Select id={holdKeyInputId} value={settings.holdKey} aria-describedby={holdKeyDescriptionId} disabled={pendingActions.has("holdKey")}
             onChange={(event) => { const key = event.target.value as HoldKeyChoice; void runAction("holdKey", () => updateSetting("holdKey", key)); }}>
@@ -149,41 +174,54 @@ export function SettingsView() {
       <div className="settings-row"><ShortcutEditor id="overlay-shortcut-editor" label={he.overlayShortcutLabel} description={he.overlayShortcutDescription} value={settings.overlayShortcut} onSave={(value) => updateSetting("overlayShortcut", value)} /></div>
       <div className="settings-row">
         <div className="settings-row-copy">
+          {permissionStatus === "granted"
+            ? <label className="settings-row-title" htmlFor={microphoneInputId}>{he.microphone}</label>
+            : <span className="settings-row-title">{he.microphone}</span>}
+          <span id={microphoneInputDescriptionId} className="settings-row-description">{permissionStatus === "granted" ? he.microphoneSelectionDescription : he.microphoneDescription}</span>
+        </div>
+        <div className="settings-row-control">
+          {permissionStatus === "granted" ? <Select id={microphoneInputId} value={settings.microphoneDeviceId ?? ""} aria-describedby={microphoneInputDescriptionId} disabled={pendingActions.has("microphoneDeviceId")}
+            onChange={(event) => { const deviceId = event.target.value || null; void runAction("microphoneDeviceId", () => updateSetting("microphoneDeviceId", deviceId)); }}>
+            {settings.microphoneDeviceId && !microphoneDevices.devices.some((device) => device.deviceId === settings.microphoneDeviceId) ? <option value={settings.microphoneDeviceId}>{he.microphoneUnavailable}</option> : null}
+            <option value="">{systemMicrophoneLabel}</option>
+            {microphoneDevices.devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
+          </Select> : microphoneBlocked ? <>
+            <span className="permission-state" role="status"><span className="led" data-tone="alert" />{he.permissionBlocked}</span>
+            <Button size="sm" variant="secondary" {...actionBusy("microphonePermission")} onClick={() => void runAction("microphonePermission", () => window.ivritMenuBar.permissions.openMicrophoneSettings())}>{he.openSystemSettings}</Button>
+          </> : <Button size="sm" {...actionBusy("microphonePermission")} onClick={() => void runAction("microphonePermission", requestMicrophonePermission)}>{he.allowMicrophone}</Button>}
+        </div>
+      </div>
+      <SettingsRow title={he.accessibility} description={accessibilityGranted ? he.accessibilityDescription : he.accessibilityBlockedDescription}>
+        {accessibilityGranted
+          ? <span className="permission-state" role="status"><span className="led" data-tone="ok" />{he.permissionGranted}</span>
+          : <><span className="permission-state" role="status"><span className="led" data-tone="alert" />{he.permissionNotGranted}</span><Button size="sm" variant="secondary" {...actionBusy("accessibilityPermission")} onClick={() => void runAction("accessibilityPermission", askAccessibility)}>{accessibilityAsked ? he.openSystemSettings : he.allowAccessibility}</Button></>}
+      </SettingsRow>
+      <div className="settings-row">
+        <div className="settings-row-copy">
           <span id={overlayPositionId} className="settings-row-title">{he.overlayPositionLabel}</span>
           <span id={overlayPositionDescriptionId} className="settings-row-description">{he.overlayPositionDescription}</span>
         </div>
         <OverlayPositionPicker value={settings.overlayPosition} labelledBy={overlayPositionId} describedBy={overlayPositionDescriptionId}
           onChange={(position) => void runAction("overlayPosition", () => updateSetting("overlayPosition", position))} />
       </div>
-      <SettingsRow title={he.accessibility} description={he.accessibilityDescription}>
-        {accessibilityPermissionStatus === "granted"
-          ? <span className="permission-state" role="status"><span className="led" data-tone="ok" />מאושר</span>
-          : <Button size="sm" variant="secondary" {...actionBusy("accessibilityPermission")} onClick={() => void runAction("accessibilityPermission", requestAccessibilityPermission)}>{he.allowAccessibility}</Button>}
-      </SettingsRow>
     </SettingsGroup>
 
-    <SettingsGroup title={he.transcription}>
-      <SettingsRow title="מנוע התמלול" description={<><span role="status">{modelStateLabel}</span>{modelProgressLabel ? ` (${modelProgressLabel})` : ""}{modelError && modelError !== modelStateLabel ? ` ${modelError}` : ""}</>}
-        detail={modelState === "downloading" && <div className="progress-row"><div className="progress-track" role="progressbar" aria-label={he.modelDownloading} aria-valuemin={0} aria-valuemax={100} aria-valuenow={modelPercent ?? undefined}><div className="progress-fill" style={{ transform: `scaleX(${(modelPercent ?? 0) / 100})` }} /></div></div>}>
-        {(modelState === "missing" || modelState === "error") && <Button size="sm" variant={modelState === "missing" ? "default" : "secondary"} onClick={() => void runAction("downloadModel", () => downloadModel().catch(() => undefined))}>
-          {modelState === "error" ? he.retry : he.downloadHebrewModel}
-        </Button>}
-      </SettingsRow>
+    <SettingsGroup title={he.textGroup}>
       <SettingsRow title={he.removeFillerWords} titleId={fillerWordsLabelId} description={he.removeFillerWordsDescription} descriptionId={fillerWordsDescriptionId}>
         <Switch checked={settings.removeFillerWords} aria-labelledby={fillerWordsLabelId} aria-describedby={fillerWordsDescriptionId} {...switchBusy("removeFillerWords")}
           onCheckedChange={(checked) => void runAction("removeFillerWords", () => updateSetting("removeFillerWords", checked))} />
       </SettingsRow>
+      <SettingsRow title={he.numbersAsDigits} titleId={numbersLabelId} description={he.numbersAsDigitsDescription} descriptionId={numbersDescriptionId}>
+        <Switch checked={settings.numbersAsDigits} aria-labelledby={numbersLabelId} aria-describedby={numbersDescriptionId} {...switchBusy("numbersAsDigits")}
+          onCheckedChange={(checked) => void runAction("numbersAsDigits", () => updateSetting("numbersAsDigits", checked))} />
+      </SettingsRow>
+      <SettingsRow title={he.formatForApp} titleId={formatForAppLabelId} description={he.formatForAppDescription} descriptionId={formatForAppDescriptionId}>
+        <Switch checked={settings.formatForApp} aria-labelledby={formatForAppLabelId} aria-describedby={formatForAppDescriptionId} {...switchBusy("formatForApp")}
+          onCheckedChange={(checked) => void runAction("formatForApp", () => updateSetting("formatForApp", checked))} />
+      </SettingsRow>
       <SettingsRow title={he.spokenCommands} titleId={spokenCommandsLabelId} description={he.spokenCommandsDescription} descriptionId={spokenCommandsDescriptionId}>
         <Switch checked={settings.spokenCommands} aria-labelledby={spokenCommandsLabelId} aria-describedby={spokenCommandsDescriptionId} {...switchBusy("spokenCommands")}
           onCheckedChange={(checked) => void runAction("spokenCommands", () => updateSetting("spokenCommands", checked))} />
-      </SettingsRow>
-      {appState.call?.available && <SettingsRow title={he.callDetection} titleId={callDetectionLabelId} description={he.callDetectionDescription} descriptionId={callDetectionDescriptionId}>
-        <Switch checked={settings.callDetection} aria-labelledby={callDetectionLabelId} aria-describedby={callDetectionDescriptionId} {...switchBusy("callDetection")}
-          onCheckedChange={(checked) => void runAction("callDetection", () => updateSetting("callDetection", checked))} />
-      </SettingsRow>}
-      <SettingsRow title={he.completionNotifications} titleId={notificationsLabelId} description={he.completionNotificationsDescription} descriptionId={notificationsDescriptionId}>
-        <Switch checked={settings.completionNotificationsEnabled} aria-labelledby={notificationsLabelId} aria-describedby={notificationsDescriptionId} {...switchBusy("completionNotificationsEnabled")}
-          onCheckedChange={(checked) => void runAction("completionNotificationsEnabled", () => updateSetting("completionNotificationsEnabled", checked))} />
       </SettingsRow>
     </SettingsGroup>
 
@@ -199,10 +237,42 @@ export function SettingsView() {
           : <Switch checked={settings.autoUpdate} aria-labelledby={autoUpdateLabelId} aria-describedby={autoUpdateDescriptionId} {...switchBusy("autoUpdate")}
             onCheckedChange={(checked) => void runAction("autoUpdate", () => updateSetting("autoUpdate", checked))} />}
       </SettingsRow>}
-      <SettingsRow title={he.storage} description="התמלולים והמנוע נשמרים על המחשב.">
+      <SettingsRow title={he.completionNotifications} titleId={notificationsLabelId} description={he.completionNotificationsDescription} descriptionId={notificationsDescriptionId}>
+        <Switch checked={settings.completionNotificationsEnabled} aria-labelledby={notificationsLabelId} aria-describedby={notificationsDescriptionId} {...switchBusy("completionNotificationsEnabled")}
+          onCheckedChange={(checked) => void runAction("completionNotificationsEnabled", () => updateSetting("completionNotificationsEnabled", checked))} />
+      </SettingsRow>
+      {appState.call?.available && <SettingsRow title={he.callDetection} titleId={callDetectionLabelId} description={he.callDetectionDescription} descriptionId={callDetectionDescriptionId}>
+        <Switch checked={settings.callDetection} aria-labelledby={callDetectionLabelId} aria-describedby={callDetectionDescriptionId} {...switchBusy("callDetection")}
+          onCheckedChange={(checked) => void runAction("callDetection", () => updateSetting("callDetection", checked))} />
+      </SettingsRow>}
+    </SettingsGroup>
+
+    <SettingsGroup title={he.data}>
+      <div className="settings-row">
+        <div className="settings-row-copy">
+          <label className="settings-row-title" htmlFor={engineInputId}>{he.asrEngineLabel}</label>
+          <span id={engineDescriptionId} className="settings-row-description">{settings.asrEngine === "zipformer" ? he.asrEngineFastDescription : he.asrEngineAccurateDescription}</span>
+        </div>
+        <Select id={engineInputId} value={settings.asrEngine} aria-describedby={engineDescriptionId} disabled={pendingActions.has("asrEngine") || modelState === "downloading"}
+          onChange={(event) => { const engine = event.target.value as AsrEngineChoice; void runAction("asrEngine", () => updateSetting("asrEngine", engine)); }}>
+          <option value="whisper">{he.asrEngineAccurate}</option>
+          <option value="zipformer">{he.asrEngineFast}</option>
+        </Select>
+      </div>
+      {modelState === "ready" && modelRow}
+      {confirmKeepAudioOff
+        ? <InlineConfirm title={he.keepRecordingAudioOffTitle} body={he.keepRecordingAudioOffBody} confirmLabel={he.keepRecordingAudioOffConfirm}
+          onCancel={closeKeepAudioConfirm}
+          onConfirm={async () => { if (await runAction("keepRecordingAudio", () => updateSetting("keepRecordingAudio", false))) closeKeepAudioConfirm(); }} />
+        : <SettingsRow title={he.keepRecordingAudio} titleId={keepAudioLabelId} description={he.keepRecordingAudioDescription} descriptionId={keepAudioDescriptionId}>
+          {/* Turning it off deletes the week of kept audio, so that direction asks first. */}
+          <Switch data-keep-audio-switch="" checked={settings.keepRecordingAudio} aria-labelledby={keepAudioLabelId} aria-describedby={keepAudioDescriptionId} {...switchBusy("keepRecordingAudio")}
+            onCheckedChange={(checked) => { if (checked) void runAction("keepRecordingAudio", () => updateSetting("keepRecordingAudio", true)); else setConfirmKeepAudioOff(true); }} />
+        </SettingsRow>}
+      <SettingsRow title={he.storage} description={he.storageDescription}>
         <Button size="sm" variant="secondary" {...actionBusy("revealStorage")} onClick={() => void runAction("revealStorage", revealStorage)}><FolderOpen />{he.revealStorage}</Button>
       </SettingsRow>
-      <SettingsRow title="היכרות" description={he.rerunOnboardingDescription}>
+      <SettingsRow title={he.onboardingRow} description={he.rerunOnboardingDescription}>
         <Button size="sm" variant="secondary" {...actionBusy("rerunOnboarding")} onClick={() => void runAction("rerunOnboarding", rerunOnboarding)}>{he.rerunOnboarding}</Button>
       </SettingsRow>
     </SettingsGroup>
@@ -216,10 +286,10 @@ export function SettingsView() {
         <div className="inline-confirm-copy"><strong id={resetTitleId}>{he.settingsResetConfirmTitle}</strong><p id={resetDescriptionId}>{he.settingsResetConfirmBody}</p></div>
         <div className="inline-confirm-actions">
           <Button ref={resetCancel} size="sm" variant="secondary" aria-disabled={pendingActions.has("reset")} onClick={() => { if (!pendingActionsRef.current.has("reset")) setShowResetConfirm(false); }}>{he.settingsResetCancel}</Button>
-          <Button size="sm" variant="destructive" aria-disabled={pendingActions.has("reset")} onClick={async () => { if (await runAction("reset", resetEverything)) setShowResetConfirm(false); }}>{he.settingsResetConfirmButton}</Button>
+          <Button size="sm" variant="destructive" aria-disabled={pendingActions.has("reset")} aria-busy={pendingActions.has("reset") || undefined} onClick={async () => { if (await runAction("reset", resetEverything)) setShowResetConfirm(false); }}>{he.settingsResetConfirmButton}</Button>
         </div>
       </div> : <div className="settings-rows"><SettingsRow title={he.settingsResetEverything} description={he.settingsResetEverythingDescription}>
-        <Button ref={resetTrigger} size="sm" variant="destructive" onClick={() => setShowResetConfirm(true)}>איפוס…</Button>
+        <Button ref={resetTrigger} size="sm" variant="destructive" onClick={() => setShowResetConfirm(true)}>{he.settingsResetTrigger}</Button>
       </SettingsRow></div>}
     </section>
   </div>;

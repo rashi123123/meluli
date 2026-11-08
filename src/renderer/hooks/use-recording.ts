@@ -1,18 +1,50 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import type { RecordingAudioPayload, TranscriptRecord } from "@shared/types";
+import type { MicrophonePermissionStatus, RecordingAudioPayload, TranscriptRecord } from "@shared/types";
+import type { AppWindowRole } from "@shared/window-role";
+import { useKeepMainWindow } from "@/lib/keep-main-window";
 import { CANCEL_UNDO_MIN_MS, HELD_RECORDING_TTL_MS, MIN_DICTATION_MS } from "@shared/constants";
-import { getHebrewErrorMessage } from "@shared/error-utils";
+import { getHebrewErrorMessage, isCanceledMessage } from "@shared/error-utils";
 import { he } from "@shared/locale";
 import { AudioCaptureController } from "@/lib/audio-capture";
+import { CAPTURE_SAMPLE_RATE, mergeFloatChunks } from "@/lib/pcm";
 import { playCue } from "@/lib/sounds";
 import type { DictationPreview } from "@shared/experimental-dictation";
 
-type RecordingWindowMode = "main" | "overlay";
+/** The windows that can own a recording. */
+type RecordingWindowMode = Exclude<AppWindowRole, "call">;
 type RecordingCommand = "pause" | "resume" | "stop" | "cancel";
 
 const RECORDING_OWNER_STORAGE_KEY = "ivrit-recording-owner";
 const RECORDING_CONTROL_CHANNEL = "ivrit-recording-control";
 const HELD_EXPIRY_CHECK_MS = 30_000;
+/** Audio goes to disk about once a second, so a crash loses at most that much. */
+const SPOOL_CHUNK_SAMPLES = CAPTURE_SAMPLE_RATE;
+
+/** The copy of one recording that main writes to disk while it lasts. */
+interface AudioSpool {
+  id: string;
+  sequence: number;
+  buffer: Float32Array[];
+  buffered: number;
+  /** Chunks wait until main has given this window the recording. */
+  ready: boolean;
+  /** Main refused a chunk, so the rest would not line up. */
+  broken: boolean;
+  /** Main answered that it keeps audio on disk in this run. */
+  stored: boolean;
+  /** Nothing is left behind in this window: the last chunk went too, or main got the whole recording to keep in place of the chunks. */
+  whole: boolean;
+  pending: Promise<void>;
+}
+
+/** `crypto.randomUUID` needs a secure context; random bytes do not. */
+function newRecordingId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /** A finished recording that has no transcript yet. It lives only in this window's memory. */
 export interface HeldRecording {
@@ -24,7 +56,7 @@ interface UseRecordingOptions {
   windowMode: RecordingWindowMode;
   timerStartedAt: number | null;
   microphoneDeviceId: string | null;
-  permissionStatus: string;
+  permissionStatus: MicrophonePermissionStatus;
   requestPermission: () => Promise<unknown>;
   onStart?: () => void | Promise<void>;
   onTranscript: (transcript: TranscriptRecord) => void;
@@ -35,6 +67,19 @@ interface UseRecordingOptions {
 function readRecordingOwner(): RecordingWindowMode | null {
   const value = window.localStorage.getItem(RECORDING_OWNER_STORAGE_KEY);
   return value === "main" || value === "overlay" ? value : null;
+}
+
+/**
+ * Sends one capture chunk to the live session, chained after the last so main hears them in
+ * order. A chunk main could not take only ends the live text: the stop payload still carries the
+ * whole recording, which main then decodes in full.
+ */
+function forwardLiveChunk(session: { id: string; sequence: number; pending: Promise<void>; dead: boolean } | null, pcm: Float32Array): void {
+  if (!session || session.dead) return;
+  const sequence = session.sequence++;
+  session.pending = session.pending
+    .then(() => window.ivritMenuBar.recording.experimentalChunk!({ sessionId: session.id, sequence, pcm }))
+    .catch(() => { session.dead = true; });
 }
 
 export function useRecording({
@@ -73,7 +118,12 @@ export function useRecording({
   const [mediaStream, setMediaStream] = useState<MediaStream | null>(null);
   const mockModeRef = useRef(false);
   const experimentRef = useRef<{ id: string; sequence: number; pending: Promise<void> } | null>(null);
+  /** The streaming engine's live session: every capture chunk goes to main as it arrives. */
+  const liveRef = useRef<{ id: string; sequence: number; pending: Promise<void>; dead: boolean } | null>(null);
   const archiveFailedRef = useRef(false);
+  const spoolRef = useRef<AudioSpool | null>(null);
+  /** Weak, like the expiry times: it only says whether a held recording also waits on disk. */
+  const spoolOfPayloadRef = useRef(new WeakMap<RecordingAudioPayload, AudioSpool>());
   const [livePreview, setLivePreview] = useState<DictationPreview | null>(null);
 
   const claimOwnership = () => {
@@ -99,16 +149,52 @@ export function useRecording({
     setHeldRecording(null);
   };
 
-  const expireHeldRecording = (reason: HeldRecording["reason"] | undefined) => {
+  const expireHeldRecording = (reason: HeldRecording["reason"] | undefined, payload: RecordingAudioPayload | null) => {
     dropHeldRecording();
-    if (reason === "failed") onError(he.recordingHeldExpired);
+    const onDisk = payload ? spoolOfPayloadRef.current.get(payload)?.stored === true : false;
+    if (reason === "failed") onError(onDisk ? he.recordingHeldSaved : he.recordingHeldExpired);
+  };
+
+  const flushSpool = (spool: AudioSpool) => {
+    if (!spool.buffered || spool.broken || !spool.ready) return;
+    const pcm = mergeFloatChunks(spool.buffer, spool.buffered);
+    spool.buffer = [];
+    spool.buffered = 0;
+    const sequence = spool.sequence++;
+    const send = window.ivritMenuBar.recording.audioChunk;
+    if (!send) { spool.broken = true; return; }
+    spool.pending = spool.pending
+      .then(() => send({ recordingId: spool.id, sequence, sampleRate: CAPTURE_SAMPLE_RATE, pcm }))
+      .then((stored) => {
+        if (stored) spool.stored = true;
+        // Nothing is kept on disk in this run, so the rest need not go.
+        else spool.broken = true;
+      })
+      // The whole recording still goes to main when it ends; only the crash copy is short.
+      .catch(() => { spool.broken = true; });
+  };
+
+  /** The copy on disk holds all of this recording, so the audio in memory may go. */
+  const spoolKeepsAll = (spool: AudioSpool | undefined) => Boolean(spool?.stored && spool.whole && !spool.broken);
+
+  /** Ends this window's part in the copy on disk and returns it, if there was one. */
+  const takeSpool = (): AudioSpool | null => {
+    const spool = spoolRef.current;
+    spoolRef.current = null;
+    return spool;
+  };
+
+  /** The recording was thrown away, so the copy on disk goes too. */
+  const stopRecordingRuntime = async (spool: AudioSpool | null) => {
+    await spool?.pending;
+    await window.ivritMenuBar.recording.stop(spool ? { recordingId: spool.id } : undefined);
   };
 
   /** Timers stop while the Mac sleeps, so after a wake only the clock knows how long it has been. */
   const watchHeldExpiry = (payload: RecordingAudioPayload, reason: HeldRecording["reason"]) => {
     const remainingMs = heldExpiryRef.current.get(payload)! - Date.now();
     if (remainingMs <= 0) {
-      expireHeldRecording(reason);
+      expireHeldRecording(reason, payload);
       return;
     }
     heldTimerRef.current = window.setTimeout(() => watchHeldExpiry(payload, reason), Math.min(remainingMs, HELD_EXPIRY_CHECK_MS));
@@ -126,6 +212,8 @@ export function useRecording({
   useEffect(() => {
     if (windowMode === "overlay") void window.ivritMenuBar.overlay?.setHeldRecording?.(heldRecording?.reason ?? null);
   }, [heldRecording?.reason, windowMode]);
+  // Held audio lives only in this renderer, so a main window holding it must not be released.
+  useKeepMainWindow(windowMode === "main" && heldRecording !== null);
 
   useEffect(() => {
     controllerRef.current = new AudioCaptureController(() => {
@@ -137,6 +225,13 @@ export function useRecording({
       void interruptRecordingLocal(he.microphoneDisconnected);
     });
     controllerRef.current.setChunkListener((pcm) => {
+      const spool = spoolRef.current;
+      if (spool && !spool.broken) {
+        spool.buffer.push(pcm);
+        spool.buffered += pcm.length;
+        if (spool.buffered >= SPOOL_CHUNK_SAMPLES) flushSpool(spool);
+      }
+      forwardLiveChunk(liveRef.current, pcm);
       const session = experimentRef.current;
       if (!session) return;
       const sequence = session.sequence++;
@@ -151,7 +246,7 @@ export function useRecording({
       });
     });
     const unsubscribe = window.ivritMenuBar.recording.onExperimentalPreview?.((preview) => {
-      if (preview.sessionId === experimentRef.current?.id) setLivePreview(preview);
+      if (preview.sessionId === experimentRef.current?.id || preview.sessionId === liveRef.current?.id) setLivePreview(preview);
     });
     commandChannelRef.current = new BroadcastChannel(RECORDING_CONTROL_CHANNEL);
 
@@ -179,6 +274,12 @@ export function useRecording({
     pressedAtRef.current = startedAt;
     let runtimeStarted = false;
     const stopIfCanceled = () => { if (cancelRequestedRef.current) throw new Error(he.recordingFailed); };
+    // Opened before the microphone, which may start hearing speech before main answers.
+    const spool: AudioSpool = {
+      id: newRecordingId(), sequence: 0, buffer: [], buffered: 0,
+      ready: false, broken: false, stored: false, whole: false, pending: Promise.resolve()
+    };
+    spoolRef.current = spool;
 
     try {
       setIsPreparing(true);
@@ -192,6 +293,9 @@ export function useRecording({
       await window.ivritMenuBar.recording.start(startedAt);
       runtimeStarted = true;
       claimOwnership();
+      // Research runs archive the audio their own way, and the mock has no microphone.
+      if (archiving || mockModeRef.current) { if (spoolRef.current === spool) spoolRef.current = null; }
+      else { spool.ready = true; if (spool.buffered >= SPOOL_CHUNK_SAMPLES) flushSpool(spool); }
       stopIfCanceled();
 
       if (permissionStatus !== "granted") {
@@ -199,8 +303,12 @@ export function useRecording({
       }
       if (!mockModeRef.current) {
         const experiment = await window.ivritMenuBar.recording.experimentalBegin?.();
-        experimentRef.current = experiment ? { id: experiment.sessionId, sequence: 0, pending: Promise.resolve() } : null;
-        controllerRef.current?.setStrictFlush(Boolean(experiment));
+        const live = experiment?.live === true;
+        experimentRef.current = experiment && !live ? { id: experiment.sessionId, sequence: 0, pending: Promise.resolve() } : null;
+        liveRef.current = experiment && live ? { id: experiment.sessionId, sequence: 0, pending: Promise.resolve(), dead: false } : null;
+        // Audio the microphone heard before the session opened goes first, in order.
+        for (const pcm of live ? controllerRef.current?.capturedChunks() ?? [] : []) forwardLiveChunk(liveRef.current, pcm);
+        controllerRef.current?.setStrictFlush(Boolean(experiment) && !live);
         setLivePreview(null);
         await controllerRef.current?.start(microphoneDeviceId);
         setMediaStream(controllerRef.current?.getMediaStream() ?? null);
@@ -211,8 +319,9 @@ export function useRecording({
       void playCue("start").catch(() => undefined);
       await onStart?.();
     } catch (error) {
+      const started = spoolRef.current === spool ? takeSpool() : null;
       if (runtimeStarted) {
-        await window.ivritMenuBar.recording.stop().catch(() => undefined);
+        await stopRecordingRuntime(started).catch(() => undefined);
       }
       await controllerRef.current?.destroy();
       releaseOwnership();
@@ -242,7 +351,7 @@ export function useRecording({
       onTranscript(transcript);
     } catch (error) {
       const message = getHebrewErrorMessage(error, he.stopRecordingFailed);
-      if (message === he.transcriptionCanceled) {
+      if (isCanceledMessage(message)) {
         // Whatever the length, canceling while waiting comes after the speech is finished.
         if (windowMode === "overlay") holdRecording(payload, "canceled");
         else dropHeldRecording();
@@ -260,7 +369,7 @@ export function useRecording({
   const finishRecording = (): Promise<RecordingAudioPayload | undefined> => mockModeRef.current
     ? Promise.resolve({
         pcm: Float32Array.from({ length: 8_000 }, (_, index) => Math.sin(index / 14) * 0.008),
-        sampleRate: 16_000,
+        sampleRate: CAPTURE_SAMPLE_RATE,
         durationMs: 1_500
       })
     : controllerRef.current?.stop() ?? Promise.resolve(undefined);
@@ -291,20 +400,25 @@ export function useRecording({
     flushingRef.current = true;
     let settleStop = () => {};
     stopTaskRef.current = new Promise<void>((resolve) => { settleStop = resolve; });
+    let spool: AudioSpool | null = null;
     try {
       const payload = await finishRecording().finally(() => { flushingRef.current = false; });
+      spool = takeSpool();
       setMediaStream(null);
       releaseOwnership();
       if (cancelRequestedRef.current) {
         const keepForUndo = windowMode === "overlay" && !experimentRef.current;
-        if (keepForUndo && payload && payload.durationMs >= CANCEL_UNDO_MIN_MS) holdRecording(payload, "canceled");
+        if (keepForUndo && payload && payload.durationMs >= CANCEL_UNDO_MIN_MS) {
+          if (spool) payload.recordingId = spool.id;
+          holdRecording(payload, "canceled");
+        }
         await experimentRef.current?.pending.catch(() => undefined);
-        await window.ivritMenuBar.recording.stop();
+        await stopRecordingRuntime(spool);
         return;
       }
       if (!payload || payload.durationMs < MIN_DICTATION_MS) {
         // A brushed shortcut never reaches the engine, which can only guess at so little audio.
-        await window.ivritMenuBar.recording.stop();
+        await stopRecordingRuntime(spool);
         if (pressLookedDeliberate()) onError(he.recordingTooShort);
         else if (windowMode === "overlay") await window.ivritMenuBar.overlay?.hide();
         return;
@@ -314,17 +428,27 @@ export function useRecording({
       // Main's finish path also verifies that the archived PCM equals this
       // complete payload. A failed chunk must not prevent preserving the source.
       await experimentRef.current?.pending.catch(() => undefined);
+      // Every live chunk reaches main before the stop, which sends only what the session has not heard.
+      await liveRef.current?.pending.catch(() => undefined);
+      // Main replaces the copy it has been writing with this whole recording.
+      if (spool) {
+        payload.recordingId = spool.id;
+        spool.whole = true;
+        spoolOfPayloadRef.current.set(payload, spool);
+      }
       await deliverAudio(payload);
     } catch (error) {
+      spool ??= takeSpool();
       releaseOwnership();
-      if (getHebrewErrorMessage(error, he.stopRecordingFailed) === he.transcriptionCanceled) {
+      if (isCanceledMessage(getHebrewErrorMessage(error, he.stopRecordingFailed))) {
         return;
       }
 
-      await window.ivritMenuBar.recording.stop().catch(() => undefined);
+      await stopRecordingRuntime(spool).catch(() => undefined);
       if (!cancelRequestedRef.current) onError(getHebrewErrorMessage(error, he.stopRecordingFailed));
     } finally {
       experimentRef.current = null;
+      liveRef.current = null;
       stopInFlightRef.current = false;
       settleStop();
     }
@@ -350,13 +474,18 @@ export function useRecording({
     try {
       // The floating window offers a moment to undo; the audio goes no further than this memory.
       const keepForUndo = windowMode === "overlay" && !experimentRef.current;
+      const spool = takeSpool();
       if (experimentRef.current || keepForUndo) {
         const payload = await finishRecording().catch(() => undefined);
-        if (keepForUndo && payload && payload.durationMs >= CANCEL_UNDO_MIN_MS) holdRecording(payload, "canceled");
+        if (keepForUndo && payload && payload.durationMs >= CANCEL_UNDO_MIN_MS) {
+          // Undo sends it again under the same id; the copy on disk goes now either way.
+          if (spool) payload.recordingId = spool.id;
+          holdRecording(payload, "canceled");
+        }
       } else await controllerRef.current?.destroy();
       await experimentRef.current?.pending.catch(() => undefined);
-      await window.ivritMenuBar.recording.stop();
-    } finally { experimentRef.current = null; setLivePreview(null); releaseOwnership(); setMediaStream(null); }
+      await stopRecordingRuntime(spool);
+    } finally { experimentRef.current = null; liveRef.current = null; setLivePreview(null); releaseOwnership(); setMediaStream(null); }
   });
 
   /** The recording ended without anyone asking: keep the audio and say so, but paste nothing. */
@@ -369,8 +498,16 @@ export function useRecording({
     stopInFlightRef.current = true;
     try {
       const payload = await finishRecording().catch(() => undefined);
+      const spool = takeSpool();
+      if (spool) {
+        // The last second has not gone to disk yet; main keeps what it has as a failed recording.
+        flushSpool(spool);
+        await spool.pending;
+        spool.whole = spool.buffered === 0;
+        if (payload) { payload.recordingId = spool.id; spoolOfPayloadRef.current.set(payload, spool); }
+      }
       if (payload && payload.durationMs >= MIN_DICTATION_MS) holdRecording(payload, "failed");
-      await window.ivritMenuBar.recording.stop().catch(() => undefined);
+      await window.ivritMenuBar.recording.stop(spool ? { recordingId: spool.id, keepAudio: true } : undefined).catch(() => undefined);
       onError(message);
     } finally {
       setMediaStream(null); releaseOwnership();
@@ -395,7 +532,7 @@ export function useRecording({
     const payload = heldPayloadRef.current;
     if (!payload || startInFlightRef.current || stopInFlightRef.current || ownerRef.current === windowMode) return;
     if ((heldExpiryRef.current.get(payload) ?? 0) <= Date.now()) {
-      expireHeldRecording(heldRecording?.reason);
+      expireHeldRecording(heldRecording?.reason, payload);
       return;
     }
     stopInFlightRef.current = true;
@@ -557,6 +694,11 @@ export function useRecording({
     heldRecording,
     startRecording: () => startRecording(),
     beginHold: () => beginHold(),
+    /** Whether the held audio is also kept in history, so dropping it here loses nothing. */
+    heldRecordingSaved: () => {
+      const payload = heldPayloadRef.current;
+      return payload ? spoolKeepsAll(spoolOfPayloadRef.current.get(payload)) : false;
+    },
     endHold: () => endHold(),
     pauseRecording: () => pauseRecording(),
     resumeRecording: () => resumeRecording(),

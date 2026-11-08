@@ -117,4 +117,23 @@ describe("UpdateService", () => {
     expect(refused.statuses).toEqual([]);
     expect(refused.driver.listenerCount("error")).toBe(0);
   });
+
+  it("stages an update before the app quits, and keeps the app running when it cannot", () => {
+    const { service, driver, statuses } = setup();
+    expect(service.prepareInstall()).toBe(false);
+    service.sync();
+    driver.emit("update-downloaded", {}, "", "1.2.3");
+    // Electron's own updater has no staging step: being ready is enough.
+    expect(service.prepareInstall()).toBe(true);
+
+    const staging = Object.assign(driver, { prepareInstall: vi.fn() });
+    expect(service.prepareInstall()).toBe(true);
+    expect(staging.prepareInstall).toHaveBeenCalledTimes(1);
+
+    staging.prepareInstall.mockImplementation(() => { throw new Error("cannot replace the app"); });
+    expect(service.prepareInstall()).toBe(false);
+    expect(statuses.at(-1)).toBe("failed");
+    expect(driver.quitAndInstall).not.toHaveBeenCalled();
+    service.dispose();
+  });
 });

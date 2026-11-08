@@ -1,14 +1,19 @@
+import { terminateChild } from "./terminate-child";
+import { TranscriptionCanceledError } from "./transcription-errors";
 import { spawn, type ChildProcess } from "node:child_process";
-import { open, stat, statfs, writeFile } from "node:fs/promises";
+import { open, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { he } from "@shared/locale";
 import { isMockMode } from "../config/mock-mode";
+import { WORKER_SAMPLE_RATE } from "./pcm-wav";
+import { diskFreeBytes } from "./system-probes";
+import { minimalChildEnv } from "./child-env";
 
 // A forged header understates its length to afconvert and would fool any check made before
 // decoding, so the limits watch what is actually written: 16 kHz mono PCM16 is 32,000 bytes a second.
 // Twelve hours is three times the longest call and far past what the job timeouts let finish.
 export const MAX_DECODED_SECONDS = 12 * 60 * 60;
-const MAX_WAV_BYTES = MAX_DECODED_SECONDS * 32_000 + 1024 ** 2;
+const MAX_WAV_BYTES = MAX_DECODED_SECONDS * WORKER_SAMPLE_RATE * 2 + 1024 ** 2;
 const MIN_FREE_BYTES = 200 * 1024 ** 2;
 const CONVERSION_DEADLINE_MS = 30 * 60_000;
 const WATCH_INTERVAL_MS = 200;
@@ -21,15 +26,11 @@ export interface AudioConverterOptions {
   watchIntervalMs?: number;
 }
 
-async function diskFreeBytes(path: string): Promise<number> {
-  const info = await statfs(path);
-  return info.bavail * info.bsize;
-}
 
 const fileBytes = (path: string) => stat(path).then((info) => info.size, () => 0);
 
 export function buildAfconvertArgs(inputPath: string, outputPath: string): string[] {
-  return ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", inputPath, outputPath];
+  return ["-f", "WAVE", "-d", `LEI16@${WORKER_SAMPLE_RATE}`, "-c", "1", inputPath, outputPath];
 }
 
 // afconvert labels PCM from mono AAC as extensible, which the worker's reader refuses.
@@ -60,16 +61,11 @@ export class AudioConverterService {
 
   dispose(): void {
     this.disposed = true;
-    for (const child of this.processes) {
-      child.kill("SIGTERM");
-      const timeout = setTimeout(() => { if (child.exitCode === null) child.kill("SIGKILL"); }, 1_000);
-      timeout.unref();
-      child.once("close", () => clearTimeout(timeout));
-    }
+    for (const child of this.processes) terminateChild(child);
   }
   async convertInputToWav(inputPath: string, outputPath: string, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted();
-    if (this.disposed) throw new Error(he.transcriptionCanceled);
+    if (this.disposed) throw new TranscriptionCanceledError();
     if (isMockMode()) {
       await writeFile(outputPath, "mock wav", "utf8");
       return outputPath;
@@ -79,18 +75,13 @@ export class AudioConverterService {
     const folder = dirname(outputPath);
     if (await this.freeBytes(folder) < MIN_FREE_BYTES) throw new Error(he.audioFileTooLarge);
     signal?.throwIfAborted();
-    if (this.disposed) throw new Error(he.transcriptionCanceled);
+    if (this.disposed) throw new TranscriptionCanceledError();
 
     await new Promise<void>((resolve, reject) => {
-      const child = spawn(this.options.afconvertPath ?? "/usr/bin/afconvert", buildAfconvertArgs(inputPath, outputPath));
+      const child = spawn(this.options.afconvertPath ?? "/usr/bin/afconvert", buildAfconvertArgs(inputPath, outputPath), { env: minimalChildEnv(process.env) });
 
       this.processes.add(child);
-      const abort = () => {
-        child.kill("SIGTERM");
-        const timeout = setTimeout(() => { if (child.exitCode === null) child.kill("SIGKILL"); }, 1_000);
-        timeout.unref();
-        child.once("close", () => clearTimeout(timeout));
-      };
+      const abort = () => { terminateChild(child); };
       let limitError: Error | null = null;
       const exceed = (message: string) => {
         if (limitError) return;

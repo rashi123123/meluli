@@ -3,7 +3,11 @@ import { appSettingsSchema } from "@shared/schemas";
 import type { AppSettings } from "@shared/types";
 import type { SettingsRepositoryLike } from "../db/database";
 
+export type SettingsListener = (settings: AppSettings, key: keyof AppSettings) => void;
+
 export class SettingsService {
+  private readonly listeners = new Set<SettingsListener>();
+
   constructor(
     private readonly repository: SettingsRepositoryLike,
     private readonly electronApp?: Pick<App, "setLoginItemSettings" | "getLoginItemSettings">
@@ -32,6 +36,14 @@ export class SettingsService {
       this.electronApp?.setLoginItemSettings?.({ openAtLogin: Boolean(value) });
     }
 
-    return this.repository.set(key, validated[key]);
+    const next = this.repository.set(key, validated[key]);
+    for (const listener of this.listeners) listener(next, key);
+    return next;
+  }
+
+  /** Runs after every stored change, whoever made it. */
+  onChange(listener: SettingsListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
   }
 }

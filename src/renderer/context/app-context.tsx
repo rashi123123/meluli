@@ -10,12 +10,11 @@ import type {
   ModelDownloadProgress,
   OnboardingOptionalAction,
   OnboardingStepKey,
-  StoragePathsInfo,
   TranscriptEdit,
   TranscriptRecord
 } from "@shared/types";
 
-export interface TranscriptsContextValue {
+interface TranscriptsContextValue {
   errorMessage?: string | null;
   latestTranscript: TranscriptRecord | null;
   items: TranscriptRecord[];
@@ -25,6 +24,7 @@ export interface TranscriptsContextValue {
   setSearchQuery: (query: string) => void;
   setSelectedId: (id: string) => void;
   prependTranscript: (transcript: TranscriptRecord, select?: boolean) => void;
+  replaceTranscript: (transcript: TranscriptRecord) => void;
   updateTranscript: (id: string, edit: TranscriptEdit) => Promise<TranscriptRecord | null>;
   restoreTranscript: (id: string) => Promise<TranscriptRecord | null>;
   deleteTranscript: (id: string) => Promise<boolean>;
@@ -47,6 +47,8 @@ export interface RecordingContextValue {
   stopRecording: () => Promise<void>;
   abandonStart: () => Promise<boolean>;
   beginHold: () => boolean;
+  /** Whether the failed audio held here is also complete on disk, in history, so a new hold may drop it. */
+  heldRecordingSaved: () => boolean;
   endHold: () => void;
   /** Resolves true when the audio was kept for undo. */
   cancelRecording: () => Promise<boolean>;
@@ -64,7 +66,6 @@ export interface AppContextValue {
   permissionStatus: MicrophonePermissionStatus;
   accessibilityPermissionStatus: AccessibilityPermissionStatus;
   modelProgress: ModelDownloadProgress | null;
-  storagePaths: StoragePathsInfo | null;
   lastTranscript: TranscriptRecord | null;
   onboarding: ReturnType<typeof deriveOnboardingDisplayState> | null;
   activeView: MainView;
@@ -73,12 +74,10 @@ export interface AppContextValue {
   setErrorMessage: (message: string | null) => void;
   transcripts: TranscriptsContextValue;
   recording: RecordingContextValue;
-  refreshSettings: () => Promise<void>;
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
   requestMicrophonePermission: (options?: { advanceOnboarding?: boolean }) => Promise<MicrophonePermissionStatus>;
   requestAccessibilityPermission: () => Promise<AccessibilityPermissionStatus>;
   downloadModel: () => Promise<void>;
-  removeModel: () => Promise<void>;
   importAudio: () => Promise<void>;
   importDroppedAudio: (file: File) => Promise<void>;
   submitYouTubeUrl: (url: string) => Promise<void>;
@@ -88,7 +87,7 @@ export interface AppContextValue {
   rerunOnboarding: () => Promise<void>;
   resetEverything: () => Promise<void>;
   trackOnboardingStepViewed: (step: OnboardingStepKey) => Promise<void>;
-  completeOnboardingStep: (step: OnboardingStepKey) => Promise<void>;
+  completeOnboardingStep: (step: OnboardingStepKey, options?: { declined?: boolean }) => Promise<void>;
   continueOnboardingLater: (step: OnboardingStepKey) => Promise<void>;
   goBackOnboardingStep: () => Promise<void>;
   resumeOnboardingFlow: () => Promise<void>;

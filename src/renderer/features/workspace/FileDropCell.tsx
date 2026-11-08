@@ -14,7 +14,7 @@ export function FileDropCell({ disabled, onPick, onDropFile }: { disabled: boole
     event.dataTransfer.dropEffect = disabled ? "none" : "copy";
     if (!disabled) setDropping(true);
   };
-  return <Button type="button" variant="plain" className="cell quick-action app-no-drag" data-dropping={dropping || undefined} aria-label={he.importAudioCompact} onClick={onPick} disabled={disabled} focusableWhenDisabled
+  return <Button type="button" variant="plain" className="cell quick-action app-no-drag" data-dropping={dropping || undefined} aria-label={he.importAudio} onClick={onPick} disabled={disabled} focusableWhenDisabled
     onDragEnter={accept} onDragOver={accept}
     onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
     onDrop={(event) => {
@@ -24,7 +24,6 @@ export function FileDropCell({ disabled, onPick, onDropFile }: { disabled: boole
       if (file && !disabled) onDropFile(file);
     }}>
     <span className="source-head"><span className="source-icon">{dropping ? <DownloadSimple /> : <FolderOpen />}</span>
-      <span className="source-title"><strong>{dropping ? he.importAudioDrop : he.importAudioCompact}</strong><span>{he.importAudioHint}</span></span></span>
-    <span className="source-formats" dir="ltr">m4a · mp3 · wav</span>
+      <span className="source-title"><strong>{dropping ? he.importAudioDrop : he.importAudioCompact}</strong>{!dropping && <span>{he.importAudioHint}</span>}</span></span>
   </Button>;
 }

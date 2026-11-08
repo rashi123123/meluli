@@ -8,7 +8,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { he } from "@shared/locale";
-import { YouTubeImportService } from "@main/services/youtube-import.service";
+import { YouTubeImportService } from "@main/services/youtube/youtube-import.service";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 

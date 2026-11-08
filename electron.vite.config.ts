@@ -5,6 +5,8 @@ import tailwindcss from "@tailwindcss/vite";
 
 const electronNodeTarget = "node24";
 const electronChromeTarget = "chrome156";
+// The native app (scripts/meluli2/build-native-app.mjs) renders the same UI in WebKit.
+const rendererTarget = process.env.MELULI_RENDERER_TARGET || electronChromeTarget;
 
 const CONNECT_SRC = /connect-src [^;]*;/;
 
@@ -63,7 +65,9 @@ export default defineConfig(({ mode }) => ({
       __MELULI_OFFICIAL_BUILD__: OFFICIAL_BUILD
     },
     build: {
-      target: electronChromeTarget
+      target: rendererTarget,
+      // Off by default, as before; the native app's minified builds (--minify, --release) turn it on.
+      minify: process.env.MELULI_RENDERER_MINIFY === "1" ? "esbuild" : false
     },
     cacheDir: resolve(".vite/renderer"),
     resolve: {

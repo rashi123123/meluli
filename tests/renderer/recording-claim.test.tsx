@@ -91,7 +91,7 @@ beforeEach(async () => {
   };
   const transcriptionService = { transcribe: vi.fn(), cancel: () => false, on() {}, prewarm: async () => undefined, isBusy: false };
   const database = { transcriptRepository: { create: vi.fn() }, paths: { transcriptsDir: join(directory, "transcripts"), userDataPath: directory } };
-  const settingsService = { getSettings: () => settings, setSetting: vi.fn() };
+  const settingsService = { getSettings: () => settings, setSetting: vi.fn(), onChange: () => () => true };
   convert = vi.fn(async () => undefined);
   const workflow = new TranscriptionWorkflowService({ database: database as never, runtime, settingsService: settingsService as never,
     audioConverter: { convertInputToWav: convert } as never, transcriptionService: transcriptionService as never,

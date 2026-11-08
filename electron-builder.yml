@@ -16,6 +16,10 @@ extraResources:
     to: bin/whispercpp
     filter:
       - meluli-asr-worker
+  - from: resources/bin/sherpa-onnx
+    to: bin/sherpa-onnx
+    filter:
+      - meluli-asr-worker
   - from: resources/bin
     to: bin
     filter:

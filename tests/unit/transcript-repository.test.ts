@@ -38,11 +38,39 @@ describe("TranscriptRepository", () => {
     });
 
     it("searches for the start of a query past the token limit", () => {
-      expect(open().search(`${"alpha ".repeat(64)}absent`, 10).items).toHaveLength(1);
+      expect(open().search(`${"alpha ".repeat(16)}absent`, 10).items).toHaveLength(1);
     });
 
     it("searches for the start of a query past the length limit", () => {
       expect(open().search(`alpha${" ".repeat(2000)}absent`, 10).items).toHaveLength(1);
+    });
+
+    it("finds a word while it is still being typed", () => {
+      expect(open().search("alp", 10).items).toHaveLength(1);
+      expect(open().search("alp bet", 10).items).toHaveLength(1);
+      expect(open().search("alp gam", 10).items).toHaveLength(0);
+    });
+
+    it("finds a Hebrew word under the letters written onto it", () => {
+      const repository = open();
+      repository.create({ id: "2", createdAt: 2, sourceType: "microphone", text: "נפגשנו בירושלים והבית היה מלא", rawText: "x", durationMs: 1, backend: "ct2", modelId: "demo" });
+      expect(repository.search("ירוש", 10).items.map(item => item.id)).toEqual(["2"]);
+      expect(repository.search("בית", 10).items.map(item => item.id)).toEqual(["2"]);
+      expect(repository.search("בית ירושלים", 10).items.map(item => item.id)).toEqual(["2"]);
+      expect(repository.search("בית תל", 10).items).toHaveLength(0);
+      expect(repository.search(`${"בית ".repeat(64)}`, 10).items).toHaveLength(1);
+    });
+  });
+
+  describe("search punctuation", () => {
+    it("ignores a word with no letters in it, rather than finding nothing", () => {
+      const dir = mkdtempSync(join(tmpdir(), "ivrit-menu-bar-test-"));
+      tempDirs.push(dir);
+      const repository = createAppDatabase(dir).transcriptRepository;
+      repository.create({ id: "1", createdAt: 1, sourceType: "microphone", text: "alpha beta בית ספר", rawText: "x", durationMs: 1, backend: "ct2", modelId: "demo" });
+      for (const query of ["alpha - beta", "alpha , beta", "alpha ? beta", "בית - ספר", "בית – ספר", "בית ־ ספר", "-"]) {
+        expect(repository.search(query, 10).items.length, query).toBe(query === "-" ? 0 : 1);
+      }
     });
   });
 

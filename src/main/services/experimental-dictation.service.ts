@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, writeFile, type FileHandle } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { realpathSync } from "node:fs";
 import type { DictationPreview } from "@shared/experimental-dictation";
 import type { TranscriptionStartInput, TranscriptSegment } from "@shared/types";
-import type { NormalizedTranscriptionResult } from "./transcription.service";
-import { TranscriptionCanceledError } from "./transcription.service";
-import { pipelineTrace } from "../pipeline-trace";
+import type { NormalizedTranscriptionResult } from "./transcription-protocol";
+import { APP_SUPPORT_DIR_NAME, MAX_RECORDING_DURATION_MS } from "@shared/constants";
+import { isInsidePersonalProfile } from "../config/user-data";
+import { TranscriptionCanceledError } from "./transcription-errors";
+import { pipelineTrace } from "../diagnostics/pipeline-trace";
+import { pcm16, WORKER_SAMPLE_RATE as RATE, wavHeader } from "./pcm-wav";
 
-const RATE = 16_000;
-const MAX_SAMPLES = RATE * 20 * 60;
+const MAX_SAMPLES = (RATE * MAX_RECORDING_DURATION_MS) / 1000;
 
 export function experimentalDictationRoot(isPackaged: boolean, userDataPath: string, env = process.env): string | null {
   if (isPackaged || env.MELULI_EXPERIMENTAL_DICTATION !== "1") return null;
@@ -18,24 +19,12 @@ export function experimentalDictationRoot(isPackaged: boolean, userDataPath: str
   if (!profile || !assets || !isAbsolute(profile) || !isAbsolute(assets) || resolve(profile) !== resolve(userDataPath)) {
     throw new Error("Experimental dictation requires explicit isolated profile and asset paths.");
   }
-  const actual = realpathSync(userDataPath);
-  const personal = join(process.env.HOME ?? "", "Library/Application Support/IvritMenuBar");
-  let canonicalPersonal = resolve(personal);
-  try { canonicalPersonal = realpathSync(personal); } catch { /* Fresh installations may not have a profile. */ }
-  if (actual === canonicalPersonal || actual.startsWith(canonicalPersonal + "/")) {
+  // The real home, not the injected env: a test env without HOME must not move the profile it guards.
+  const personal = join(process.env.HOME ?? "", "Library/Application Support", APP_SUPPORT_DIR_NAME);
+  if (isInsidePersonalProfile(userDataPath, personal)) {
     throw new Error("Experimental dictation cannot use the ordinary application profile.");
   }
   return join(assets, "sessions");
-}
-
-export function pcmWav(pcm: Float32Array): Buffer {
-  const wav = Buffer.alloc(44 + pcm.length * 2);
-  wav.write("RIFF", 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
-  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
-  wav.writeUInt32LE(RATE, 24); wav.writeUInt32LE(RATE * 2, 28); wav.writeUInt16LE(2, 32);
-  wav.writeUInt16LE(16, 34); wav.write("data", 36); wav.writeUInt32LE(pcm.length * 2, 40);
-  for (let i = 0; i < pcm.length; i++) wav.writeInt16LE(Math.round(Math.max(-1, Math.min(1, pcm[i])) * 32767), 44 + i * 2);
-  return wav;
 }
 
 interface Session {
@@ -145,7 +134,7 @@ export class ExperimentalDictationService {
     const pcm = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.length / 4);
     const wavPath = join(s.directory, `decode-${start}-${end}.wav`);
     pipelineTrace("experimental_wav_preprocessing", "start");
-    await writeFile(wavPath, pcmWav(pcm), { mode: 0o600 });
+    await writeFile(wavPath, Buffer.concat([wavHeader(pcm.length * 2), pcm16(pcm)]), { mode: 0o600 });
     pipelineTrace("experimental_wav_preprocessing", "end");
     pipelineTrace("asr", "start", { final, liveDecode: this.liveDecode });
     let result: NormalizedTranscriptionResult;

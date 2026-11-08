@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppRuntime } from "@main/runtime";
-import { YouTubeQueueService } from "@main/services/youtube-queue.service";
+import { YouTubeQueueService } from "@main/services/youtube/youtube-queue.service";
+import { IPC_CHANNELS } from "@shared/ipc-channels";
 vi.mock("electron", () => ({ BrowserWindow: {}, Notification: {} }));
 
 describe("YouTube cancellation", () => {
@@ -57,5 +58,39 @@ describe("YouTube cancellation", () => {
     runtime.updateState({ status: "idle" });
     await vi.waitFor(() => expect(downloadAudio).toHaveBeenCalledOnce());
     await queue.dispose();
+  });
+});
+
+describe("YouTube failure reports", () => {
+  let directory: string;
+  beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "meluli-youtube-report-")); });
+  afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
+  const run = async (download: () => Promise<unknown>, transcribeAndStore = vi.fn(async () => {})) => {
+    const runtime = new AppRuntime();
+    const send = vi.spyOn(runtime, "send");
+    const queue = new YouTubeQueueService({
+      database: { paths: { userDataPath: directory } } as never, runtime,
+      youtubeImportService: { downloadAudio: vi.fn(download), cancel: vi.fn(() => false), dispose: vi.fn() } as never,
+      audioConverter: { convertInputToWav: vi.fn(async (_input: string, output: string) => { await writeFile(output, "wav"); return output; }) } as never,
+      transcriptionService: { cancel: vi.fn(() => false) } as never,
+      transcriptionWorkflow: { transcribeAndStore } as never
+    });
+    queue.initialize(); queue.submit("https://youtube.com/watch?v=test");
+    await vi.waitFor(() => expect(runtime.getState().status).not.toBe("idle"));
+    await queue.waitForSettled();
+    await queue.dispose();
+    return send.mock.calls.filter(([channel]) => channel === IPC_CHANNELS.transcriptionFailed);
+  };
+  const downloaded = async () => ({ audioPath: "input", sourceUrl: "https://youtube.com/watch?v=test", sourceTitle: "test", durationMs: 1000, cleanup: async () => {} });
+
+  it("leaves a transcription failure to the workflow, which already reported it", async () => {
+    const reports = await run(downloaded, vi.fn(async () => { throw new Error("המנוע נכשל"); }));
+    expect(reports).toEqual([]);
+  });
+
+  it("reports a download failure once", async () => {
+    const reports = await run(async () => { throw new Error("ההורדה נכשלה"); });
+    expect(reports).toHaveLength(1);
+    expect(reports[0]![1]).toEqual({ message: "ההורדה נכשלה" });
   });
 });

@@ -9,9 +9,6 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let host: HTMLDivElement;
 let root: Root;
 const render = async () => { await act(async () => root.render(<SpeechDemo />)); };
-const activate = async (detail = 1) => {
-  await act(async () => host.querySelector("button")!.dispatchEvent(new MouseEvent("click", { bubbles: true, detail })));
-};
 const advance = async (duration: number) => { await act(async () => vi.advanceTimersByTime(duration)); };
 const revealed = () => host.querySelectorAll('.demo-phrase[data-revealed="true"]').length;
 
@@ -47,8 +44,8 @@ describe("onboarding speech illustration", () => {
     const getUserMedia = vi.fn();
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
     await render(); await advance(3000);
-    expect(host.textContent).toContain("ללא הקלטה");
-    expect(host.querySelector("button")?.textContent).toBe("הפעלה חוזרת");
+    expect(host.querySelector(".onboarding-demo")?.getAttribute("aria-label")).toBe("הדגמה של דיבור לטקסט");
+    expect(host.querySelector("button")).toBeNull();
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 
@@ -63,19 +60,9 @@ describe("onboarding speech illustration", () => {
     hidden.mockRestore();
   });
 
-  it("finishes immediately when replay comes from the keyboard", async () => {
-    await render(); await advance(3000); await activate(0);
-    expect(revealed()).toBe(3);
-    expect(host.querySelector(".onboarding-demo")?.getAttribute("data-motion")).toBe("instant");
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it("cancels an old sequence when replayed, and all remaining timers on unmount", async () => {
+  it("cancels all remaining timers on unmount", async () => {
     await render(); await advance(1000);
     expect(revealed()).toBe(1);
-    await activate(); expect(revealed()).toBe(0);
-    await advance(150); expect(revealed()).toBe(0);
-    await advance(300); expect(revealed()).toBe(1);
     await act(async () => root.render(<div />));
     expect(vi.getTimerCount()).toBe(0);
   });

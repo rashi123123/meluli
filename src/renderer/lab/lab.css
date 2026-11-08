@@ -1,0 +1,85 @@
+/* Lab chrome only. It keeps its own neutral palette so the app's theme changes only the canvas. */
+.lab {
+  --lab-bg: #0b0b0d; --lab-panel: #141417; --lab-line: #26262b; --lab-ink: #ececef; --lab-mute: #9a9aa3; --lab-accent: #7aa2f7; --lab-note: #f5c451;
+  display: grid; grid-template-columns: 236px minmax(0, 1fr) auto; height: 100dvh; background: var(--lab-bg); color: var(--lab-ink);
+  font: 13px/1.45 system-ui, -apple-system, "SF Hebrew", sans-serif;
+}
+.lab button, .lab select, .lab input, .lab textarea { font: inherit; }
+
+.lab-sidebar { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 14px 10px; border-inline-end: 1px solid var(--lab-line); background: var(--lab-panel); }
+.lab-brand { display: grid; gap: 2px; padding-inline: 6px; }
+.lab-brand strong { font-size: 14px; }
+.lab-brand span, .lab-sidebar h3 { color: var(--lab-mute); font-size: 11px; font-weight: 500; }
+.lab-filter { padding: 6px 8px; border: 1px solid var(--lab-line); border-radius: 7px; background: var(--lab-bg); color: inherit; }
+.lab-sidebar nav { display: grid; gap: 12px; overflow: auto; }
+.lab-sidebar h3 { margin: 0 6px 4px; }
+.lab-sidebar nav button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px; background: none; color: var(--lab-ink); text-align: start; cursor: pointer; }
+.lab-sidebar nav button:hover { background: var(--lab-line); }
+.lab-sidebar nav button[aria-current="page"] { background: color-mix(in srgb, var(--lab-accent) 22%, transparent); }
+.lab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lab-note); }
+
+.lab-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lab-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--lab-line); background: var(--lab-panel); }
+.lab-title { display: grid; gap: 1px; min-width: 0; }
+.lab-title h2 { margin: 0; font-size: 15px; }
+.lab-title code, .lab code { color: var(--lab-mute); font: 11px/1.4 ui-monospace, "SF Mono", monospace; }
+.lab-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lab-controls label { display: flex; align-items: center; gap: 5px; color: var(--lab-mute); font-size: 12px; }
+.lab-controls select, .lab-toggle, .lab-panel button, .lab-draft button { padding: 4px 9px; border: 1px solid var(--lab-line); border-radius: 7px; background: var(--lab-bg); color: var(--lab-ink); cursor: pointer; }
+.lab-toggle[aria-pressed="true"] { border-color: var(--lab-accent); background: color-mix(in srgb, var(--lab-accent) 22%, var(--lab-bg)); }
+.lab-panel button:disabled { opacity: .45; cursor: default; }
+.lab-hint { margin: 0; padding: 6px 16px; background: color-mix(in srgb, var(--lab-note) 16%, var(--lab-bg)); color: var(--lab-note); font-size: 12px; }
+
+/* The canvas wears the app's own page colour. */
+.lab-canvas { --frame: 760px; display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; padding: 20px; overflow: auto; background: var(--chassis); }
+.lab-canvas[data-width="narrow"] { --frame: 420px; }
+.lab-canvas[data-width="wide"] { --frame: 1100px; }
+.lab-state { margin: 0; }
+.lab-state figcaption { margin-bottom: 6px; color: var(--ink3); font: 500 11px/1.3 system-ui, sans-serif; letter-spacing: .02em; }
+/* transform contains position: fixed children such as toasts. */
+.lab-state-body { position: relative; width: min(100%, var(--frame)); padding: 16px; overflow: hidden; border-radius: 12px; background: var(--s0); color: var(--ink1); font-family: var(--font-sans); font-size: var(--t-13); transform: translateZ(0); }
+.lab-state[data-size="screen"] .lab-state-body { width: min(100%, max(var(--frame), 980px)); height: 640px; padding: 0; display: flex; flex-direction: column; }
+.lab-state[data-size="screen"] .lab-state-body > .lab-row { padding: 16px; }
+.lab-state[data-size="screen"] .instrument-app { height: 100%; }
+.lab-state[data-size="hud"] .lab-state-body { width: min(100%, 520px); padding: 0; }
+.lab-desktop { display: grid; place-items: center; min-height: 220px; padding: 20px; background: repeating-conic-gradient(rgb(128 128 128 / .12) 0 25%, transparent 0 50%) 0 0 / 16px 16px, linear-gradient(135deg, #3a4a6b, #6b4a5a); }
+.lab-switcher { flex-wrap: wrap; padding: 10px !important; border-bottom: 1px solid var(--s3); }
+
+.lab-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.lab-column { display: grid; gap: 10px; max-width: 22rem; }
+.lab-placeholder { display: grid; place-items: center; min-height: 6rem; border: 1px dashed var(--s3); border-radius: var(--r-m, 10px); color: var(--ink3); }
+.lab-icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 8px; }
+.lab-icon { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--s1); }
+.lab-icon .sf-symbol { width: 1.125rem; height: 1.125rem; }
+.lab-icon code { color: var(--ink2); }
+
+[data-commenting] .lab-state-body, [data-commenting] .lab-state-body * { cursor: crosshair !important; }
+[data-lab-hover] { outline: 2px solid var(--lab-note, #f5c451) !important; outline-offset: 1px; }
+
+.lab-panel { display: flex; flex-direction: column; gap: 10px; width: 320px; min-height: 0; padding: 14px; overflow: auto; border-inline-start: 1px solid var(--lab-line); background: var(--lab-panel); }
+.lab-panel header { display: grid; gap: 8px; }
+.lab-panel header div { display: flex; gap: 6px; }
+.lab-panel h3 { margin: 0; font-size: 13px; }
+.lab-panel ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.lab-panel li { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--lab-line); border-radius: 8px; }
+.lab-panel li small { color: var(--lab-mute); }
+.lab-panel li p { margin: 0; }
+.lab-panel li button { justify-self: start; padding: 2px 7px; font-size: 11px; }
+.lab-calls li { padding: 5px 8px !important; }
+.lab-calls code { color: var(--lab-ink) !important; }
+.lab-empty { margin: 0; color: var(--lab-mute); font-size: 12px; }
+
+.lab-draft { position: fixed; z-index: 1000; display: grid; gap: 6px; width: 320px; padding: 10px; border: 1px solid var(--lab-line); border-radius: 10px; background: var(--lab-panel); color: var(--lab-ink); box-shadow: 0 12px 40px rgb(0 0 0 / .5); font: 13px/1.45 system-ui, sans-serif; }
+.lab-draft small { color: var(--lab-mute); }
+.lab-draft code { overflow-wrap: anywhere; color: var(--lab-mute); font: 11px ui-monospace, monospace; }
+.lab-draft textarea { padding: 6px 8px; border: 1px solid var(--lab-line); border-radius: 7px; background: var(--lab-bg); color: inherit; resize: vertical; }
+.lab-draft div { display: flex; gap: 6px; }
+.lab-error { margin: 0; padding: 10px; border-radius: 8px; background: rgb(255 80 80 / .12); color: #ff8a8a; font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; }
+/* The overlay and call windows size themselves to their native window; here they size to content. */
+.lab-desktop .overlay-root, .lab-desktop > main { width: auto; height: auto; min-width: 280px; }
+
+/* ?frame=<story>: the story alone, each screen state filling the real window. */
+.lab-frame { gap: 0; padding: 0; }
+.lab-frame .lab-state figcaption { position: sticky; top: 0; z-index: 1; margin: 0; padding: 4px 8px; background: var(--chassis); }
+.lab-frame .lab-state-body { width: 100%; border-radius: 0; }
+.lab-frame .lab-state[data-size="screen"] .lab-state-body { width: 100vw; height: 100vh; }

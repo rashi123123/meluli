@@ -32,13 +32,25 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
 
 describe("DictionarySection", () => {
-  it("adds a trimmed entry and clears the form", async () => {
+  it("adds a trimmed entry and clears the form once it is saved", async () => {
     await show([entry]);
     await fill("  קלוד ", " Claude  ");
     await act(async () => button(he.dictionaryAdd).click());
 
-    expect(onChange.mock.calls[0]?.[0]).toEqual([entry, expect.objectContaining({ heard: "קלוד", written: "Claude" })]);
-    expect(inputs()[0]!.value).toBe("");
+    const next = onChange.mock.calls[0]?.[0] as DictionaryEntry[];
+    expect(next).toEqual([entry, expect.objectContaining({ heard: "קלוד", written: "Claude" })]);
+    expect(inputs()[0]!.value).toBe("  קלוד ");
+    await show(next);
+    expect(inputs().map(input => input.value)).toEqual(["", ""]);
+    expect(document.activeElement).toBe(inputs()[0]);
+  });
+
+  it("keeps what was typed when the save does not land", async () => {
+    await show([entry]);
+    await fill("קלוד", "Claude");
+    await act(async () => button(he.dictionaryAdd).click());
+    await show([entry]);
+    expect(inputs().map(input => input.value)).toEqual(["קלוד", "Claude"]);
   });
 
   it("blocks a duplicate and an entry past the limit", async () => {

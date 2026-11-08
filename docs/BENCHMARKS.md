@@ -135,3 +135,36 @@ Moving the encoder to the CPU does not avoid sustained slowdown. Each block star
 **Silence gate.** This was a development experiment and is not in this repository. It ran Silero on the finished audio and skipped the model when no speech was found, so audio with speech reached the model unchanged. On the real worker the text matched with the gate on, off and with a missing gate model. Silent clips returned in 11–366 ms. The baseline already gave empty text on these 9 silent clips, so the gain is one avoided model run.
 
 **Limits.** Mixed and technical audio is synthetic. FLEURS and HebDB references are not audited, which inflates absolute WER. Greedy needs real recordings before any further decision. No test used a physical microphone. Kol-stream was not run because testing it means executing third-party Python code, so its published numbers are unverified.
+
+## Native app memory
+
+Measured 6 November 2026 on an Apple M3, macOS 27.0.1, 60 s samples with the person's usual apps running.
+
+| State | Processes | Memory | CPU |
+|---|---|---|---|
+| 2.0, window closed, release (minified) build | 2 (app, hold-key helper) | 59.0 MiB | 0%, about 1 wakeup/s |
+| 2.0, after a dictation, window closed | 2 | 97.9 MiB | 0% |
+| 0.1 (Electron), hidden window | 5 | 118.9 MiB | — |
+
+Every WebKit process exits when the window closes. About 25 MB of the app's footprint is the JavaScript heap of `src/main` and 18 MB small allocations; the host hints a collection and returns empty pages after a window closes and under memory pressure. Measure with `node scripts/meluli2/measure-processes.mjs`.
+
+## Streaming engine — 7 November 2026
+
+The experimental engine (`ivrit-ai/zipformer2-66m-streaming-he`, INT8, sherpa-onnx 1.12.30, CPU only) against production Whisper (Q8 large-v3-turbo, whisper.cpp 1.9.5, Metal). Both ran as the real worker binaries over their line protocols on identical audio: the Phase 4 set of 270 unique clips and 36 minutes of 16 kHz audio (read, natural, padded, synthetic Hebrew, mixed and technical, long, silence). Script: `scripts/asr-streaming-bench.mjs`. Raw output: `benchmarks/results/streaming/`.
+
+| | Whisper (default) | Streaming (experimental) |
+|---|---|---|
+| WER / CER, 226 scored clips | 22.40 / 11.70 | 25.48 / 12.90 (ΔWER +3.08, CI upper 4.49; ΔCER +1.20) |
+| Stop → text, p50 / p95, 27 clips at real-time pace | 1497 / 1903 ms | 32 / 53 ms |
+| Live partials | none | 39 ms p50, 89 ms p95 after the audio |
+| Memory, warmed | 1010 MiB | 287 MiB |
+| First model load; later loads | 11–17 s; 0.4 s | 1.2–1.6 s; 0.6 s |
+| CPU per second of audio | 0.012 CPU·s (decoding on the GPU) | 0.071 CPU·s |
+
+ΔWER by group, in percentage points against Whisper: read +3.29, natural +1.92, synthetic Hebrew +2.30, synthetic mixed Hebrew/English +8.15, technical +3.31, padded +4.31, long −12.51. Neither engine wrote text on silence.
+
+- Live sessions give exactly the same text as the same worker decoding each file whole, so streaming itself adds no error.
+- Two threads are the default: 33.6 ms p95 at the finish. One thread gives 59 ms with less CPU; four give 56 ms with twice the CPU. Accuracy is the same.
+- The 1.0 s tail at stop matters: 0.4 s gives ΔWER +6.09 with 14 cut-short outputs, 0.6 s gives +4.62 with 9, and 1.0 s matches offline decoding. The tail costs decode time (~27 ms), not waiting.
+- The pause before a segment closes (0.6 to 1.6 s) does not change accuracy. 1.2 s keeps a thinking pause from splitting a sentence on screen.
+- No voice activity detector was added: endpointing never ends a dictation, the engine wrote nothing on silence, and a detector would only risk clipping speech onsets.

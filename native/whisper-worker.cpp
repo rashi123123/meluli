@@ -62,6 +62,39 @@ std::string repairUtf8(const std::string& input, std::string& carry) {
   return output;
 }
 
+// A letter split between two segments belongs to the word that ended the first. Takes the bytes
+// that finish the carried letter from the start of `next`; empty when they do not make one.
+std::string finishCarried(std::string& carry, std::string& next) {
+  if (carry.empty()) return "";
+  const auto lead = static_cast<unsigned char>(carry[0]);
+  const size_t length = lead >= 0xc2 && lead <= 0xdf ? 2 : lead >= 0xe0 && lead <= 0xef ? 3 : lead >= 0xf0 && lead <= 0xf4 ? 4 : 0;
+  if (length <= carry.size() || next.size() < length - carry.size()) return "";
+  const size_t need = length - carry.size();
+  std::string rest;
+  const std::string letter = repairUtf8(carry + next.substr(0, need), rest);
+  if (letter.size() != length || !rest.empty()) return "";
+  carry.clear(); next.erase(0, need);
+  return letter;
+}
+
+// Adds one segment's text. `open` says the last added segment ended inside a word whose
+// letter is still carried, so that letter can go back to it.
+void appendSegment(json& segments, std::string& text, std::string& carry, bool& open,
+    std::string raw, bool repairText, double start, double end) {
+  if (repairText && open) {
+    const std::string letter = finishCarried(carry, raw);
+    if (!letter.empty()) { text += letter; segments.back()["text"] = segments.back()["text"].get<std::string>() + letter; }
+  }
+  open = false;
+  std::string part = repairText ? repairUtf8(raw, carry) : raw;
+  const bool endsInWord = !part.empty() && part.back() != ' ' && part.back() != '\t';
+  while (!part.empty() && (part.back() == ' ' || part.back() == '\t')) part.pop_back();
+  if (part.empty()) return;
+  if (!text.empty()) text += " "; text += part;
+  segments.push_back({{"start", start}, {"end", end}, {"text", part}});
+  open = endsInWord && !carry.empty();
+}
+
 // Convert WAV input through bounded chunks. The ASR runtime owns its PCM buffer.
 class WavReader {
   std::ifstream file;
@@ -156,17 +189,13 @@ class Runtime {
     const int status = whisper_full(recognizer.get(), params, audio.data(), static_cast<int>(audio.size()));
     checkCanceled();
     if (status != 0) throw std::runtime_error("Local ASR inference failed.");
-    json segments = json::array(); std::string text; std::string carry;
+    json segments = json::array(); std::string text; std::string carry; bool open = false;
     for (int i = 0; i < whisper_full_n_segments(recognizer.get()); ++i) {
       const char* value = whisper_full_get_segment_text(recognizer.get(), i);
       if (!value || !*value) continue;
-      std::string part = repairText ? repairUtf8(value, carry) : std::string(value);
-      while (!part.empty() && (part.back() == ' ' || part.back() == '\t')) part.pop_back();
-      if (part.empty()) continue;
-      if (!text.empty()) text += " "; text += part;
       const double start = std::clamp(whisper_full_get_segment_t0(recognizer.get(), i) / 100.0, 0.0, reader.duration);
       const double end = std::clamp(whisper_full_get_segment_t1(recognizer.get(), i) / 100.0, start, reader.duration);
-      segments.push_back({{"start", start}, {"end", end}, {"text", part}});
+      appendSegment(segments, text, carry, open, value, repairText, start, end);
     }
     json result = {{"text", text}, {"language", "he"}, {"segments", segments}};
     assertSerializable(result);

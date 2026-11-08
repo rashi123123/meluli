@@ -1,6 +1,6 @@
 # Validation and evidence
 
-Run `pnpm run typecheck`, `pnpm run lint`, `pnpm test`, `pnpm run build:app` and `pnpm run test:e2e`. Lint fails on unawaited promises and reports React hook findings as warnings. The test runner uses Electron's Node ABI; do not rebuild SQLite for system Node between these commands.
+Run `pnpm run typecheck`, `pnpm run lint`, `pnpm test`, `pnpm run build:app` and `pnpm run test:e2e`. Lint fails on unawaited promises and reports React hook findings as warnings. The test runner uses Electron's Node ABI; do not rebuild SQLite for system Node between these commands. `node scripts/meluli2/native-host-conformance.mjs` runs one set of checks in Node and in the native host's JavaScriptCore and fails on any difference; CI runs it with the rest.
 
 ## Automated tests
 
@@ -12,11 +12,22 @@ E2E uses a fresh `MELULI_USER_DATA` profile and `IVRIT_E2E_MOCK=1`. The ordinary
 
 The native clipboard helper's self-test uses a private named pasteboard. It does not change the general user clipboard. Test it with `resources/bin/meluli-clipboard --self-test` after `bash scripts/build-native-helpers.sh`.
 
+## Native app
+
+The release is the native app, so check it as well as the Electron development package. Build a test copy with `node scripts/meluli2/build-native-app.mjs`: it has its own identifier, profile and keychain item, and never opens personal history. Never launch a `--release` build on a development Mac.
+
+- `node scripts/meluli2/native-app-channels.mjs` drives every service channel a person reaches from the window through the app's own IPC, with no microphone and no paste.
+- `node scripts/meluli2/native-app-record-e2e.mjs` presses the window's record button while a consented recording plays into a loopback input (`ZoomAudioDevice` by default), and checks the saved transcript. It stops the app if any other input opens. Build its player first: `swiftc -O -o .build/mic-selftest/player native/tests/audio-player.swift`.
+- `node scripts/meluli2/updater-check.mjs` checks the native updater's signature rules, archive handling and swap on small bundles it signs itself. It needs an Apple Development identity.
+- `node scripts/meluli2/measure-processes.mjs` and `scripts/meluli2/check-helper-idle.mjs` measure idle memory, CPU and wakeups; record the conditions with `scripts/meluli2/conditions.mjs`.
+
+The shortcut, the hold key and pasting into another app need the test app's own Accessibility and Input Monitoring grants, so they are checked by hand on a real Mac (below).
+
 ## Packaged and real macOS tests
 
 Keep these categories apart when reporting: unit, mock E2E, packaged with the real engine, and real macOS interaction. Only the last establishes real-world behaviour, and only for the apps it covered.
 
-Run a package with an isolated `MELULI_USER_DATA` profile and disposable targets. The single-instance lock belongs to the profile, so a run with its own profile starts beside the installed app; a run on the same profile, including `pnpm dev`, hands over to the running app and quits. A child of a trusted shell inherits its Accessibility grant, which says nothing about the installed app's grant. `--use-fake-device-for-media-stream` replaces the microphone with a tone; speech reaches the engine by swapping PCM in the `recording:send-audio` handler. That proves the path after capture, not physical capture.
+For the Electron development package, run it with an isolated `MELULI_USER_DATA` profile and disposable targets. The single-instance lock belongs to the profile, so a run with its own profile starts beside the installed app; a run on the same profile, including `pnpm dev`, hands over to the running app and quits. A child of a trusted shell inherits its Accessibility grant, which says nothing about the installed app's grant. `--use-fake-device-for-media-stream` replaces the microphone with a tone; speech reaches the engine by swapping PCM in the `recording:send-audio` handler. That proves the path after capture, not physical capture.
 
 A packaged app exits at launch on any switch listed in `src/main/launch-switches.ts`, including `--remote-debugging-port` and `--inspect`. The fake-device flags are not listed and keep working. A run that needs a debug port needs a test-only build, set when the bundle is built rather than by anything at launch: run `pnpm exec electron-vite build --mode debug-switches`, then `pnpm exec electron-builder --mac dir --arm64 --publish never --config.electronFuses.enableNodeCliInspectArguments=true --config.directories.output=release-variant`. Never ship that build, and delete `release-variant` afterwards.
 
@@ -32,6 +43,21 @@ Manual checks that automation cannot make, on a released build with its own perm
 A signed release has its own evidence. The release workflow checks each archive with `scripts/verify-release-artifacts.sh`, and [the clean Mac check](RELEASE.md#clean-mac-check) covers what CI cannot see. `tests/unit/release-bundle-check.test.ts` stands in for Apple's tools, so it proves the checks reject bad bundles, not that a real bundle passes.
 
 Calls need a packaged build on macOS 14.2 or later, and real audio: `meluli-callaudio --self-test` proves only that the helper starts. Use a separate bundle identifier so the permission of the installed app is not touched. Check, in a real call on each platform: the suggestion, both tracks, the permission refusal notice, stopping on leaving and by hand, and that dictation during transcription stays fast.
+
+### Mixed Hebrew and English paste
+
+Run on a real Mac with Accessibility granted. Dictate each line into TextEdit, Notes, Mail, Messages, Slack, WhatsApp, Chrome (a Gmail draft and a Google Docs page) and Safari:
+
+| Say or paste | Expected in the field |
+| --- | --- |
+| `Claude Code זה כלי מעולה` | Right-aligned, "Claude Code" at the right end |
+| `מה שלומך?` | The question mark at the left end, after "שלומך" |
+| `API חדש יצא?` | Both of the above |
+| `יצא ב-2026.` | The full stop at the left end, the year in order |
+| `תפתח את CLAUDE.md.` | "CLAUDE.md." intact |
+| Two lines, the second starting with `GitHub` | Each line right to left, the break kept |
+
+Then paste the first line into Terminal, iTerm2 and VS Code and confirm nothing invisible was added: in Terminal, `pbpaste | xxd | head` after copying the pasted text shows no `e2 80 8f`. Note any app that reorders a line or shows a box, and which line.
 
 ## Real transcription and release acceptance
 

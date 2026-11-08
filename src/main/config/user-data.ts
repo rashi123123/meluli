@@ -17,6 +17,13 @@ function canonicalPath(path: string): string {
   }
 }
 
+/** True when `path` is the personal profile or inside it, after following links. Either may not exist yet. */
+export function isInsidePersonalProfile(path: string, personalProfile: string): boolean {
+  const candidate = canonicalPath(path);
+  const personal = canonicalPath(personalProfile);
+  return candidate === personal || candidate.startsWith(personal + sep);
+}
+
 /** Override enables clean-profile previews/tests without touching real user data. */
 export function resolveUserDataPath(appDataPath: string, env: NodeJS.ProcessEnv): string {
   const legacyPath = join(appDataPath, APP_SUPPORT_DIR_NAME);
@@ -28,11 +35,7 @@ export function resolveUserDataPath(appDataPath: string, env: NodeJS.ProcessEnv)
   }
   if (!isAbsolute(override)) throw new Error("MELULI_USER_DATA must be an absolute path.");
   if (mock) {
-    const candidate = canonicalPath(override);
-    const personal = canonicalPath(legacyPath);
-    if (candidate === personal || candidate.startsWith(personal + sep)) {
-      throw new Error("Mock runs cannot use the personal history directory.");
-    }
+    if (isInsidePersonalProfile(override, legacyPath)) throw new Error("Mock runs cannot use the personal history directory.");
   }
   return resolve(override);
 }

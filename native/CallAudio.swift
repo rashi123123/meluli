@@ -53,9 +53,20 @@ func bundleId(_ object: AudioObjectID) -> String {
     return value.takeRetainedValue() as String
 }
 
+/// A process object keeps its bundle id for life, so each is asked once. Asking costs a round trip
+/// to coreaudiod, and there are dozens of audio processes.
+var bundleIds: [AudioObjectID: String] = [:]
+
 func matching(_ prefixes: [String]) -> [AudioObjectID] {
-    audioProcesses().filter { process in
-        let bundle = bundleId(process)
+    let processes = audioProcesses()
+    let current = Set(processes)
+    bundleIds = bundleIds.filter { current.contains($0.key) }
+    return processes.filter { process in
+        let bundle = bundleIds[process] ?? {
+            let value = bundleId(process)
+            bundleIds[process] = value
+            return value
+        }()
         return prefixes.contains { bundle.hasPrefix($0) }
     }
 }
@@ -186,14 +197,20 @@ final class Recording {
     private var ioProc: AudioDeviceIOProcID?
     private var lastMicrophoneRestart = Date.distantPast
     private var lastTapRestart = Date.distantPast
+    private var configurationObserver: NSObjectProtocol?
+    private var stopped = false
 
     init?(directory: String, prefixes: [String]) {
         guard let mic = Track(path: "\(directory)/mic.wav"), let system = Track(path: "\(directory)/system.wav") else { return nil }
         self.mic = mic
         self.system = system
         self.prefixes = prefixes
-        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main) { [weak self] _ in
-            self?.restartMicrophone()
+        // The engine posts this from its own queue and waits for the observer to finish. An
+        // observer on the main queue deadlocks against the main thread releasing the engine
+        // (its deinit waits on that same queue), and the helper then never exits. So the
+        // observer runs where it is posted and only hops to the main thread.
+        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+            DispatchQueue.main.async { self?.restartMicrophone() }
         }
         if !startMicrophone() { emitError("microphone") }
         if !startTap() { emitError("tap") }
@@ -210,7 +227,8 @@ final class Recording {
     }
 
     private func restartMicrophone() {
-        guard Date().timeIntervalSince(lastMicrophoneRestart) > restartSeconds else { return }
+        // Never reopen the microphone after the recording was stopped.
+        guard !stopped, Date().timeIntervalSince(lastMicrophoneRestart) > restartSeconds else { return }
         lastMicrophoneRestart = Date()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -297,6 +315,9 @@ final class Recording {
     }
 
     func stop(id: Int = 0) {
+        stopped = true
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        configurationObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         stopTap()
@@ -317,7 +338,9 @@ var reportedApps = ""
 var recording: Recording?
 
 /// Only apps on the list leave this process, so what else uses audio stays private.
-func reportApps() {
+/// Returns whether a listed app has audio running.
+@discardableResult
+func reportApps() -> Bool {
     var apps: [String: (input: Bool, output: Bool)] = [:]
     for process in matching(watched) {
         let id = bundleId(process)
@@ -329,9 +352,95 @@ func reportApps() {
     }
     let active = apps.filter { $0.value.input || $0.value.output }.sorted { $0.key < $1.key }
     let summary = active.map { "\($0.key):\($0.value.input):\($0.value.output)" }.joined(separator: ",")
-    guard summary != reportedApps else { return }
+    guard summary != reportedApps else { return !active.isEmpty }
     reportedApps = summary
     emit(["type": "apps", "apps": active.map { ["id": $0.key, "input": $0.value.input, "output": $0.value.output] }])
+    return !active.isEmpty
+}
+
+// Polling CoreAudio every second wakes this process and coreaudiod all day. A process object's
+// running state sends no notification (macOS 27.0.1), but a device starting or stopping does, and so
+// does the list of audio processes. Those wake the helper; it polls each second only while a listed
+// app has audio running or a call is recording, as it always did then. A device that was already
+// running for another app sends nothing, so a slow check covers that case.
+let activePollSeconds = 1.0
+let backstopSeconds = 15
+
+var activePoll: Timer?
+var backstop: DispatchSourceTimer?
+var listenedDevices: [AudioObjectID] = []
+/// Devices start and stop in bursts, so one look follows a burst.
+var evaluationPending = false
+func evaluateSoon() {
+    guard !evaluationPending else { return }
+    evaluationPending = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        evaluationPending = false
+        evaluate()
+    }
+}
+let changed: AudioObjectPropertyListenerBlock = { _, _ in evaluateSoon() }
+let devicesChanged: AudioObjectPropertyListenerBlock = { _, _ in
+    listenToDevices()
+    evaluateSoon()
+}
+
+func objectList(_ selector: AudioObjectPropertySelector) -> [AudioObjectID] {
+    var property = address(selector)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(systemObject, &property, 0, nil, &size) == noErr else { return [] }
+    var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+    guard AudioObjectGetPropertyData(systemObject, &property, 0, nil, &size, &ids) == noErr else { return [] }
+    return ids
+}
+
+func listenToDevices() {
+    var running = address(kAudioDevicePropertyDeviceIsRunningSomewhere)
+    for device in listenedDevices { AudioObjectRemovePropertyListenerBlock(device, &running, .main, changed) }
+    listenedDevices = objectList(kAudioHardwarePropertyDevices).filter {
+        AudioObjectAddPropertyListenerBlock($0, &running, .main, changed) == noErr
+    }
+}
+
+func setListening(_ on: Bool) {
+    var processes = address(kAudioHardwarePropertyProcessObjectList)
+    var devices = address(kAudioHardwarePropertyDevices)
+    if on == (backstop != nil) { return }
+    if on {
+        AudioObjectAddPropertyListenerBlock(systemObject, &processes, .main, changed)
+        AudioObjectAddPropertyListenerBlock(systemObject, &devices, .main, devicesChanged)
+        listenToDevices()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .seconds(backstopSeconds), repeating: .seconds(backstopSeconds), leeway: .seconds(5))
+        timer.setEventHandler(handler: evaluate)
+        backstop = timer
+        timer.resume()
+        return
+    }
+    AudioObjectRemovePropertyListenerBlock(systemObject, &processes, .main, changed)
+    AudioObjectRemovePropertyListenerBlock(systemObject, &devices, .main, devicesChanged)
+    var running = address(kAudioDevicePropertyDeviceIsRunningSomewhere)
+    for device in listenedDevices { AudioObjectRemovePropertyListenerBlock(device, &running, .main, changed) }
+    listenedDevices = []
+    backstop?.cancel()
+    backstop = nil
+}
+
+/// Reports, then keeps the one-second poll exactly as long as there is something to follow.
+func evaluate() {
+    let active = !watched.isEmpty && reportApps()
+    if active || recording != nil {
+        guard activePoll == nil else { return }
+        activePoll = Timer.scheduledTimer(withTimeInterval: activePollSeconds, repeats: true) { _ in poll() }
+    } else {
+        activePoll?.invalidate()
+        activePoll = nil
+    }
+}
+
+func poll() {
+    recording?.check()
+    evaluate()
 }
 
 func stringList(_ value: Any?) -> [String] { (value as? [String]) ?? [] }
@@ -347,7 +456,9 @@ func handle(_ line: String) {
     case "watch":
         watched = stringList(message["prefixes"]).filter { !$0.isEmpty }
         reportedApps = ""
-        reportApps()
+        if watched.isEmpty { reportApps() }
+        setListening(!watched.isEmpty)
+        evaluate()
     case "start":
         guard let id = message["id"] as? Int else {
             emitError("input")
@@ -362,9 +473,11 @@ func handle(_ line: String) {
         }
         recording = Recording(directory: directory, prefixes: prefixes)
         if recording == nil { emitError("disk", id: id) } else { emit(["type": "started", "id": id]) }
+        evaluate()
     case "stop":
         recording?.stop(id: message["id"] as? Int ?? 0)
         recording = nil
+        evaluate()
     default:
         emitError("input")
     }
@@ -384,10 +497,10 @@ DispatchQueue.global().async {
         recording?.stop()
         exit(0)
     }
-}
-Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-    reportApps()
-    recording?.check()
+    // The app is gone. If the main thread cannot finish the stop, leave anyway rather than
+    // stay behind as an orphan; the app recovers unfinished call audio on its next start.
+    Thread.sleep(forTimeInterval: 3)
+    _exit(0)
 }
 emit(["type": "ready"])
 RunLoop.main.run()

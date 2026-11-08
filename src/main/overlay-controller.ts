@@ -1,6 +1,7 @@
-import { pipelineTrace } from "./pipeline-trace";
-import type { AppRuntime } from "./runtime";
-import type { TextInsertionService } from "./services/text-insertion.service";
+import { pipelineTrace } from "./diagnostics/pipeline-trace";
+import type { TextInsertionService } from "./services/insertion/text-insertion.service";
+import { isFree, isRecording, isWorking, mayRetarget, type AppRuntime } from "./runtime";
+import type { FlowPreviewChoice } from "./services/flows/overlay-flows";
 
 /** Owns shortcut ordering; the renderer owns microphone capture. */
 export class OverlayController {
@@ -16,6 +17,8 @@ export class OverlayController {
     textInsertion: () => TextInsertionService;
     show: (activate: boolean) => void;
     hide: () => void;
+    /** Resolves a flow preview on screen; null when none is waiting. */
+    flowPreview?: (choice: FlowPreviewChoice) => Promise<void> | null;
   }) {}
 
   async open(): Promise<void> {
@@ -37,7 +40,7 @@ export class OverlayController {
     try {
       const state = this.dependencies.runtime.getState();
       if (this.dependencies.runtime.isPasteRetrying()) return;
-      if (state.overlaySession && (state.status === "idle" || state.status === "error")) {
+      if (state.overlaySession && isFree(state.status)) {
         this.dependencies.runtime.clearOverlaySession();
       }
       await this.captureTargetWhenIdle();
@@ -63,11 +66,13 @@ export class OverlayController {
         if (!clear || !wanted) return;
       }
       const state = this.dependencies.runtime.getState();
-      if (state.status === "processing" || state.status === "youtube_downloading") {
+      // A press on a flow preview pastes the result.
+      if (this.dependencies.flowPreview?.("result")) return;
+      if (isWorking(state.status)) {
         if (state.activeSourceType === "microphone") this.dependencies.show(false);
         return;
       }
-      if (state.overlaySession && (state.status === "idle" || state.status === "error")) {
+      if (state.overlaySession && isFree(state.status)) {
         this.dependencies.runtime.clearOverlaySession();
       }
       // An inactive window leaves the target frontmost, so feedback needn't wait for the
@@ -104,13 +109,24 @@ export class OverlayController {
           return;
         }
       }
+      // Holding on a flow preview pastes the dictation as spoken, then records again.
+      const preview = this.dependencies.flowPreview?.("original");
+      if (preview) {
+        await preview;
+        if (!this.keyHeld) return;
+      }
       const state = this.dependencies.runtime.getState();
-      if (state.status === "recording" || state.status === "paused") return;
-      if (state.status === "processing" || state.status === "youtube_downloading") {
-        if (state.activeSourceType === "microphone") this.dependencies.show(false);
+      if (isRecording(state.status)) return;
+      if (isWorking(state.status)) {
+        // The last dictation is still being written. The window says so at once, so no one
+        // speaks into a hold that records nothing. The target stays as it is.
+        if (state.activeSourceType === "microphone") {
+          this.dependencies.show(false);
+          this.dependencies.runtime.requestRecordingHold("press");
+        }
         return;
       }
-      if (state.overlaySession && (state.status === "idle" || state.status === "error")) {
+      if (state.overlaySession && isFree(state.status)) {
         this.dependencies.runtime.clearOverlaySession();
       }
       pipelineTrace("shortcut", "event");
@@ -148,7 +164,7 @@ export class OverlayController {
     const state = this.dependencies.runtime.getState();
     // Never strand an open microphone or discard a pending automatic paste. A shortcut
     // mid-flight counts: a closing success timer must not clear the target it just took.
-    if (this.opening || state.status === "recording" || state.status === "paused" ||
+    if (this.opening || isRecording(state.status) ||
         state.overlaySession?.phase === "processing" || this.dependencies.runtime.isPasteRetrying()) return false;
     this.dependencies.runtime.cancelPendingRecordingToggle();
     this.dependencies.runtime.cancelPendingRecordingHold();
@@ -170,7 +186,7 @@ export class OverlayController {
 
   private async captureTargetWhenIdle(): Promise<void> {
     const state = this.dependencies.runtime.getState();
-    if ((state.status === "idle" || state.status === "error") && !state.overlaySession && !this.dependencies.runtime.isPasteRetrying()) {
+    if (mayRetarget(state) && !this.dependencies.runtime.isPasteRetrying()) {
       // Must precede show/focus, otherwise the captured target is Meluli itself.
       await this.dependencies.textInsertion().captureCurrentTargetApplication();
     }

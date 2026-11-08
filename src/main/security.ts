@@ -1,8 +1,9 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath, format } from "node:url";
-import type { IpcMainInvokeEvent, Session, WebContents } from "electron";
+import { app, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
 import { AppError } from "@shared/errors/app-error";
 import { ERROR_CODES } from "@shared/errors/error-codes";
+import { isLoopbackHost } from "@shared/loopback";
 import type {
   FilesystemPermissionRequest,
   MediaAccessPermissionRequest,
@@ -12,26 +13,14 @@ import type {
 } from "electron";
 import type { InvokeChannelName } from "./ipc/policy";
 import { canWindowRoleAccessChannel } from "./ipc/policy";
-import type { AppRuntime, AppWindowRole } from "./runtime";
+import { MAX_RECORDING_DURATION_MS, MAX_RECORDING_SAMPLE_RATE } from "@shared/constants";
+import { windowRoleFromQuery, type AppWindowRole } from "@shared/window-role";
+import type { AppRuntime } from "./runtime";
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 const FILE_ORIGIN = "file://";
 /** The window loads this file and the sender check trusts it, so the two cannot drift apart. */
 export const RENDERER_ENTRY_PATH = join(dirname(fileURLToPath(import.meta.url)), "../renderer/index.html");
-const WINDOW_ROLE_QUERY_KEY = "window";
 const MAX_TEXT_INSERT_LENGTH = 20_000;
-const MAX_RECORDING_AUDIO_DURATION_MS = 20 * 60_000;
-const MAX_RECORDING_SAMPLE_RATE = 48_000;
-
-export const PRELOAD_SANDBOX_COMPATIBILITY = {
-  usesOnlyContextBridgeAndIpcRenderer: true,
-  hasNoNodeBuiltInDependency: true,
-  hasNoUnrestrictedPreloadAssumptions: true
-} as const;
-
-export function canEnableSandboxedPreload(): boolean {
-  return Object.values(PRELOAD_SANDBOX_COMPATIBILITY).every(Boolean);
-}
 
 export interface RendererSecurityEnvironment {
   isPackaged: boolean;
@@ -71,7 +60,7 @@ export function resolveDevServerUrl(
     });
   }
 
-  if (!["http:", "https:"].includes(parsed.protocol) || !LOOPBACK_HOSTS.has(parsed.hostname)) {
+  if (!["http:", "https:"].includes(parsed.protocol) || !isLoopbackHost(parsed.hostname)) {
     throw createSecurityError("Rejected non-loopback ELECTRON_RENDERER_URL.", {
       rawUrl
     });
@@ -93,6 +82,16 @@ export function createRendererSecurityEnvironment(options: {
     rendererEntryPath: options.rendererEntryPath ?? RENDERER_ENTRY_PATH,
     allowedOrigins: new Set([devServerUrl?.origin ?? FILE_ORIGIN])
   };
+}
+
+let appEnvironment: RendererSecurityEnvironment | null = null;
+
+/** Where this app's windows load from. Built on first use, after startup has cleared a shipped app's development variables. */
+export function appRendererSecurity(): RendererSecurityEnvironment {
+  return appEnvironment ??= createRendererSecurityEnvironment({
+    isPackaged: app.isPackaged,
+    rawDevServerUrl: process.env.ELECTRON_RENDERER_URL ?? null
+  });
 }
 
 function safeParseUrl(rawUrl: string | null | undefined): URL | null {
@@ -134,12 +133,7 @@ export function normalizeOriginValue(origin: string | null | undefined, fallback
 
 export function getWindowRoleFromUrl(rawUrl: string | null | undefined): AppWindowRole | null {
   const parsed = safeParseUrl(rawUrl);
-  if (!parsed) {
-    return null;
-  }
-
-  const value = parsed.searchParams.get(WINDOW_ROLE_QUERY_KEY);
-  return value === "main" || value === "overlay" || value === "call" ? value : null;
+  return parsed ? windowRoleFromQuery(parsed.search) : null;
 }
 
 export function isTrustedRendererUrl(
@@ -349,10 +343,10 @@ export function assertSafeRecordingAudioPayload(payload: {
     });
   }
 
-  if (!Number.isFinite(payload.durationMs) || payload.durationMs < 0 || payload.durationMs > MAX_RECORDING_AUDIO_DURATION_MS) {
+  if (!Number.isFinite(payload.durationMs) || payload.durationMs < 0 || payload.durationMs > MAX_RECORDING_DURATION_MS) {
     throw createSecurityError("Rejected invalid audio duration.", {
       durationMs: payload.durationMs,
-      maxDurationMs: MAX_RECORDING_AUDIO_DURATION_MS
+      maxDurationMs: MAX_RECORDING_DURATION_MS
     });
   }
 

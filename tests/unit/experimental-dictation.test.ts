@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExperimentalDictationService, experimentalDictationRoot } from "@main/services/experimental-dictation.service";
-import type { NormalizedTranscriptionResult } from "@main/services/transcription.service";
+import type { NormalizedTranscriptionResult } from "@main/services/transcription-protocol";
 
 const directories: string[] = [];
 afterEach(async () => { for (const path of directories.splice(0)) await rm(path, { recursive: true, force: true }); });

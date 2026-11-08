@@ -14,12 +14,13 @@ const modes = {
 };
 
 /** A transport control. It only makes sense inside a .capsule. */
-export function RecordButton({ mode, onClick, disabled = false, className = "", children, ref }: {
-  mode: RecordButtonMode; onClick: () => void; disabled?: boolean; className?: string; children?: ReactNode; ref?: Ref<HTMLButtonElement>;
+export function RecordButton({ mode, onClick, disabled = false, className = "", label: labelOverride, keyShortcuts, children, ref }: {
+  mode: RecordButtonMode; onClick: () => void; disabled?: boolean; className?: string; label?: string; keyShortcuts?: string; children?: ReactNode; ref?: Ref<HTMLButtonElement>;
 }) {
-  const { label, text, icon: Icon, className: modeClass } = modes[mode];
+  const { label: modeLabel, text, icon: Icon, className: modeClass } = modes[mode];
+  const label = labelOverride ?? modeLabel;
   const round = modeClass === "capsule-round";
-  return <Button ref={ref} type="button" variant="plain" onClick={onClick} disabled={disabled} focusableWhenDisabled aria-label={label} title={label} className={`${modeClass} ${className}`}>
+  return <Button ref={ref} type="button" variant="plain" onClick={onClick} disabled={disabled} focusableWhenDisabled aria-label={label} aria-keyshortcuts={keyShortcuts} title={label} className={`${modeClass} ${className}`}>
     <Icon />{!round && <span>{text}</span>}{children}
   </Button>;
 }

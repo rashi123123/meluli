@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { lockConnectSrc } from "../../electron.vite.config";
 
 const SENTINEL = "dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX";
@@ -57,6 +57,13 @@ function check({ path, env }: { path: string; env: NodeJS.ProcessEnv }) {
 }
 
 describe("release check on a packaged app", () => {
+  // The suite runs on Electron's Node, whose fs reads any path through an .asar as an archive.
+  // These fixtures are plain files named app.asar, so archive handling is off while they are written.
+  const runtime = process as NodeJS.Process & { noAsar?: boolean };
+  const asarSetting = runtime.noAsar;
+  beforeAll(() => { runtime.noAsar = true; });
+  afterAll(() => { runtime.noAsar = asarSetting; });
+
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
   it("passes the state the app ships in", () => {

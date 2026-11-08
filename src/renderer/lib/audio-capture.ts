@@ -2,19 +2,19 @@ import type { RecordingAudioPayload } from "@shared/types";
 import { MAX_RECORDING_DURATION_MS } from "@shared/constants";
 import { he } from "@shared/locale";
 import recorderWorkletUrl from "./audio-worklet.ts?worker&url";
+import { CAPTURE_SAMPLE_RATE, mergeFloatChunks } from "./pcm";
 
-function mergeFloatChunks(chunks: Float32Array[], totalLength: number): Float32Array {
-  const output = new Float32Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
-  return output;
-}
+/** The worklet confirms it handed over its last samples within this long of being told to stop. */
+const FLUSH_ACK_TIMEOUT_MS = 1_000;
+
 
 export class AudioCaptureController {
   private chunkListener: ((chunk: Float32Array) => void) | null = null;
   private strictFlush = false;
   setChunkListener(listener: ((chunk: Float32Array) => void) | null): void { this.chunkListener = listener; }
   setStrictFlush(enabled: boolean): void { this.strictFlush = enabled; }
+  /** The chunks heard so far, in order (the stop payload is these merged). */
+  capturedChunks(): readonly Float32Array[] { return this.chunks.slice(); }
   private audioContext: AudioContext | null = null;
   private mediaStream: MediaStream | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -71,7 +71,7 @@ export class AudioCaptureController {
       }
       // After the input, on purpose: opening an output device alongside it delayed the
       // first sample by up to 600 ms, far longer than building this graph takes.
-      const context = new AudioContext({ sampleRate: 16000 });
+      const context = new AudioContext({ sampleRate: CAPTURE_SAMPLE_RATE });
       this.audioContext = context;
       await context.audioWorklet.addModule(recorderWorkletUrl);
       if (generation !== this.generation) throw new Error(he.recordingFailed);
@@ -139,7 +139,7 @@ export class AudioCaptureController {
             this.onFlushed = null;
             if (this.strictFlush) reject(new Error("Experimental audio flush was not acknowledged; retained source may be incomplete."));
             else { flushIncomplete = true; resolve(); }
-          }, 1_000);
+          }, FLUSH_ACK_TIMEOUT_MS);
           this.onFlushed = () => { clearTimeout(timeout); this.onFlushed = null; resolve(); };
           this.workletNode!.port.postMessage({ type: "stop" });
         });

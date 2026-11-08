@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FloatingWindow, X } from "@/components/icons";
+import { CaretDown, FloatingWindow, X } from "@/components/icons";
 import { getHebrewErrorMessage } from "@shared/error-utils";
 import { getRemainingEstimateMs } from "@shared/processing-estimate";
 import { RecordButton } from "@/components/RecordButton";
@@ -8,17 +8,18 @@ import { Button } from "@/components/ui/button";
 import { useAppContext } from "@/context/app-context";
 import { useMicrophoneDevices } from "@/hooks/use-microphone-devices";
 import { formatDurationMs } from "@/lib/format";
-import { formatShortcut } from "@/lib/shortcut";
+import { formatShortcut, toAriaKeyShortcuts } from "@/lib/shortcut";
 import { isNearRecordingLimit } from "@shared/constants";
 import { he } from "@shared/locale";
 import { FileDropCell } from "./FileDropCell";
 import { YouTubeInputRow } from "./YouTubeInputRow";
+import { isMicrophoneBlocked } from "@/lib/microphone-permission";
 
 export function RecordingArea() {
-  const { appState, recording, settings, permissionStatus, importAudio, importDroppedAudio, cancelActiveYouTube, setErrorMessage } = useAppContext();
+  const { appState, recording, settings, permissionStatus, importAudio, importDroppedAudio, cancelActiveYouTube, setErrorMessage, updateSetting } = useAppContext();
   const [now, setNow] = useState(Date.now());
   const primaryAction = useRef<HTMLButtonElement>(null);
-  const { selectedLabel } = useMicrophoneDevices(settings?.microphoneDeviceId, permissionStatus);
+  const { devices, selectedLabel } = useMicrophoneDevices(settings?.microphoneDeviceId, permissionStatus);
   const capturing = appState.status === "recording" || appState.status === "paused";
   const processing = appState.status === "processing" || appState.status === "youtube_downloading";
   const youtubeWork = appState.status === "youtube_downloading" || (appState.status === "processing" && appState.activeSourceType === "youtube");
@@ -36,6 +37,10 @@ export function RecordingArea() {
     ? getRemainingEstimateMs({ processingStartedAt: appState.processingStartedAt, processingEstimateMs: appState.processingEstimateMs, now }) : null;
   const modelState = settings?.modelState.downloadState;
   const modelUnavailable = modelState !== "ready";
+  // A blocked microphone cannot record, so the button leads to the one place that can fix it.
+  const microphoneBlocked = isMicrophoneBlocked(permissionStatus);
+  const startLabel = modelUnavailable ? modelState === "downloading" ? "הקלטה תתאפשר כשמנוע התמלול יסיים לרדת" : "הקלטה תתאפשר אחרי שמורידים את מנוע התמלול"
+    : microphoneBlocked ? "הקלטה: פתיחת הגדרות המיקרופון" : undefined;
   const statusText = recording.isPreparing ? "פותחים את המיקרופון…"
     : appState.status === "error" ? he.error
     : appState.status === "recording" ? he.recording
@@ -48,24 +53,41 @@ export function RecordingArea() {
   const tone = appState.status === "recording" ? "live" : blocked ? "alert" : statusText === he.idle ? "ok" : undefined;
   const visualizerState: AgentState = appState.status === "recording" ? "speaking" : appState.status === "paused" ? "listening" : processing ? "thinking" : "idle";
   const nearLimit = capturing && isNearRecordingLimit(elapsed);
-  const source = appState.status === "error" && appState.lastError ? getHebrewErrorMessage(appState.lastError)
-    : nearLimit ? he.recordingLimitSoon
-    : youtubeWork ? appState.currentYoutubeJob?.title ?? he.youtubeLabel : selectedLabel;
-  const time = processing ? remaining !== null ? `~ ${formatDurationMs(remaining)}` : "" : formatDurationMs(elapsed);
+  // A message gets its own wrapping line under the status, so its recovery half is never cut off.
+  const message = appState.status === "error" && appState.lastError ? getHebrewErrorMessage(appState.lastError) : nearLimit ? he.recordingLimitSoon : null;
+  const source = message ? null : youtubeWork ? appState.currentYoutubeJob?.title ?? he.youtubeLabel : selectedLabel;
+  // The mic name doubles as the picker while nothing is running, so switching input doesn't need a trip to settings.
+  const selectedId = settings?.microphoneDeviceId ?? null;
+  const canPickMicrophone = source === selectedLabel && !capturing && !processing && !recording.isPreparing && permissionStatus === "granted" && devices.length > 1;
+  // Past its estimate the countdown would sit on "~ 00:00", which reads as stuck.
+  // At rest there is nothing to time, so the clock only appears once a recording starts.
+  const time = processing ? remaining !== null && remaining >= 1000 ? `~ ${formatDurationMs(remaining)}` : "" : capturing ? formatDurationMs(elapsed) : "";
   const cancelProcessing = () => appState.activeSourceType === "youtube" || appState.status === "youtube_downloading"
     ? cancelActiveYouTube() : window.ivritMenuBar.transcription.cancel();
   const runAction = async (action: () => Promise<unknown>) => {
-    try { await action(); } catch { setErrorMessage("הפעולה לא הושלמה. אפשר לנסות שוב."); }
+    try { await action(); } catch (error) { setErrorMessage(getHebrewErrorMessage(error, "הפעולה לא הושלמה. אפשר לנסות שוב.")); }
   };
 
   return <section className={`capture-area device state-${appState.status}`} data-tone={tone} data-capturing={capturing || processing} data-links={appState.linkImportAvailable === false ? "off" : undefined} aria-label="בקר הקלטה">
-    <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{nearLimit ? he.recordingLimitSoon : statusText}</p>
+    <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{nearLimit ? he.recordingLimitSoon : appState.status === "error" && message ? `${statusText}: ${message}` : statusText}</p>
     <div className="deck">
       <div className="deck-top">
         <span className="led" data-tone={tone} />
         <span className="deck-status" aria-hidden="true">{statusText}</span>
-        <span className="deck-source" title={source} dir="auto">{source}</span>
+        {canPickMicrophone ? <label className="deck-source deck-source-pick app-no-drag" title={he.microphoneInput}>
+          <span className="deck-source-name" dir="auto">{source}</span>
+          <CaretDown className="deck-source-caret" />
+          <select aria-label={he.microphoneInput} value={selectedId ?? ""}
+            onChange={event => { const deviceId = event.target.value || null; void runAction(() => updateSetting("microphoneDeviceId", deviceId)); }}>
+            {selectedId && !devices.some(device => device.deviceId === selectedId) && <option value={selectedId}>{he.microphoneUnavailable}</option>}
+            <option value="">{he.systemMicrophone}</option>
+            {devices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
+          </select>
+        </label> : source ? <span className="deck-source" title={source} dir="auto">{source}</span> : null}
+        {!capturing && !processing && <Button type="button" variant="ghost" size="icon-sm" className="deck-overlay app-no-drag" aria-label={he.floatingWindow} title={he.floatingWindow}
+          onClick={() => void runAction(() => window.ivritMenuBar.overlay.open())}><FloatingWindow /></Button>}
       </div>
+      {message && <p className="deck-message" aria-hidden="true">{message}</p>}
       <BarVisualizer state={visualizerState} mediaStream={recording.mediaStream} barCount={56} minHeight={4} maxHeight={100} aria-hidden="true" />
       <div className="deck-bottom">
         {processing ? <div className="capsule control-dock app-no-drag" data-quiet="true">
@@ -77,10 +99,10 @@ export function RecordingArea() {
           <Button type="button" variant="plain" className="capsule-round" aria-label="ביטול ההקלטה" title="ביטול ההקלטה" disabled={recording.isPreparing} focusableWhenDisabled
             onClick={() => { primaryAction.current?.focus(); void runAction(recording.cancelRecording); }}><X /></Button>
         </div> : <div className="capsule app-no-drag" data-quiet={modelUnavailable}>
-          <RecordButton mode="start" className="record-action" disabled={recording.isPreparing || modelUnavailable} onClick={() => void runAction(recording.startRecording)}>
-            {settings?.shortcut && <kbd dir="ltr">{formatShortcut(settings.shortcut)}</kbd>}
+          <RecordButton mode="start" className="record-action" disabled={recording.isPreparing || modelUnavailable} label={startLabel} keyShortcuts={settings?.shortcut ? toAriaKeyShortcuts(settings.shortcut) : undefined}
+            onClick={() => void runAction(microphoneBlocked ? () => window.ivritMenuBar.permissions.openMicrophoneSettings() : recording.startRecording)}>
+            {settings?.shortcut && <kbd dir="ltr" aria-hidden="true">{formatShortcut(settings.shortcut)}</kbd>}
           </RecordButton>
-          <Button type="button" variant="plain" className="capsule-round" aria-label="חלון צף" title="חלון צף" onClick={() => void runAction(() => window.ivritMenuBar.overlay.open())}><FloatingWindow /></Button>
         </div>}
         {recording.heldRecording?.reason === "failed" && !capturing && !processing && <Button type="button" size="sm" variant="secondary" className="app-no-drag" onClick={() => { setErrorMessage(null); void runAction(recording.resendHeldRecording); }}>{he.retryTranscription}</Button>}
         <span className="deck-time" dir="ltr" aria-hidden="true">{time}</span>

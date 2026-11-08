@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
 import type { CallService } from "../../services/calls/call.service";
 import { IpcRegistry } from "../registry";

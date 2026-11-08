@@ -17,12 +17,13 @@ export function formatDurationMs(durationMs: number | null | undefined): string 
   return formatTotalSeconds(Math.floor(durationMs / 1000));
 }
 
+/** A saved transcript's length, without a leading zero so it reads apart from a clock time: 2:22, not 02:22. */
 export function formatTranscriptDurationMs(durationMs: number | null | undefined): string {
   if (!durationMs) {
-    return "00:00";
+    return "0:00";
   }
 
-  return formatTotalSeconds(Math.max(1, Math.round(durationMs / 1000)));
+  return formatTotalSeconds(Math.max(1, Math.round(durationMs / 1000))).replace(/^0(?=\d:)/, "");
 }
 
 export function formatDate(timestamp: number): string {
@@ -43,5 +44,7 @@ export function formatDay(timestamp: number, now = Date.now()): string {
   const daysAgo = Math.round((midnight - day) / 86_400_000);
   if (daysAgo === 0) return "היום";
   if (daysAgo === 1) return "אתמול";
-  return new Intl.DateTimeFormat("he-IL", { dateStyle: "medium" }).format(timestamp);
+  // This year goes without saying.
+  const sameYear = new Date(timestamp).getFullYear() === new Date(now).getFullYear();
+  return new Intl.DateTimeFormat("he-IL", sameYear ? { day: "numeric", month: "short" } : { dateStyle: "medium" }).format(timestamp);
 }

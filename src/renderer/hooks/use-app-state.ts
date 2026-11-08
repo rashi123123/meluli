@@ -7,8 +7,8 @@ import type {
   ModelDownloadProgress,
   StoragePathsInfo
 } from "@shared/types";
-import { he } from "@shared/locale";
 import { applyTheme } from "@/lib/theme";
+import { isCanceledMessage } from "@shared/error-utils";
 
 export function useAppState(windowMode: "main" | "overlay") {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -100,7 +100,7 @@ export function useAppState(windowMode: "main" | "overlay") {
 
     unsubscribers.push(
       window.ivritMenuBar.transcription.onFailed((payload) => {
-        if (payload.message === he.transcriptionCanceled) {
+        if (isCanceledMessage(payload.message)) {
           setAppState((current) => ({ ...current, lastError: null }));
           return;
         }

@@ -1,5 +1,6 @@
 name: Feature request / הצעה לשיפור
 description: Describe a problem and the behavior that would help.
+labels: ["enhancement"]
 body:
   - type: textarea
     id: need

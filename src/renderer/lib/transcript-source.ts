@@ -16,12 +16,3 @@ export function getTranscriptSourceKindLabel(transcript: TranscriptRecord): stri
 
   return he.importedLabel;
 }
-
-/** A name for lists and headings. A recording has none, so its opening words stand in. */
-export function getTranscriptTitle(transcript: TranscriptRecord): string {
-  if (transcript.sourceTitle) return transcript.sourceTitle;
-  if (transcript.importedFileName) return transcript.importedFileName;
-  if (transcript.sourceType === "youtube") return he.youtubeFallbackTitle;
-  const opening = transcript.text.trim().split(/\s+/).slice(0, 8).join(" ");
-  return opening || he.microphoneLabel;
-}

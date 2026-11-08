@@ -8,7 +8,7 @@ import { deriveOnboardingDisplayState } from "@shared/onboarding";
 import { he } from "@shared/locale";
 import type { OnboardingPhase } from "@shared/types";
 
-type SetupContext = Pick<AppContextValue, "settings" | "permissionStatus" | "onboarding" | "modelProgress" | "appState" | "recording" | "trackOnboardingStepViewed" | "completeOnboardingStep" | "continueOnboardingLater" | "goBackOnboardingStep" | "requestMicrophonePermission" | "downloadModel" | "setErrorMessage">;
+type SetupContext = Pick<AppContextValue, "settings" | "permissionStatus" | "accessibilityPermissionStatus" | "onboarding" | "modelProgress" | "appState" | "recording" | "trackOnboardingStepViewed" | "completeOnboardingStep" | "continueOnboardingLater" | "goBackOnboardingStep" | "requestMicrophonePermission" | "requestAccessibilityPermission" | "downloadModel" | "setErrorMessage">;
 type MicrophoneOptions = Parameters<typeof import("@/hooks/use-microphone-check").useMicrophoneCheck>[0];
 type MicrophoneCheck = ReturnType<typeof import("@/hooks/use-microphone-check").useMicrophoneCheck>;
 let context: SetupContext;
@@ -18,6 +18,7 @@ vi.mock("@/context/app-context", () => ({ useAppContext: () => context }));
 vi.mock("@/hooks/use-microphone-check", () => ({ useMicrophoneCheck: (options: MicrophoneOptions) => { microphoneOptions = options; return microphone; } }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root;
+let bridge: { accessibilityStatus: ReturnType<typeof vi.fn>; openAccessibilitySettings: ReturnType<typeof vi.fn> };
 let host: HTMLDivElement;
 
 function deferred() {
@@ -39,13 +40,15 @@ beforeEach(() => {
   const settings = appSettingsSchema.parse({ onboarding: { phase: "not_started", surface: "flow" } });
   settings.modelState.downloadState = "missing";
   context = {
-    settings, permissionStatus: "not-determined", onboarding: deriveOnboardingDisplayState(settings, "not-determined"), modelProgress: null,
+    settings, permissionStatus: "not-determined", accessibilityPermissionStatus: "denied", onboarding: deriveOnboardingDisplayState(settings, "not-determined"), modelProgress: null,
     appState: { status: "idle", timerStartedAt: null },
-    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
+    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), heldRecordingSaved: vi.fn(() => false), endHold: vi.fn(), startRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
     trackOnboardingStepViewed: vi.fn().mockResolvedValue(undefined), completeOnboardingStep: vi.fn().mockResolvedValue(undefined),
     continueOnboardingLater: vi.fn().mockResolvedValue(undefined), goBackOnboardingStep: vi.fn().mockResolvedValue(undefined),
-    requestMicrophonePermission: vi.fn().mockResolvedValue("granted"), downloadModel: vi.fn().mockResolvedValue(undefined), setErrorMessage: vi.fn()
+    requestMicrophonePermission: vi.fn().mockResolvedValue("granted"), requestAccessibilityPermission: vi.fn().mockResolvedValue("denied"), downloadModel: vi.fn().mockResolvedValue(undefined), setErrorMessage: vi.fn()
   };
+  bridge = { accessibilityStatus: vi.fn().mockResolvedValue("denied"), openAccessibilitySettings: vi.fn().mockResolvedValue(undefined) };
+  vi.stubGlobal("ivritMenuBar", { permissions: bridge });
   let checking = false;
   // Like the real hook, a start while one is pending does nothing.
   microphone = { status: "idle", level: 0, error: null, hasDetected: false, start: vi.fn(async () => { if (checking) return; checking = true; try { await microphoneOptions.onRequestPermission(); } finally { checking = false; } }), stop: vi.fn() };
@@ -85,7 +88,7 @@ describe("onboarding navigation", () => {
     expect(document.activeElement).toBe(primary());
     await act(async () => permission.resolve());
     expect(context.completeOnboardingStep).not.toHaveBeenCalled();
-    await act(async () => button(he.onboardingContinueLater).click());
+    await act(async () => button(he.onboardingNotNow).click());
     expect(context.continueOnboardingLater).toHaveBeenCalledOnce();
   });
 
@@ -94,7 +97,7 @@ describe("onboarding navigation", () => {
     const back = deferred();
     vi.mocked(context.goBackOnboardingStep).mockReturnValue(back.promise);
     await render();
-    await act(async () => { button(he.back).click(); primary().click(); button(he.onboardingContinueLater).click(); });
+    await act(async () => { button(he.back).click(); primary().click(); button(he.onboardingNotNow).click(); });
     expect(context.goBackOnboardingStep).toHaveBeenCalledOnce();
     expect(context.requestMicrophonePermission).toHaveBeenCalledOnce();
     expect(context.continueOnboardingLater).not.toHaveBeenCalled();
@@ -172,13 +175,9 @@ describe("onboarding navigation", () => {
     expect(context.requestMicrophonePermission).toHaveBeenCalledWith({ advanceOnboarding: false });
   });
 
-  it("does not reopen the microphone after the user stops the check or continues", async () => {
+  it("does not reopen the microphone after the user continues", async () => {
     context.permissionStatus = "granted"; setPhase("needs_mic"); microphone.status = "listening";
     await render();
-    await act(async () => button("עצירת הבדיקה").click());
-    microphone.status = "idle"; await render();
-    expect(microphone.start).not.toHaveBeenCalled();
-    microphone.status = "listening"; await render();
     await act(async () => primary().click());
     microphone.status = "idle"; await render();
     expect(context.completeOnboardingStep).toHaveBeenCalledWith("microphone");
@@ -211,10 +210,10 @@ describe("onboarding navigation", () => {
     const heading = host.querySelector<HTMLHeadingElement>("[data-onboarding-heading]")!;
     expect(document.activeElement).toBe(heading);
     expect(heading.tabIndex).toBe(-1);
-    button(he.onboardingContinueLater).focus();
+    button(he.onboardingNotNow).focus();
     context.modelProgress = { percent: 20, bytesDownloaded: 20, totalBytes: 100 };
     await render();
-    expect(document.activeElement).toBe(button(he.onboardingContinueLater));
+    expect(document.activeElement).toBe(button(he.onboardingNotNow));
     context.permissionStatus = "granted"; setPhase("needs_model"); await render();
     expect(document.activeElement).toBe(host.querySelector("[data-onboarding-heading]"));
     expect(context.trackOnboardingStepViewed).toHaveBeenCalledTimes(3);
@@ -225,5 +224,51 @@ describe("onboarding navigation", () => {
     await render();
     expect(context.setErrorMessage).toHaveBeenCalledWith("שמירת ההתקדמות נכשלה");
     expect(primary().disabled).toBe(false);
+  });
+});
+
+describe("paste permission step", () => {
+  it("asks for Accessibility, waits for System Settings and finishes once it is granted", async () => {
+    vi.useFakeTimers();
+    try {
+      context.permissionStatus = "granted"; setPhase("needs_paste");
+      await render();
+      expect(primary().textContent).toBe(he.onboardingPasteAction);
+      await act(async () => primary().click());
+      expect(context.requestAccessibilityPermission).toHaveBeenCalledOnce();
+      expect(host.textContent).toContain(he.onboardingPasteWaiting);
+      expect(primary().textContent).toBe(he.onboardingPasteOpenSettings);
+      await act(async () => primary().click());
+      expect(bridge.openAccessibilitySettings).toHaveBeenCalledOnce();
+      expect(context.requestAccessibilityPermission).toHaveBeenCalledOnce();
+      bridge.accessibilityStatus.mockResolvedValue("granted");
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      expect(host.textContent).toContain(he.onboardingPasteAllowed);
+      expect(primary().textContent).toBe(he.continue);
+      await act(async () => primary().click());
+      expect(context.completeOnboardingStep).toHaveBeenCalledWith("paste");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("continues at once when macOS grants Accessibility from the prompt", async () => {
+    context.permissionStatus = "granted"; setPhase("needs_paste");
+    vi.mocked(context.requestAccessibilityPermission).mockResolvedValue("granted");
+    await render(); await act(async () => primary().click());
+    expect(host.textContent).toContain(he.onboardingPasteAllowed);
+    expect(bridge.accessibilityStatus).not.toHaveBeenCalled();
+  });
+
+  it("records Not Now as a declined step and moves on without asking", async () => {
+    context.permissionStatus = "granted"; setPhase("needs_paste");
+    await render(); await act(async () => button(he.onboardingNotNow).click());
+    expect(context.completeOnboardingStep).toHaveBeenCalledWith("paste", { declined: true });
+    expect(context.requestAccessibilityPermission).not.toHaveBeenCalled();
+  });
+
+  it("says how to allow paste and what Not Now leaves", async () => {
+    context.permissionStatus = "granted"; setPhase("needs_paste");
+    await render();
+    expect(host.querySelector(".paste-how")?.textContent).toBe(he.onboardingPasteHow);
+    expect(host.querySelector(".onboarding-note")?.textContent).toBe(he.onboardingPasteWithout);
   });
 });

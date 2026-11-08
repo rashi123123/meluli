@@ -48,6 +48,22 @@ afterEach(() => {
   rmSync(modelPath, { recursive: true, force: true });
 });
 
+const READY = { type: "ready", protocolVersion: 2, workerVersion: "test", backend: "whispercpp", capabilities: { vad: { supported: false, mode: "none", requiresModelPath: false } } };
+
+/** Each later spawn gets its own fake worker, and `child` follows the newest. */
+function useFreshChildren() {
+  spawnMock.mockImplementation(() => {
+    const next = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(), stderr: new PassThrough(),
+      stdin: new Writable({ write(chunk, _encoding, callback) { requests.push(JSON.parse(chunk.toString()) as Request); callback(); } }),
+      killed: false,
+      kill: vi.fn(() => { next.killed = true; return true; })
+    });
+    child = next;
+    return next;
+  });
+}
+
 async function startWarmup() {
   const task = service.prewarm();
   await flush();
@@ -193,8 +209,8 @@ describe("transcription worker lifecycle (simulated protocol, no ASR)", () => {
     const planted = { DYLD_INSERT_LIBRARIES: "/tmp/evil.dylib", DYLD_LIBRARY_PATH: "/tmp", GGML_BACKEND_PATH: "/tmp/evil.so", ANEFORGE_DYLIB: "/tmp/evil.dylib", NODE_OPTIONS: "--require /tmp/evil.js" };
     Object.assign(process.env, planted);
     try {
-      expect(buildWorkerEnv({ ...planted, HOME: "/Users/me", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/tmp/evil" }))
-        .toEqual({ HOME: "/Users/me", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin" });
+      expect(buildWorkerEnv({ ...planted, HOME: "/Users/example/", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/tmp/evil" }))
+        .toEqual({ HOME: "/Users/example/", TMPDIR: "/tmp/", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin" });
       const research = new TranscriptionService({
         binaryPaths: { resourcesBasePath: modelPath, whispercppWorkerBinaryPath: process.execPath, ytDlpBinaryPath: "", denoBinaryPath: "" },
         workerEnv: { MELULI_RESEARCH_BEAM: "3" },
@@ -292,5 +308,69 @@ describe("transcription worker lifecycle (simulated protocol, no ASR)", () => {
     expect("repairText" in second).toBe(false);
     reply({ type: "result", jobId: second.jobId, result: { text: "שלום", language: "he", segments: [] } });
     await expect(dictation).resolves.toMatchObject({ text: "שלום" });
+  });
+
+  it("keeps a call piece with no words as an empty piece, while dictation still refuses one", async () => {
+    const piece = service.transcribeBackground({ wavPath: "/tmp/piece.wav", sourceType: "call", durationMs: 1000 });
+    reply(READY);
+    await vi.waitFor(() => { expect(requests.some((item) => item.type === "transcribe")).toBe(true); });
+    reply({ type: "result", jobId: requests.find((item) => item.type === "transcribe")!.jobId, result: { text: "", language: "he", segments: [] } });
+    await expect(piece).resolves.toMatchObject({ text: "", segments: [] });
+
+    const dictation = service.transcribe({ wavPath: "/tmp/dictation.wav", sourceType: "microphone", durationMs: 1000 });
+    await vi.waitFor(() => { expect(requests.filter((item) => item.type === "transcribe")).toHaveLength(2); });
+    reply({ type: "result", jobId: requests.filter((item) => item.type === "transcribe")[1]!.jobId, result: { text: "", language: "he", segments: [] } });
+    await expect(dictation).rejects.toThrow(he.transcriptionEmptyResult);
+  });
+
+  it("fails a pending warmup when a health check times out, and the dictation runs on a new worker", async () => {
+    const { task } = await startWarmup();
+    const warmupFailed = expect(task).rejects.toThrow(he.transcriptionProcessFailed);
+    const first = child;
+    useFreshChildren();
+    await vi.advanceTimersByTimeAsync(10_001);
+    const dictation = service.transcribe({ wavPath: "/tmp/dictation.wav", sourceType: "microphone", durationMs: 1000 });
+    await vi.waitFor(() => { expect(requests.some((item) => item.type === "health")).toBe(true); });
+    await vi.advanceTimersByTimeAsync(4_000);
+    await warmupFailed;
+    expect(first.kill).toHaveBeenCalled();
+    expect(child).not.toBe(first);
+    reply(READY);
+    await vi.waitFor(() => { expect(requests.some((item) => item.type === "transcribe")).toBe(true); });
+    reply({ type: "result", jobId: requests.find((item) => item.type === "transcribe")!.jobId, result: { text: "שלום", language: "he", segments: [] } });
+    await expect(dictation).resolves.toMatchObject({ text: "שלום" });
+  });
+
+  it("starts a new worker when the old one dies during warmup, instead of failing the dictation", async () => {
+    const { task } = await startWarmup();
+    const warmupFailed = expect(task).rejects.toThrow();
+    const dictation = service.transcribe({ wavPath: "/tmp/dictation.wav", sourceType: "microphone", durationMs: 1000 });
+    await flush();
+    const first = child;
+    useFreshChildren();
+    first.emit("close", null, "SIGKILL");
+    await warmupFailed;
+    await vi.waitFor(() => { expect(spawnMock).toHaveBeenCalledTimes(2); });
+    reply(READY);
+    await vi.waitFor(() => { expect(requests.some((item) => item.type === "transcribe")).toBe(true); });
+    reply({ type: "result", jobId: requests.find((item) => item.type === "transcribe")!.jobId, result: { text: "שלום", language: "he", segments: [] } });
+    await expect(dictation).resolves.toMatchObject({ text: "שלום" });
+  });
+
+  it("ends the waiting job, not the call piece, when the user cancels during the hand-over", async () => {
+    const piece = service.transcribeBackground({ wavPath: "/tmp/piece.wav", sourceType: "call", durationMs: 1000 });
+    reply(READY);
+    await vi.waitFor(() => { expect(requests.some((item) => item.type === "transcribe")).toBe(true); });
+    const first = requests.find((item) => item.type === "transcribe")!;
+    const imported = service.transcribe({ wavPath: "/tmp/import.wav", sourceType: "imported_file", durationMs: 1000 });
+    const importCanceled = expect(imported).rejects.toMatchObject({ name: "TranscriptionCanceledError" });
+    await vi.waitFor(() => { expect(requests.some((item) => item.type === "cancel")).toBe(true); });
+
+    expect(service.cancel()).toBe(true);
+    reply({ type: "canceled", jobId: first.jobId });
+    await expect(piece).rejects.toThrow(he.transcriptionCanceled);
+    await importCanceled;
+    await flush();
+    expect(requests.filter((item) => item.type === "transcribe")).toHaveLength(1);
   });
 });

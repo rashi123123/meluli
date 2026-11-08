@@ -63,4 +63,15 @@ describe.skipIf(!canBuild)("meluli-callaudio start command", () => {
     send({ type: "start", id: 8, directory: missing(), prefixes: ["us.zoom."] });
     expect(await reply()).toEqual({ type: "error", reason: "disk", id: 8 });
   });
+
+  // An orphaned helper outlived the app once (D16): the stop path deadlocked the main thread, and
+  // the exit on end of input waited behind it. The helper must leave as soon as the app is gone.
+  it("exits promptly when the app closes its input", async () => {
+    const exited = new Promise<number | null>((done) => helper.once("exit", (code) => done(code)));
+    send({ type: "stop", id: 1 });
+    helper.stdin.end();
+    const started = Date.now();
+    expect(await exited).toBe(0);
+    expect(Date.now() - started).toBeLessThan(3_500);
+  });
 });

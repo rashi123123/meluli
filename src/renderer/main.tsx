@@ -1,10 +1,10 @@
 import ReactDOM from "react-dom/client";
 import { isThemeId } from "@shared/themes";
+import { windowRoleFromQuery } from "@shared/window-role";
 import { applyTheme } from "./lib/theme";
 
 const query = new URLSearchParams(window.location.search);
-const requestedMode = query.get("window");
-const windowMode = requestedMode === "overlay" || requestedMode === "call" ? requestedMode : "main";
+const windowMode = windowRoleFromQuery(window.location.search) ?? "main";
 const initialTheme = query.get("theme");
 
 document.documentElement.dataset.windowMode = windowMode;

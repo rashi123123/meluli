@@ -12,7 +12,6 @@ describe("estimateMicrophoneProcessingMs", () => {
     expect(
       estimateMicrophoneProcessingMs({
         durationMs: 60_000,
-        metalEnabled: true,
         speedPreference: "balanced"
       })
     ).toBeGreaterThanOrEqual(10_000);
@@ -20,21 +19,18 @@ describe("estimateMicrophoneProcessingMs", () => {
     expect(
       estimateMicrophoneProcessingMs({
         durationMs: 60_000,
-        metalEnabled: true,
         speedPreference: "balanced"
       })
     ).toBeLessThanOrEqual(120_000);
   });
 
-  it("estimates slower processing when Metal is off and accuracy is preferred", () => {
+  it("estimates slower processing when accuracy is preferred", () => {
     const fast = estimateMicrophoneProcessingMs({
       durationMs: 90_000,
-      metalEnabled: true,
       speedPreference: "balanced"
     });
     const slow = estimateMicrophoneProcessingMs({
       durationMs: 90_000,
-      metalEnabled: false,
       speedPreference: "accurate"
     });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CALL_END_AFTER_MS, CallDetector, SUGGEST_AFTER_MS } from "../../src/main/services/calls/call-detector";
+import { BROWSER_CALL_END_AFTER_MS, CALL_END_AFTER_MS, CallDetector, SUGGEST_AFTER_MS } from "../../src/main/services/calls/call-detector";
 
 const inCall = [{ id: "zoom", input: true, output: true }];
 const outputOnly = [{ id: "chrome", input: false, output: true }];
@@ -45,6 +45,19 @@ describe("CallDetector", () => {
     detector.update([], 1_000);
     expect(detector.hasEnded("zoom", CALL_END_AFTER_MS - 1)).toBe(false);
     expect(detector.hasEnded("zoom", CALL_END_AFTER_MS)).toBe(true);
+  });
+
+  it("ends a browser call once its microphone stays off, even while another tab plays", () => {
+    const detector = new CallDetector();
+    const playing = [{ id: "chrome", input: false, output: true }];
+    detector.update([{ id: "chrome", input: true, output: true }], 0);
+    detector.update(playing, 1_000);
+    // The microphone was last heard at 0.
+    detector.update(playing, BROWSER_CALL_END_AFTER_MS - 1);
+    expect(detector.hasEnded("chrome", BROWSER_CALL_END_AFTER_MS - 1, true)).toBe(false);
+    detector.update(playing, BROWSER_CALL_END_AFTER_MS);
+    expect(detector.hasEnded("chrome", BROWSER_CALL_END_AFTER_MS, true)).toBe(true);
+    expect(detector.hasEnded("chrome", BROWSER_CALL_END_AFTER_MS, false)).toBe(false);
   });
 
   it("treats a muted call, which keeps both open, as still running", () => {

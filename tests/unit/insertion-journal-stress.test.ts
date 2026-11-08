@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {expect,it} from 'vitest';
-import {InsertionJournal} from '@main/services/insertion-journal';
+import {InsertionJournal} from '@main/services/insertion/insertion-journal';
 
 it('keeps 1,000 durable dispatch claims isolated under contention, restart and ambiguous settlement (no native insertion)',async()=>{
  const path=await mkdtemp(join(tmpdir(),'meluli-phase5-journal-'));

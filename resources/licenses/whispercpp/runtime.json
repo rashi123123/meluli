@@ -11,7 +11,7 @@
   "diskIoPolicy": "standard",
   "binary": {
     "name": "meluli-asr-worker",
-    "bytes": 7476208,
-    "sha256": "68b17c82181493bdc47c9bac86ecf8de6ddc624127a9f99da541e7c3322da907"
+    "bytes": 7476992,
+    "sha256": "c97af80cf41f85ebf1c3311779a6541d3bd547ebfdc5c0e13784adfc64489c51"
   }
 }

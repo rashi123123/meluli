@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -13,7 +11,7 @@ export interface AudioAnalyserOptions {
 
 function createAudioAnalyser(mediaStream: MediaStream, options: AudioAnalyserOptions = {}) {
   const audioContext = new (window.AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!)();
   const source = audioContext.createMediaStreamSource(mediaStream);
   const analyser = audioContext.createAnalyser();
 

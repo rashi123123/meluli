@@ -1,0 +1,680 @@
+{
+ "machine": {
+  "cpu": "Apple M3",
+  "macOS": "27.0.1"
+ },
+ "startedAt": "2026-11-07T19:05:16.080Z",
+ "startup": {
+  "zip": {
+   "runs": [
+    {
+     "readyMs": 9.4,
+     "warmupMs": 1159.2,
+     "rssAfterWarmup": 311672832
+    },
+    {
+     "readyMs": 5.5,
+     "warmupMs": 597.5,
+     "rssAfterWarmup": 303480832
+    },
+    {
+     "readyMs": 5.3,
+     "warmupMs": 553.7,
+     "rssAfterWarmup": 301580288
+    }
+   ],
+   "readyMsP50": 5.5,
+   "warmupMsP50": 597.5,
+   "rssAfterWarmupMiB": 289.4
+  },
+  "whisper": {
+   "runs": [
+    {
+     "readyMs": 186.6,
+     "warmupMs": 10658.3,
+     "rssAfterWarmup": 1056620544
+    },
+    {
+     "readyMs": 11.6,
+     "warmupMs": 441,
+     "rssAfterWarmup": 1101922304
+    },
+    {
+     "readyMs": 5.4,
+     "warmupMs": 372.1,
+     "rssAfterWarmup": 1102266368
+    }
+   ],
+   "readyMsP50": 11.6,
+   "warmupMsP50": 441,
+   "rssAfterWarmupMiB": 1050.9
+  }
+ },
+ "accuracy": [
+  {
+   "name": "zw-live",
+   "options": {},
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 222.7,
+   "cpuSec": 135.7,
+   "peakRssMiB": 299.7,
+   "finishMsP50": 30.3,
+   "finishMsP95": 103,
+   "errors": [],
+   "rtf": 0.1027
+  },
+  {
+   "name": "zw-file",
+   "options": {},
+   "mode": "file",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 53.6,
+   "cpuSec": 105.8,
+   "peakRssMiB": 302.8,
+   "finishMsP50": null,
+   "finishMsP95": null,
+   "errors": [],
+   "rtf": 0.0247
+  }
+ ],
+ "threads": [
+  {
+   "name": "zw-live-t1",
+   "options": {
+    "threads": 1
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 216.8,
+   "cpuSec": 79.7,
+   "peakRssMiB": 298.5,
+   "finishMsP50": 39.3,
+   "finishMsP95": 59.3,
+   "errors": [],
+   "rtf": 0.1
+  },
+  {
+   "name": "zw-live-t2",
+   "options": {
+    "threads": 2
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 212.5,
+   "cpuSec": 132.7,
+   "peakRssMiB": 298.4,
+   "finishMsP50": 27.4,
+   "finishMsP95": 33.6,
+   "errors": [],
+   "rtf": 0.098
+  },
+  {
+   "name": "zw-live-t4",
+   "options": {
+    "threads": 4
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 216.2,
+   "cpuSec": 273.7,
+   "peakRssMiB": 300.1,
+   "finishMsP50": 30.7,
+   "finishMsP95": 56.1,
+   "errors": [],
+   "rtf": 0.0997
+  }
+ ],
+ "tail": [
+  {
+   "name": "zw-live-tail04",
+   "options": {
+    "tailSec": 0.4
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 210.9,
+   "cpuSec": 124.8,
+   "peakRssMiB": 298.4,
+   "finishMsP50": 0.3,
+   "finishMsP95": 44.1,
+   "errors": [],
+   "rtf": 0.0973
+  },
+  {
+   "name": "zw-live-tail06",
+   "options": {
+    "tailSec": 0.6
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 212.3,
+   "cpuSec": 124.1,
+   "peakRssMiB": 299.2,
+   "finishMsP50": 25.1,
+   "finishMsP95": 46.1,
+   "errors": [],
+   "rtf": 0.0979
+  },
+  {
+   "name": "zw-live-tail1",
+   "options": {
+    "tailSec": 1
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 213.1,
+   "cpuSec": 126.1,
+   "peakRssMiB": 300.8,
+   "finishMsP50": 27,
+   "finishMsP95": 43.1,
+   "errors": [],
+   "rtf": 0.0983
+  },
+  {
+   "name": "zw-live-pause06",
+   "options": {
+    "pauseSec": 0.6
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 213.4,
+   "cpuSec": 127.6,
+   "peakRssMiB": 302.8,
+   "finishMsP50": 27.7,
+   "finishMsP95": 42.5,
+   "errors": [],
+   "rtf": 0.0984
+  },
+  {
+   "name": "zw-live-pause08",
+   "options": {
+    "pauseSec": 0.8
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 212.5,
+   "cpuSec": 129.1,
+   "peakRssMiB": 302.2,
+   "finishMsP50": 26.8,
+   "finishMsP95": 32.1,
+   "errors": [],
+   "rtf": 0.098
+  },
+  {
+   "name": "zw-live-pause16",
+   "options": {
+    "pauseSec": 1.6
+   },
+   "mode": "live",
+   "clips": 270,
+   "audioSec": 2168,
+   "wallSec": 211.5,
+   "cpuSec": 120.7,
+   "peakRssMiB": 300,
+   "finishMsP50": 25.1,
+   "finishMsP95": 31.1,
+   "errors": [],
+   "rtf": 0.09759999999999999
+  }
+ ],
+ "latency": {
+  "clips": [
+   "fleurs-1741",
+   "hebdb-000",
+   "he-00",
+   "mix-00",
+   "tech-00",
+   "fleurs-1679-pad",
+   "fleurs-1757",
+   "hebdb-001",
+   "he-01",
+   "mix-01",
+   "tech-01",
+   "fleurs-2005-pad",
+   "fleurs-1842",
+   "hebdb-002",
+   "he-02",
+   "mix-02",
+   "tech-02",
+   "fleurs-1957-pad",
+   "fleurs-1679",
+   "hebdb-003",
+   "he-03",
+   "mix-03",
+   "tech-03",
+   "fleurs-1740-pad",
+   "l20-0",
+   "l20-1",
+   "l20-2"
+  ],
+  "zip": {
+   "stopMsP50": 32,
+   "stopMsP95": 53.3,
+   "stopMsMax": 287.1,
+   "partialLagMsP50": 38.7,
+   "partialLagMsP95": 89.3,
+   "cpuSecPerAudioSec": 0.0709,
+   "idleRssMiB": 286.6,
+   "peakRssMiB": 286.7,
+   "perClip": [
+    {
+     "id": "fleurs-1741",
+     "sec": 7.86,
+     "stopMs": 0.6,
+     "segments": 1
+    },
+    {
+     "id": "hebdb-000",
+     "sec": 3.804,
+     "stopMs": 25.4,
+     "segments": 1
+    },
+    {
+     "id": "he-00",
+     "sec": 2.785,
+     "stopMs": 0.5,
+     "segments": 1
+    },
+    {
+     "id": "mix-00",
+     "sec": 2.6,
+     "stopMs": 49.4,
+     "segments": 1
+    },
+    {
+     "id": "tech-00",
+     "sec": 2.054,
+     "stopMs": 25.7,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-1679-pad",
+     "sec": 3.98,
+     "stopMs": 36.8,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-1757",
+     "sec": 10.02,
+     "stopMs": 31.5,
+     "segments": 1
+    },
+    {
+     "id": "hebdb-001",
+     "sec": 7.74,
+     "stopMs": 24.1,
+     "segments": 1
+    },
+    {
+     "id": "he-01",
+     "sec": 2.441,
+     "stopMs": 33.7,
+     "segments": 1
+    },
+    {
+     "id": "mix-01",
+     "sec": 0.859,
+     "stopMs": 53.3,
+     "segments": 1
+    },
+    {
+     "id": "tech-01",
+     "sec": 1.966,
+     "stopMs": 37.1,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-2005-pad",
+     "sec": 5.4,
+     "stopMs": 1.9,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-1842",
+     "sec": 9,
+     "stopMs": 287.1,
+     "segments": 1
+    },
+    {
+     "id": "hebdb-002",
+     "sec": 10.012,
+     "stopMs": 27.7,
+     "segments": 1
+    },
+    {
+     "id": "he-02",
+     "sec": 2.054,
+     "stopMs": 32,
+     "segments": 1
+    },
+    {
+     "id": "mix-02",
+     "sec": 2.608,
+     "stopMs": 43.5,
+     "segments": 1
+    },
+    {
+     "id": "tech-02",
+     "sec": 2.306,
+     "stopMs": 45.9,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-1957-pad",
+     "sec": 4.7,
+     "stopMs": 46.9,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-1679",
+     "sec": 3.18,
+     "stopMs": 45.7,
+     "segments": 1
+    },
+    {
+     "id": "hebdb-003",
+     "sec": 5.148,
+     "stopMs": 51.2,
+     "segments": 1
+    },
+    {
+     "id": "he-03",
+     "sec": 2.14,
+     "stopMs": 25.9,
+     "segments": 1
+    },
+    {
+     "id": "mix-03",
+     "sec": 1.891,
+     "stopMs": 26,
+     "segments": 1
+    },
+    {
+     "id": "tech-03",
+     "sec": 1.955,
+     "stopMs": 28.1,
+     "segments": 1
+    },
+    {
+     "id": "fleurs-1740-pad",
+     "sec": 5.98,
+     "stopMs": 22.9,
+     "segments": 1
+    },
+    {
+     "id": "l20-0",
+     "sec": 20.08,
+     "stopMs": 46,
+     "segments": 1
+    },
+    {
+     "id": "l20-1",
+     "sec": 16.96,
+     "stopMs": 0.7,
+     "segments": 2
+    },
+    {
+     "id": "l20-2",
+     "sec": 20.26,
+     "stopMs": 36.8,
+     "segments": 1
+    }
+   ]
+  },
+  "whisper": {
+   "stopMsP50": 1497.3,
+   "stopMsP95": 1902.7,
+   "stopMsMax": 2217.8,
+   "partialLagMsP50": null,
+   "partialLagMsP95": null,
+   "cpuSecPerAudioSec": 0.0115,
+   "idleRssMiB": 1010.5,
+   "peakRssMiB": 1027.2,
+   "perClip": [
+    {
+     "id": "fleurs-1741",
+     "sec": 7.86,
+     "stopMs": 1498.1
+    },
+    {
+     "id": "hebdb-000",
+     "sec": 3.804,
+     "stopMs": 1397.3
+    },
+    {
+     "id": "he-00",
+     "sec": 2.785,
+     "stopMs": 1315.4
+    },
+    {
+     "id": "mix-00",
+     "sec": 2.6,
+     "stopMs": 1276.5
+    },
+    {
+     "id": "tech-00",
+     "sec": 2.054,
+     "stopMs": 1140.3
+    },
+    {
+     "id": "fleurs-1679-pad",
+     "sec": 3.98,
+     "stopMs": 1206.8
+    },
+    {
+     "id": "fleurs-1757",
+     "sec": 10.02,
+     "stopMs": 1446.6
+    },
+    {
+     "id": "hebdb-001",
+     "sec": 7.74,
+     "stopMs": 1405.7
+    },
+    {
+     "id": "he-01",
+     "sec": 2.441,
+     "stopMs": 1160.2
+    },
+    {
+     "id": "mix-01",
+     "sec": 0.859,
+     "stopMs": 1125.7
+    },
+    {
+     "id": "tech-01",
+     "sec": 1.966,
+     "stopMs": 1143.9
+    },
+    {
+     "id": "fleurs-2005-pad",
+     "sec": 5.4,
+     "stopMs": 1255.3
+    },
+    {
+     "id": "fleurs-1842",
+     "sec": 9,
+     "stopMs": 1497.3
+    },
+    {
+     "id": "hebdb-002",
+     "sec": 10.012,
+     "stopMs": 1730.9
+    },
+    {
+     "id": "he-02",
+     "sec": 2.054,
+     "stopMs": 1429.2
+    },
+    {
+     "id": "mix-02",
+     "sec": 2.608,
+     "stopMs": 1563.2
+    },
+    {
+     "id": "tech-02",
+     "sec": 2.306,
+     "stopMs": 1902.7
+    },
+    {
+     "id": "fleurs-1957-pad",
+     "sec": 4.7,
+     "stopMs": 1640.6
+    },
+    {
+     "id": "fleurs-1679",
+     "sec": 3.18,
+     "stopMs": 1668
+    },
+    {
+     "id": "hebdb-003",
+     "sec": 5.148,
+     "stopMs": 1680.8
+    },
+    {
+     "id": "he-03",
+     "sec": 2.14,
+     "stopMs": 1509.7
+    },
+    {
+     "id": "mix-03",
+     "sec": 1.891,
+     "stopMs": 1532.8
+    },
+    {
+     "id": "tech-03",
+     "sec": 1.955,
+     "stopMs": 1524.6
+    },
+    {
+     "id": "fleurs-1740-pad",
+     "sec": 5.98,
+     "stopMs": 1731.8
+    },
+    {
+     "id": "l20-0",
+     "sec": 20.08,
+     "stopMs": 1855.1
+    },
+    {
+     "id": "l20-1",
+     "sec": 16.96,
+     "stopMs": 1281.1
+    },
+    {
+     "id": "l20-2",
+     "sec": 20.26,
+     "stopMs": 2217.8
+    }
+   ]
+  }
+ },
+ "scenarios": {
+  "short_speech": {
+   "id": "he-15",
+   "sec": 0.485,
+   "text": "כן",
+   "reference": "כן",
+   "stopMs": 37.5,
+   "whisper": " כן."
+  },
+  "long_silence": {
+   "pass": true,
+   "finalBeforeStop": false,
+   "segments": [
+    {
+     "start": 0,
+     "end": 10.5,
+     "atSec": 10.5
+    },
+    {
+     "start": 28.4,
+     "end": 37.9,
+     "atSec": 38.1
+    }
+   ],
+   "text": "אזורים גדולים צפונית משם, הם בעלי אוכלוסיית דילה יחסית וחלק הם אזורי פרק כמעט לא מיושבים. רק מוטציות בתאי משושלת שכבת הנבט יכולות לעבור לילדים בעוד מוטציות במקומות אחרים עלולות לגרום למות טעים או לסרטן",
+   "whisper": " אזורים גדולים צפונית משם הם בעלי  אוכלוסיית דילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים.  לקנות מוטציות בתאים משושלת שכבת הנווט יכולות לעבור לילדים בעוד  מוטציות במקומות אחרים עלולות לגרום למוט תאים או לסרטן."
+  },
+  "multiple_pauses": {
+   "pass": true,
+   "segments": 4,
+   "text": "אזורים גדולים צפונית משם, הם בעלי אוכלוסיית דילה יחסית וחלק הם אזורי פרק כמעט לא מיושבים. רק מוטציות בתאי משושלת שכבת הנבט יכולות לעבור לילדים בעוד מוטציות במקומות אחרים עלולות לגרום למות טעים או לסרטן. חוקרים לסיכום של עזרה הייתה גם התפתחות מוחיית המאפיינים האחרים . אירוסמית' ביטלו את האותות לנוצרות בסיבוב העופות",
+   "whisper": " אזורים גדולים צפונית משם הם בעלי  אוכלוסיית דילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים.  רק מוטציות בתאים משושלת שכבת הנבט יכולות לעבור לילדים  בעוד מוטציות במקומות אחרים עלולות לגרום למוט תאים או לסרטן.  אירוס מית ביקרו את ההוצאות הנוצרות בסיבוב האופות שלהן."
+  },
+  "pure_silence": {
+   "pass": true,
+   "text": "",
+   "whisper": ""
+  },
+  "quiet_-20dB": {
+   "text": "אזורים גדולים צפונית משם, הם בעלי אוכלוסיית דילה יחסית וחלק הם אזורי פרק, כמעט לא מיושבים",
+   "reference": "אזורים גדולים צפונית משם הם בעלי אוכלוסייה דלילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים.",
+   "whisper": " אזורים גדולים צפונית משם הם בעלי אוכלוסיית  דילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים."
+  },
+  "quiet_-30dB": {
+   "text": "אזורים גדולים צפונית משם, הם בעלי אוכלוסיית דילה יחסית וחלק הם אזורי פרק, כמעט לא מיושבים",
+   "reference": "אזורים גדולים צפונית משם הם בעלי אוכלוסייה דלילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים.",
+   "whisper": " אזורים גדולים צפונית משם הם בעלי אוכלוסיית  דילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים."
+  },
+  "noise_10dB": {
+   "text": "אזורים גדולים צפונית משם, הם בעלי אוכלוסייה דילה הלכתית וחלק הם אזורי פרק, כמעט לא מיושבים",
+   "reference": "אזורים גדולים צפונית משם הם בעלי אוכלוסייה דלילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים.",
+   "whisper": " אזורים גדולים צפונית משם הם בעלי אוכלוסייה דגילה יחסית וחלק הם אזורי פרק כמעט לא מיושבים."
+  },
+  "noise_5dB": {
+   "text": "אזורים גדולים פוליטי שם, הם בעלי אוכלוסייה גילה הלכתית וחלק הם אזורי פרק, ממש לא מיושבים",
+   "reference": "אזורים גדולים צפונית משם הם בעלי אוכלוסייה דלילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים.",
+   "whisper": " אזורים גדולים צפונית משם הם בעלי אוכלוסיית גדלה יחסית,  וחלק הם אזורי פרש מהסר שלא מיושבים."
+  },
+  "rapid_stop_0.4s": {
+   "pass": true,
+   "stopMs": 1.4,
+   "text": ""
+  },
+  "stop_on_last_word": {
+   "stopMs": 1.3,
+   "text": "אזורים גדולים צפונית משם, הם בעלי אוכלוסיית דילה יחסית וחלק הם אזורי פרק כמעט לא מיושבים",
+   "reference": "אזורים גדולים צפונית משם הם בעלי אוכלוסייה דלילה יחסית וחלק הם אזורי פרא כמעט לא מיושבים."
+  },
+  "repeated_sessions": {
+   "pass": true,
+   "sessions": 40,
+   "distinctTexts": 1,
+   "rssGrowthMiB": 2.5
+  },
+  "cancel_then_new": {
+   "pass": true,
+   "canceled": true
+  },
+  "sequence_gap": {
+   "pass": true,
+   "code": "session_lost"
+  },
+  "backpressure_burst": {
+   "audioSec": 106.6,
+   "outcome": "error",
+   "code": "backpressure",
+   "pass": true
+  },
+  "worker_crash": {
+   "killed": true,
+   "exit": {
+    "code": null,
+    "signal": "SIGKILL"
+   }
+  }
+ },
+ "finishedAt": "2026-11-07T19:47:38.466Z"
+}

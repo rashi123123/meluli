@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
+import { windowRoleFromQuery, type AppWindowRole } from "@shared/window-role";
 import type { IvritMenuBarApi } from "@shared/preload-api";
 
-type WindowMode = "main" | "overlay" | "call";
+type WindowMode = AppWindowRole;
 type SharedApi = {
   recording: IvritMenuBarApi["recording"];
   transcription: Pick<IvritMenuBarApi["transcription"], "cancel" | "onFailed">;
@@ -29,8 +30,7 @@ function resolveWindowMode(): WindowMode {
       search?: string;
     };
   };
-  const value = new URLSearchParams(browserGlobal.location?.search ?? "").get("window");
-  return value === "overlay" || value === "call" ? value : "main";
+  return windowRoleFromQuery(browserGlobal.location?.search ?? "") ?? "main";
 }
 
 function createSharedApi(): SharedApi {
@@ -42,8 +42,9 @@ function createSharedApi(): SharedApi {
       onExperimentalPreview: (listener) => subscribe(IPC_CHANNELS.dictationPreview, listener),
       start: (startedAt) => ipcRenderer.invoke(IPC_CHANNELS.recordingStart, { startedAt }),
       pause: (elapsedMs) => ipcRenderer.invoke(IPC_CHANNELS.recordingPause, { elapsedMs }),
-      stop: () => ipcRenderer.invoke(IPC_CHANNELS.recordingStop),
-      sendAudio: (payload) => ipcRenderer.invoke(IPC_CHANNELS.recordingSendAudio, payload)
+      stop: (options) => ipcRenderer.invoke(IPC_CHANNELS.recordingStop, options),
+      sendAudio: (payload) => ipcRenderer.invoke(IPC_CHANNELS.recordingSendAudio, payload),
+      audioChunk: (input) => ipcRenderer.invoke(IPC_CHANNELS.recordingAudioChunk, input)
     },
     transcription: {
       cancel: () => ipcRenderer.invoke(IPC_CHANNELS.transcriptionCancel),
@@ -82,6 +83,13 @@ function createMainApi(shared: ReturnType<typeof createSharedApi>): IvritMenuBar
       delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.historyDelete, { id }),
       deleteAll: () => ipcRenderer.invoke(IPC_CHANNELS.historyDeleteAll)
     },
+    recordings: {
+      list: () => ipcRenderer.invoke(IPC_CHANNELS.recordingsList),
+      transcribe: (id) => ipcRenderer.invoke(IPC_CHANNELS.recordingsTranscribe, { id }),
+      discard: (id) => ipcRenderer.invoke(IPC_CHANNELS.recordingsDiscard, { id }),
+      audio: (id) => ipcRenderer.invoke(IPC_CHANNELS.recordingsAudio, { id }),
+      onChanged: (listener) => subscribe(IPC_CHANNELS.recordingsChanged, listener)
+    },
     model: {
       download: () => ipcRenderer.invoke(IPC_CHANNELS.modelDownload),
       remove: () => ipcRenderer.invoke(IPC_CHANNELS.modelRemove),
@@ -91,7 +99,7 @@ function createMainApi(shared: ReturnType<typeof createSharedApi>): IvritMenuBar
       importAudio: () => ipcRenderer.invoke(IPC_CHANNELS.fileImportAudio),
       // The path comes from the dropped File itself, so a page cannot name one.
       importDroppedAudio: (file) => ipcRenderer.invoke(IPC_CHANNELS.fileImportDroppedAudio, webUtils.getPathForFile(file)),
-      exportTranscriptSrt: (id) => ipcRenderer.invoke(IPC_CHANNELS.fileExportTranscriptSrt, { id }),
+      exportTranscript: (id, anchor) => ipcRenderer.invoke(IPC_CHANNELS.fileExportTranscript, anchor ? { id, anchor } : { id }),
       revealPath: (path) => ipcRenderer.invoke(IPC_CHANNELS.fileRevealPath, path),
       openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.fileOpenExternal, url),
       storagePaths: () => ipcRenderer.invoke(IPC_CHANNELS.fileStoragePaths)
@@ -121,10 +129,25 @@ function createMainApi(shared: ReturnType<typeof createSharedApi>): IvritMenuBar
       version: () => ipcRenderer.invoke(IPC_CHANNELS.appVersion),
       installUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.appInstallUpdate),
       openLicenses: () => ipcRenderer.invoke(IPC_CHANNELS.appOpenLicenses),
+      reportMainWindow: (state) => ipcRenderer.invoke(IPC_CHANNELS.appReportMainWindow, state),
       onNavigate: (listener) => subscribe(IPC_CHANNELS.appNavigateRequested, listener),
-      onHoldKeyPressed: (listener) => subscribe(IPC_CHANNELS.holdKeyPressed, listener)
+      onHoldKeyPressed: (listener) => subscribe(IPC_CHANNELS.holdKeyPressed, listener),
+      // The main window can own a recording too; sleep or lock must stop it as it stops the overlay's.
+      onRecordingInterruptRequested: (listener) =>
+        subscribe(IPC_CHANNELS.recordingInterruptRequested, () => listener())
     },
     overlay: { open: () => ipcRenderer.invoke(IPC_CHANNELS.overlayOpen) },
+    flows: {
+      state: () => ipcRenderer.invoke(IPC_CHANNELS.flowsState),
+      save: (flows) => ipcRenderer.invoke(IPC_CHANNELS.flowsSave, flows),
+      saveConnection: (connection, apiKey, consent) => ipcRenderer.invoke(IPC_CHANNELS.flowsConnectionSave, { connection, apiKey, consent }),
+      deleteConnection: (id) => ipcRenderer.invoke(IPC_CHANNELS.flowsConnectionDelete, id),
+      testConnection: (id) => ipcRenderer.invoke(IPC_CHANNELS.flowsConnectionTest, id),
+      testRun: (flow, text) => ipcRenderer.invoke(IPC_CHANNELS.flowsTestRun, { flow, text }),
+      testDictation: (audio) => ipcRenderer.invoke(IPC_CHANNELS.flowsTestDictation, audio),
+      listApps: () => ipcRenderer.invoke(IPC_CHANNELS.flowsListApps),
+      makeDefault: (id) => ipcRenderer.invoke(IPC_CHANNELS.flowsConnectionDefault, id)
+    },
     call: {
       retry: (id) => ipcRenderer.invoke(IPC_CHANNELS.callRetry, id),
       discard: (id) => ipcRenderer.invoke(IPC_CHANNELS.callDiscard, id),
@@ -148,6 +171,11 @@ function createOverlayApi(shared: ReturnType<typeof createSharedApi>): IvritMenu
     },
     textInsert: {
       intoFocusedField: (text) => ipcRenderer.invoke(IPC_CHANNELS.textInsertIntoFocusedField, { text })
+    },
+    flows: {
+      choose: (flowId) => ipcRenderer.invoke(IPC_CHANNELS.flowsChoose, flowId),
+      preview: (choice) => ipcRenderer.invoke(IPC_CHANNELS.flowsPreview, choice),
+      revert: () => ipcRenderer.invoke(IPC_CHANNELS.flowsRevert)
     },
     app: {
       ...shared.app,

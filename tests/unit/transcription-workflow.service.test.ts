@@ -3,15 +3,17 @@ import { IPC_CHANNELS } from "@shared/ipc-channels";
 import { mkdtempSync, rmSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { TranscriptionCanceledError } from "@main/services/transcription.service";
+import { TranscriptionCanceledError } from "@main/services/transcription-errors";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { he } from "@shared/locale";
 import { appSettingsSchema } from "@shared/schemas";
 import { AppRuntime } from "@main/runtime";
 import { TranscriptionWorkflowService } from "@main/services/transcription-workflow.service";
-import { TextInsertionError } from "@main/services/text-insertion.service";
+import { TextInsertionError } from "@main/services/insertion/text-insertion.service";
 
+const buildRecord = vi.hoisted(() => vi.fn());
+vi.mock("@main/services/transcript-record", () => ({ buildTranscriptRecord: buildRecord }));
 vi.mock("electron", () => ({
   BrowserWindow: {
     getFocusedWindow: () => null
@@ -88,7 +90,6 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
   };
   let transcriptionService: {
     transcribe: ReturnType<typeof vi.fn>;
-    buildTranscriptRecord: ReturnType<typeof vi.fn>;
     cancel: ReturnType<typeof vi.fn>;
   };
   let textInsertionService: {
@@ -120,9 +121,9 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
         language: "he",
         segments: transcript.segments
       })),
-      buildTranscriptRecord: vi.fn(() => transcript),
       cancel: vi.fn(() => true)
     };
+    buildRecord.mockReset().mockImplementation(() => transcript);
     textInsertionService = {
       insertIntoCapturedTarget: vi.fn(async () => true),
       clearTargetApplication: vi.fn()
@@ -589,6 +590,6 @@ describe("TranscriptionWorkflowService overlay session flow", () => {
     await workflow.saveCallTranscript("call-1", input, result as never);
     expect(repository.create).toHaveBeenCalledOnce();
     expect([...rows.keys()]).toEqual(["call-1"]);
-    expect(transcriptionService.buildTranscriptRecord).toHaveBeenCalledOnce();
+    expect(buildRecord).toHaveBeenCalledOnce();
   });
 });

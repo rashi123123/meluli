@@ -1,6 +1,14 @@
 # Architecture
 
-Meluli keeps Electron's renderer isolated from filesystem, process and database access. Main-process IPC handlers validate the sending window and payload. The preload exposes a typed API; the historical `ivritMenuBar` API name remains internal for compatibility.
+## Process model
+
+Meluli 2.0 is one native macOS app. A Swift/AppKit host (`native/host`) owns the lifecycle, the menu bar item, the shortcut and hold key, the windows and the update check. The main-process TypeScript in `src/main` (services, IPC handlers, policy, repositories) runs unchanged in one JavaScriptCore context on its own thread. The React UI in `src/renderer` loads in a WKWebView from a private `meluli://app/` scheme only while a window is open, and every WebKit process exits when it closes.
+
+The host gives that JavaScript context the small part of the Node and Electron APIs that `src/main` actually imports, built on Foundation, AppKit, Security, CommonCrypto and macOS's own SQLite (`native/host`, `src/native-host`). Child processes (the ASR workers, insertion, clipboard, hold key, call audio and link import) keep their JSON-lines protocols and are spawned through that surface. `pnpm dev` and the test runner still run the same `src/main` in Electron, and `scripts/meluli2/native-host-conformance.mjs` runs one set of checks in both hosts and requires the same results.
+
+Why this shape, and not a Swift port: the journal, flows, kept audio and text rules stay in one copy, covered by one test suite. Two copies would drift, and drift in the paste journal is what costs a double paste. JavaScriptCore is part of macOS, so the app ships no JavaScript engine. With the window closed the app idles at about 59 MiB in two processes (the app and the hold-key helper), against 118.9 MiB in five for the Electron build of 0.1. See [decisions](DECISIONS.md) and [benchmarks](BENCHMARKS.md#native-app-memory).
+
+The page sees one frozen `window.ivritMenuBar` object, typed against the preload contract in `src/preload`. The host accepts a message only from the main frame at `meluli://app`, refuses navigation elsewhere and popups, and serves only the built renderer files. Main-process IPC handlers validate the sending window and payload. The historical `ivritMenuBar` API name remains internal for compatibility.
 
 ## Dictation lifecycle
 
@@ -41,8 +49,20 @@ Product name and storage identity are separate. `IvritMenuBar` and `ivrit-menu-b
 
 After the call, `call-pieces` finds speech on each track and plans pieces of up to 4 minutes, and `transcribeCall` sends them through the worker one at a time, saving progress after each. `TranscriptionService.transcribeBackground` runs them at low priority: a recording or foreground job cancels the running piece, which is repeated once the model is free. `call-transcript` removes lines the microphone heard from the speakers, merges the tracks by time and formats turns. Audio is deleted only after the transcript is saved.
 
-## Engine boundary
+## Engines
 
-The selected Preview runtime is a statically linked arm64 whisper.cpp 1.9.5 worker with embedded Metal shaders and the pinned Hebrew Turbo Q8 model. It uses two CPU threads, beam size one and segment timestamps. It converts WAV in bounded chunks into one allocated PCM buffer; total PCM memory grows by approximately 230 MB per hour of imported audio. This does not claim constant-memory streaming. The production worker protocol covers ready/health, warmup, transcribe, cancellation and process release. Cancellation can terminate a worker that cannot interrupt inference safely. Only the selected runtime belongs in the distributed app. Development builds can opt into an isolated research profile through environment settings; packaged builds refuse it.
+Whisper is the default engine. The streaming engine is an opt-in choice in Settings → Transcription, marked experimental. Each engine has its own model folder, and switching never borrows or deletes the other one's model. A switch is refused while anything records, transcribes or downloads; afterwards the idle worker is released and the next use starts the chosen engine.
+
+### Whisper
+
+The Whisper runtime is a statically linked arm64 whisper.cpp 1.9.5 worker with embedded Metal shaders and the pinned Hebrew Turbo Q8 model. It uses two CPU threads, beam size one and segment timestamps. It converts WAV in bounded chunks into one allocated PCM buffer; total PCM memory grows by approximately 230 MB per hour of imported audio. This does not claim constant-memory streaming. The production worker protocol covers ready/health, warmup, transcribe, cancellation and process release. Cancellation can terminate a worker that cannot interrupt inference safely. Only the selected runtime belongs in the distributed app. Development builds can opt into an isolated research profile through environment settings; packaged builds refuse it.
 
 On macOS the native worker explicitly requests `IOPOL_STANDARD` for its disk reads: work initiated by the user while another editor may be in the foreground. The worker reports the applied policy in its readiness event. This does not raise CPU priority, hold the display awake or change idle model release. Earlier validation observed cold-load timeouts under extreme host load; a later successful run also had lower host load, so no controlled speedup is attributed to this policy alone.
+
+### Streaming engine (experimental)
+
+`native/stream-worker.cpp` runs sherpa-onnx 1.12.30 as a static, CPU-only arm64 binary (`scripts/build-stream-worker.mjs`) with the `ivrit-ai/zipformer2-66m-streaming-he` INT8 model (CC BY 4.0). It speaks the same JSON-lines protocol as the Whisper worker, plus live sessions: `begin`, `audio {seq, pcm}`, `finish {samples}` and `cancel_session`, answered by `begun`, `partial`, `segment`, `final`, `canceled` and `error`.
+
+- A segment closes after a 1.2 s pause or 45 s of continuous speech. Silence closes a segment but never ends the dictation. At stop the worker appends 1.0 s of silence so the last word is decoded. No audio is gated, so no speech onset can be clipped.
+- `src/main/services/live-dictation.service.ts` feeds the recording's chunks as they arrive. Finalized segments are append-only, and the floating window shows them with the current partial.
+- Stop happens exactly once. The stop payload is checked against a running hash of every sample the worker heard, and only the unheard tail is sent. Any break (a sequence gap, a hash mismatch, backpressure, worker death, an error, a timeout or empty text) falls back to decoding the whole recording once. A broken session costs time, never words. Audio is queued in order and bounded at 30 s; the worker never returns text with a hole in it.

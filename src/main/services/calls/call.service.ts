@@ -1,10 +1,11 @@
-import { statfs } from "node:fs/promises";
 import { callAppById, callAppForBundle, CALL_APPS, type CallApp } from "@shared/call-apps";
 import type { AppStateSnapshot, CallNotice, CallState, TranscriptSegment } from "@shared/types";
 import type { CallAudioClient, HelperApp } from "./call-audio.client";
 import { CallDetector, type AppActivity } from "./call-detector";
 import { CallStore, createCallRecord, type CallRecord } from "./call-store";
 import { recordedLengthMs, transcribeCall, type PieceTranscriber } from "./call-transcription";
+import { diskFreeBytes, processIsAlive } from "../system-probes";
+import { isRecording, RUNTIME_STATE_EVENT } from "../../runtime";
 
 export const MAX_CALL_MS = 4 * 60 * 60_000;
 const MIN_FREE_TO_START = 1024 ** 3;
@@ -14,12 +15,18 @@ const TICK_MS = 1000;
 const CANCEL_RETRY_MS = 1000;
 /** The time limit ends every call, so an older record has no live owner even if its pid came back. */
 const OWNER_SLACK_MS = 60_000;
+/**
+ * Web pages in any app, Meluli's own window included, reach the microphone through one shared
+ * WebKit process, so macOS reports that process and not the app. Meluli's dictation would read
+ * as a Safari call, so this input does not count while Meluli has the microphone open.
+ */
+const SHARED_WEBKIT_PREFIX = "com.apple.WebKit";
 
 export interface CallRuntime {
   getState(): AppStateSnapshot;
   updateState(next: Partial<AppStateSnapshot>): unknown;
-  on(event: "state", listener: () => void): unknown;
-  off(event: "state", listener: () => void): unknown;
+  on(event: typeof RUNTIME_STATE_EVENT, listener: () => void): unknown;
+  off(event: typeof RUNTIME_STATE_EVENT, listener: () => void): unknown;
 }
 
 export interface CallServiceDependencies {
@@ -37,26 +44,14 @@ export interface CallServiceDependencies {
   pid?: number;
   isProcessAlive?: (pid: number) => boolean;
   cancelRetryMs?: number;
+  /** Meluli itself has the microphone open. Defaults to a dictation that is recording or paused. */
+  ownsMicrophone?: () => boolean;
 }
 
 interface ActiveCall {
   record: CallRecord;
   app: CallApp;
   lastDiskCheck: number;
-}
-
-async function diskFreeBytes(path: string): Promise<number> {
-  const info = await statfs(path);
-  return info.bavail * info.bsize;
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === "EPERM";
-  }
 }
 
 function isModelFree(state: AppStateSnapshot): boolean {
@@ -72,7 +67,7 @@ export class CallService {
   private readonly pid: number;
   private readonly isProcessAlive: (pid: number) => boolean;
   private state: CallState;
-  private activity: AppActivity[] = [];
+  private helperApps: HelperApp[] = [];
   private active: ActiveCall | null = null;
   /** Calls the disk would not update. The audio stays, and they wait here for a retry instead of looping. */
   private readonly unsaved = new Map<string, CallRecord>();
@@ -93,7 +88,7 @@ export class CallService {
     this.now = dependencies.now ?? Date.now;
     this.freeBytes = dependencies.freeBytes ?? diskFreeBytes;
     this.pid = dependencies.pid ?? process.pid;
-    this.isProcessAlive = dependencies.isProcessAlive ?? processAlive;
+    this.isProcessAlive = dependencies.isProcessAlive ?? processIsAlive;
     this.state = {
       available: dependencies.isAvailable(), suggestion: null, recording: null, processing: null, failures: [], notice: null
     };
@@ -143,7 +138,7 @@ export class CallService {
     if (!watching) {
       if (this.timer) clearInterval(this.timer);
       this.timer = null;
-      this.activity = [];
+      this.helperApps = [];
       this.setState({ suggestion: null });
     }
   }
@@ -156,24 +151,33 @@ export class CallService {
   }
 
   private onApps(apps: HelperApp[]): void {
+    this.helperApps = apps;
+    this.tick();
+  }
+
+  /** Read on every tick, because the microphone may open in the window before main hears of the recording. */
+  private activity(): AppActivity[] {
+    const ownMicrophone = this.dependencies.ownsMicrophone?.() ?? isRecording(this.dependencies.runtime.getState().status);
     const merged = new Map<string, AppActivity>();
-    for (const helper of apps) {
+    for (const helper of this.helperApps) {
       const app = callAppForBundle(helper.id);
       if (!app) continue;
+      // A call already being recorded keeps its microphone: masking it there would end the call.
+      const masked = ownMicrophone && helper.id.startsWith(SHARED_WEBKIT_PREFIX) && this.active?.app.id !== app.id;
+      const input = helper.input && !masked;
       const current = merged.get(app.id) ?? { id: app.id, input: false, output: false };
-      merged.set(app.id, { id: app.id, input: current.input || helper.input, output: current.output || helper.output });
+      merged.set(app.id, { id: app.id, input: current.input || input, output: current.output || helper.output });
     }
-    this.activity = [...merged.values()];
-    this.tick();
+    return [...merged.values()];
   }
 
   private tick(): void {
     const now = this.now();
-    this.detector.update(this.activity, now);
+    this.detector.update(this.activity(), now);
     const active = this.active;
     if (active) {
       if (this.stopping) return;
-      if (now - active.record.startedAt >= MAX_CALL_MS || this.detector.hasEnded(active.app.id, now)) void this.finishRecording();
+      if (now - active.record.startedAt >= MAX_CALL_MS || this.detector.hasEnded(active.app.id, now, active.app.kind === "browser")) void this.finishRecording();
       else if (now - active.lastDiskCheck >= DISK_CHECK_MS) void this.checkDisk(active, now);
       return;
     }
@@ -292,10 +296,10 @@ export class CallService {
     await new Promise<void>((resolve) => {
       const listener = () => {
         if (!free()) return;
-        runtime.off("state", listener);
+        runtime.off(RUNTIME_STATE_EVENT, listener);
         resolve();
       };
-      runtime.on("state", listener);
+      runtime.on(RUNTIME_STATE_EVENT, listener);
     });
   }
 

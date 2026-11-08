@@ -17,6 +17,15 @@ ivrit.ai and OpenAI do not endorse Meluli.
 
 **whisper.cpp v1.9.5** and its GGML subtree, MIT: https://github.com/ggml-org/whisper.cpp . Exact source commit `d1be6fde11ac6e0407606b4e42fe72d34add8037`; the source archive and nlohmann/json v3.11.3 header are pinned by SHA-256 in `scripts/build-cpp-worker.mjs`. Meluli adds an MIT JSON-lines adapter and statically links the runtime with embedded Metal shaders. Full Whisper/GGML and nlohmann/json MIT texts and binary provenance are in `resources/licenses/whispercpp/`.
 
+## Streaming recognition engine (optional, "מהיר וקל")
+
+Every package includes this engine's worker and licenses. It runs only when the person picks "מהיר וקל" under Settings → Transcription; Whisper stays the default. Its model is downloaded only after that choice.
+
+- Model `ivrit-ai/zipformer2-66m-streaming-he` (https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he), revision `ee769a2a13b887f91572eec349458bfb0fe79e7a`, by ivrit.ai, Creative Commons Attribution 4.0 International (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). Meluli downloads the four INT8 files in `sherpa-onnx/` unchanged, each pinned by SHA-256 in `src/shared/zipformer-manifest.json`. ivrit.ai does not endorse Meluli.
+- **sherpa-onnx v1.12.30**, Apache License 2.0, https://github.com/k2-fsa/sherpa-onnx . The macOS static archive is pinned by SHA-256 in `scripts/build-stream-worker.mjs`. Meluli adds an MIT JSON-lines adapter (`native/stream-worker.cpp`) and links the archive statically, CPU only.
+- From that archive: ONNX Runtime 1.23.2 (MIT, with its own third-party notices), kaldi-native-fbank 1.22.3, kaldi-decoder 0.2.11, kaldifst 1.7.17, OpenFst (sherpa-onnx-2024-06-19) and simple-sentencepiece 0.7 (all Apache License 2.0), and KISS FFT (BSD 3-Clause). nlohmann/json v3.11.3 (MIT) is compiled into the adapter.
+- Full texts and binary provenance: `resources/licenses/sherpa-onnx/`.
+
 Experimental NeMo, MLX, Core ML and Python ASR engines are not included in the Preview package. Their benchmark results do not imply bundled support.
 
 ## Electron, Node and Chromium

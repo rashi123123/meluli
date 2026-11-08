@@ -4,6 +4,7 @@ import { getHebrewErrorMessage } from "@shared/error-utils";
 import { youtubeSubmitInputSchema } from "@shared/schemas";
 import { he } from "@shared/locale";
 import { useAppContext } from "@/context/app-context";
+import { useKeepMainWindow } from "@/lib/keep-main-window";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SupportedSitesInfo } from "./SupportedSitesInfo";
@@ -18,6 +19,7 @@ export function YouTubeInputRow() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  useKeepMainWindow(Boolean(url.trim()) || isSubmitting);
   const submitPending = useRef(false);
   const cancelPending = useRef(false);
   const returnAfterCancel = useRef(false);
@@ -91,8 +93,11 @@ export function YouTubeInputRow() {
         <Button type="submit" variant="ghost" size="icon-xs" aria-label={isSubmitting ? he.visualizerAnalyzing : he.youtubeSubmit} title={he.youtubeSubmit} disabled={isSubmitting || !trimmedUrl || !modelReady} focusableWhenDisabled><ArrowLeft /></Button>
         {url && <Button type="button" variant="ghost" size="icon-xs" aria-label={he.clear} title={he.clear} onClick={clearEntry}><X /></Button>}
       </div>
-      {helperText && <p id={helperId} className="youtube-helper" title={helperText} role={errorMessage ? "alert" : "status"} aria-live={errorMessage ? "assertive" : "polite"} aria-atomic="true">{helperText}</p>}
-      {pendingJob && <div className="youtube-queue"><span>{he.youtubeQueued}</span><Button type="button" variant="ghost" size="sm" disabled={isCancelling} focusableWhenDisabled onClick={() => void onCancelPending()}>{he.youtubeCancelPending}</Button></div>}
+      {helperText && !(pendingJob && !errorMessage) && <p id={helperId} className="youtube-helper" title={helperText} role={errorMessage ? "alert" : "status"} aria-live={errorMessage ? "assertive" : "polite"} aria-atomic="true">{helperText}</p>}
+      {pendingJob && <div className="youtube-queue">
+        {/* One line in the small cell: what is waiting, cut to fit, with the full name on hover. */}
+        <span id={errorMessage ? undefined : helperId} className="youtube-queue-title" role="status" title={helperText ?? undefined}>{he.youtubeQueued}: <bdi>{pendingJob.title ?? pendingJob.url ?? he.youtubeQueuedHint}</bdi></span>
+        <Button type="button" variant="ghost" size="sm" disabled={isCancelling} focusableWhenDisabled onClick={() => void onCancelPending()}>{he.youtubeCancelPending}</Button></div>}
     </form>
   </div>;
 }

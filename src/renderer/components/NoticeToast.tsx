@@ -19,16 +19,21 @@ export function NoticeToast({ message, onDismiss, urgent = false }: { message: s
       return [...kept, { id: nextId.current++, text: message }].slice(-MAX_NOTICES);
     });
   }, [message]);
+  const stack = useRef<HTMLDivElement>(null);
   const dismiss = (notice: { id: number; text: string }) => {
-    document.getElementById("main-content")?.focus();
+    // Focus moves to the next message still showing, and back to the page after the last one.
+    const buttons = [...(stack.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    const index = notices.findIndex(item => item.id === notice.id);
+    const next = buttons[index + 1] ?? buttons[index - 1];
+    if (next) next.focus(); else document.getElementById("main-content")?.focus();
     setNotices(current => current.filter(item => item.id !== notice.id));
     if (notice.text === message) onDismiss();
   };
   return <>
     <span className="sr-only" role={urgent ? "alert" : "status"} aria-live={urgent ? "assertive" : "polite"} aria-atomic="true">{message}</span>
-    <div className="notice-stack">
+    <div ref={stack} className="notice-stack">
       {notices.map(notice => <div key={notice.id} className="notice-toast">
-        <span>{notice.text}</span>
+        <span className="notice-text">{urgent && <span className="led" data-tone="alert" aria-hidden="true" />}{notice.text}</span>
         <Button size="icon-sm" variant="ghost" aria-label="סגירת הודעה" onClick={() => dismiss(notice)}><X /></Button>
       </div>)}
     </div>

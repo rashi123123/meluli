@@ -1,7 +1,7 @@
 /* @vitest-environment node */
 
 import { describe, expect, it } from "vitest";
-import { isGlobalShortcut, toElectronAccelerator } from "@/lib/shortcut";
+import { isGlobalShortcut, toElectronAccelerator, isReservedShortcut } from "@/lib/shortcut";
 
 describe("toElectronAccelerator", () => {
   it("normalizes modifiers and uppercase characters", () => {
@@ -55,5 +55,18 @@ describe("toElectronAccelerator", () => {
 describe("isGlobalShortcut", () => {
   it.each([["Control+Shift+R", true], ["Command+K", true], ["Alt+Space", true], ["F5", true], ["Shift+F12", true], ["R", false], ["Shift+R", false], ["Space", false]])("%s is %s", (accelerator, expected) => {
     expect(isGlobalShortcut(accelerator)).toBe(expected);
+  });
+});
+
+describe("isReservedShortcut", () => {
+  it("refuses the combos macOS and every app rely on", () => {
+    for (const combo of ["Command+V", "Command+C", "Command+Z", "Command+Shift+Z", "Command+Q", "Command+Space", "Command+Tab", "Command+Escape"]) {
+      expect(isReservedShortcut(combo)).toBe(true);
+    }
+  });
+  it("keeps combos that add Control or Option, or that macOS leaves free", () => {
+    for (const combo of ["Control+Shift+R", "Command+Alt+V", "Control+Command+V", "Command+Shift+V", "Command+R"]) {
+      expect(isReservedShortcut(combo)).toBe(false);
+    }
   });
 });

@@ -1,7 +1,10 @@
 import type {
+  AppSettings,
   ProcessingTelemetry,
   ProcessingTelemetryBucket,
   SpeedPreference,
+  TranscriptSegment,
+  TranscriptionStartInput,
 } from "./types";
 
 const MIN_ESTIMATE_MS = 10_000;
@@ -33,7 +36,6 @@ export function estimateMicrophoneProcessingMs({
   processingTelemetry
 }: {
   durationMs: number | null | undefined;
-  metalEnabled: boolean;
   speedPreference: SpeedPreference;
   processingTelemetry?: ProcessingTelemetry | null;
 }): number {
@@ -152,4 +154,32 @@ export function recordProcessingTimingSample(
       [sample.speedPreference]: nextBucket
     }
   };
+}
+
+/** The audio length of a finished job: as recorded, as the worker measured it, or where its last segment ends. */
+function jobDurationMs(input: TranscriptionStartInput, workerAudioMs: number | null, segments: TranscriptSegment[] | null | undefined): number | null {
+  if (input.durationMs != null) return input.durationMs;
+  if (workerAudioMs != null) return workerAudioMs;
+  const lastSegment = segments?.at(-1);
+  if (!lastSegment || typeof lastSegment.end !== "number" || lastSegment.end <= 0) return null;
+  return Math.round(lastSegment.end * 1000);
+}
+
+/** The telemetry after one finished job, or null when the job says nothing about speed (a call, an unknown length). */
+export function telemetryAfterJob(
+  settings: Pick<AppSettings, "processingTelemetry" | "speedPreference">,
+  input: TranscriptionStartInput,
+  job: { processingStartedAt: number; workerAudioMs: number | null; setupMs: number; segments: TranscriptSegment[] | null | undefined },
+  now = Date.now()
+): ProcessingTelemetry | null {
+  if (input.sourceType === "call") return null;
+  const durationMs = jobDurationMs(input, job.workerAudioMs, job.segments);
+  if (!durationMs || durationMs <= 0) return null;
+  return recordProcessingTimingSample(settings.processingTelemetry, {
+    sourceType: input.sourceType,
+    speedPreference: settings.speedPreference,
+    durationMs,
+    setupMs: job.setupMs,
+    totalElapsedMs: Math.max(1_000, now - job.processingStartedAt)
+  });
 }

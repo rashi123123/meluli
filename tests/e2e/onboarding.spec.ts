@@ -182,7 +182,7 @@ test("basic setup is two screens, and back navigation after a granted permission
   await expect(page.getByRole("button", { name: he.continue, exact: true })).toBeEnabled();
   await page.getByRole("button", { name: he.continue, exact: true }).click();
   await expect(page.getByRole("heading", { name: "בית", exact: true })).toBeVisible();
-  await expect(page.getByText(he.onboardingOptionalHint)).toBeVisible();
+  await expect(page.getByText(he.onboardingFirstTranscriptTitle, { exact: true })).toBeVisible();
 });
 
 test("a profile stored on the old hold key step resumes at the engine and can walk back", async ({}, info) => {
@@ -230,7 +230,7 @@ test("microphone failures explain themselves and recover without leaving the ste
   await expect(page.locator(".microphone-error")).toHaveCount(0);
   await expect(page.getByText("המיקרופון עובד", { exact: true })).toBeVisible();
   await expect.poll(() => page.getByRole("meter").getAttribute("aria-valuenow").then(Number)).toBeGreaterThan(0);
-  await page.getByRole("button", { name: "עצירת הבדיקה", exact: true }).click();
+  await page.getByRole("button", { name: he.continue, exact: true }).click();
   expect(await page.evaluate(() => (window as unknown as { __microphoneFixture: { stops: number } }).__microphoneFixture.stops)).toBe(1);
 });
 
@@ -264,9 +264,7 @@ test("onboarding split layout reflows with symmetric preview insets and reachabl
       expect(dimensions.flowX).toBeGreaterThanOrEqual(dimensions.headerX - 1);
       expect(dimensions.flowRight).toBeLessThanOrEqual(dimensions.headerRight + 1);
       expect(dimensions.overflow).toBe(false);
-      await expect(page.locator(".setup-progress-count")).toHaveAttribute("dir", "ltr");
-      await expect(page.locator(".setup-progress-count")).toHaveText("1/3");
-      await expect(page.locator(".onboarding-progress")).toHaveAttribute("aria-label", he.onboardingStepOfTotal.replace("{current}", "1").replace("{total}", "3"));
+      await expect(page.locator(".onboarding-progress")).toHaveAttribute("aria-label", new RegExp(`^${he.onboardingSetupStepWelcome} · ${he.onboardingStepOfTotal.replace("{current}", "1").replace("{total}", "[23]")}$`));
       expect(await page.locator(".onboarding-primary-dock").evaluate(el => el.getBoundingClientRect().width)).toBeLessThan(size.width - 24);
       expect(dimensions.actionTop).toBeGreaterThanOrEqual(0);
       expect(dimensions.actionBottom).toBeLessThanOrEqual(dimensions.height);
@@ -297,10 +295,19 @@ test("settings persist, native file import exports timed SRT, and history search
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [paths.input] });
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: paths.output });
   }, { input, output });
+  // A native menu cannot be clicked from the page, so the export menu picks SRT itself.
+  // Other menus, such as the tray's, are built for real.
+  await app.evaluate(({ Menu }, label) => {
+    const build = Menu.buildFromTemplate.bind(Menu);
+    Menu.buildFromTemplate = ((template: Electron.MenuItemConstructorOptions[]) => {
+      const pick = template.find(item => item.label === label)?.click as (() => void) | undefined;
+      return pick ? { popup: () => pick() } : build(template);
+    }) as unknown as typeof Menu.buildFromTemplate;
+  }, he.downloadSrt);
   await page.getByRole("button", { name: he.importAudioCompact, exact: true }).click();
   await expect(page.locator(".transcript-heading")).toContainText("layout-test.wav");
   await expect(page.locator(".transcript-content")).toContainText("layout-test");
-  await page.getByRole("button", { name: he.downloadSrt, exact: true }).click();
+  await page.getByRole("button", { name: he.exportMenu, exact: true }).click();
   await expect.poll(() => { try { return readFileSync(output, "utf8"); } catch { return ""; } }).toContain(" --> ");
   await page.getByRole("button", { name: he.history, exact: true }).click();
   await page.getByPlaceholder(he.searchPlaceholder).fill("אין-תוצאה-כזאת");
@@ -315,19 +322,12 @@ test("settings persist, native file import exports timed SRT, and history search
   expect((await page.evaluate(() => (globalThis as AppGlobal).ivritMenuBar.history.list(100))).items).toHaveLength(0);
 });
 
-test("welcome demonstration plays once, stays illustrative and respects keyboard and reduced motion", async ({}, info) => {
+test("welcome demonstration plays once, stays illustrative and has nothing to press", async ({}, info) => {
   const demo = page.getByRole("region", { name: "הדגמה של דיבור לטקסט" });
   await expect(demo).toHaveAttribute("data-state", "complete", { timeout: 6_000 });
   await expect(demo.getByRole("status")).toHaveText(/^משפט לדוגמה: /);
   await expect.poll(() => demo.evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length)).toBe(0);
-  const replay = demo.getByRole("button", { name: "הפעלה חוזרת" });
-  await replay.press("Enter");
-  await expect(demo).toHaveAttribute("data-motion", "instant");
-  await expect(demo).toHaveAttribute("data-state", "complete");
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await replay.click();
-  await expect(demo).toHaveAttribute("data-motion", "instant");
-  await expect(demo).toHaveAttribute("data-state", "complete");
+  await expect(demo.getByRole("button")).toHaveCount(0);
   expect((await page.evaluate(() => (globalThis as AppGlobal).ivritMenuBar.history.list())).items).toHaveLength(0);
   expect((await settings()).onboarding.phase).toBe("not_started");
   await screenshot(info, "welcome-demo-complete");

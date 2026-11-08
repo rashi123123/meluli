@@ -69,6 +69,16 @@ describe.runIf(process.platform === "darwin")("hold key helper", () => {
     await until(() => f.hold.getStatus() === "needs_permission");
   });
 
+  it.each(["tap", "input"])("restarts after a %s failure instead of asking for a permission already given", async reason => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true, advanceTimeDelta: 200 });
+    try {
+      const f = start(helper("granted", `echo '{"reason":"${reason}","type":"error"}'; exit 3`));
+      await f.hold.sync();
+      await vi.waitFor(() => expect(f.hold.getStatus()).toBe("unavailable"), { timeout: 15_000, interval: 50 });
+      expect(f.statuses).not.toContain("needs_permission");
+    } finally { vi.useRealTimers(); }
+  }, 20_000);
+
   it("does not trust output outside the closed list", async () => {
     const f = start(helper("granted", 'echo \'{"type":"keydown","key":"a"}\'; cat'));
     await f.hold.sync();

@@ -4,9 +4,9 @@ const { callbacks } = vi.hoisted(() => ({ callbacks: [] as Array<(error: Error |
 vi.mock("node:child_process", () => ({ execFile: vi.fn((_file, _args, _options, callback) => { callbacks.push(callback); return { stdin: { end: vi.fn(), on: vi.fn() } }; }) }));
 const { trusted } = vi.hoisted(() => ({ trusted: vi.fn((_prompt: boolean) => true) }));
 vi.mock("electron", () => ({ systemPreferences: { isTrustedAccessibilityClient: trusted } }));
-import { TextInsertionService } from "@main/services/text-insertion.service";
-import { NativeInsertionFailure } from "@main/services/native-insertion-client";
-import { ClipboardUnavailableError, type ClipboardBridgeService } from "@main/services/clipboard-bridge.service";
+import { TextInsertionService } from "@main/services/insertion/text-insertion.service";
+import { NativeInsertionFailure } from "@main/services/insertion/native-insertion-client";
+import { ClipboardUnavailableError, type ClipboardBridgeService } from "@main/services/insertion/clipboard-bridge.service";
 import { he } from "@shared/locale";
 let service: TextInsertionService;
 beforeEach(() => { callbacks.length = 0; service = new TextInsertionService({} as ClipboardBridgeService); });
@@ -87,7 +87,8 @@ describe("target capture ordering (simulated OS responses)", () => {
 describe("paste error recovery (simulated OS responses)", () => {
   it.each([
     ["", "paste_failed"],
-    ["execution error: target app did not become active", "target_unavailable"]
+    ["execution error: target app did not become active", "target_unavailable"],
+    ["execution error: focused field is a password field (-2700)", "secure_field"]
   ])("classifies stderr %j without inspecting echoed command text", async (stderr, code) => {
     const restoreClipboard = vi.fn(async () => {});
     const restoreOverlay = vi.fn();
@@ -103,6 +104,27 @@ describe("paste error recovery (simulated OS responses)", () => {
     expect(restoreClipboard).toHaveBeenCalledOnce();
     expect(restoreOverlay).toHaveBeenCalledOnce();
     expect(service.getCapturedTargetApplicationName()).toBe("Editor");
+  });
+});
+
+describe("AppleScript fallback", () => {
+  it("checks for a password field before Cmd-V, and counts the refusal as nothing pasted", async () => {
+    const { execFile } = await import("node:child_process");
+    service = new TextInsertionService({ begin: async () => ({ restore: async () => {} }) } as unknown as ClipboardBridgeService);
+    const capture = service.captureCurrentTargetApplication();
+    callbacks[0](null, "Editor\norg.example.editor\n12345", "");
+    await capture;
+    const inserting = service.insertIntoCapturedTarget("public test text");
+    const assertion = expect(inserting).rejects.toMatchObject({ code: "secure_field" });
+    await Promise.resolve();
+    const lines = (vi.mocked(execFile).mock.calls.at(-1)![1] as string[]).filter((_, index) => index % 2 === 1);
+    const check = lines.findIndex(line => line.includes("AXSecureTextField"));
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(lines.findIndex(line => line.includes("key code 9")));
+    callbacks[1](new Error("Command failed"), "", "execution error: focused field is a password field (-2700)");
+    await assertion;
+    expect(service.getLastInsertionOutcome()).toBe("not_dispatched");
+    expect(service.hasUnknownNativeOutcome()).toBe(false);
   });
 });
 
@@ -144,6 +166,19 @@ describe('persistent AX insertion isolation',()=>{
    {capture:async()=>({target:{name:'Editor',pid:2,bundleId:'local.editor'},token:'capture-token'}),insert});
   await service.captureCurrentTargetApplication();expect(await service.insertIntoCapturedTarget('שלום GitHub','transcript-id')).toBe(true);
   expect(insert).toHaveBeenCalledWith('capture-token','שלום GitHub','transcript-id',{});expect(begin).not.toHaveBeenCalled();expect(callbacks).toHaveLength(0);expect(overlay).toHaveBeenCalledOnce();expect(service.getLastInsertionOutcome()).toBe('confirmed');
+ });
+});
+describe('mixed-direction paste',()=>{
+ it('sends the helper a copy with direction marks and leaves terminals literal',async()=>{
+  const insert=vi.fn(async()=>'confirmed' as const);
+  let bundleId='com.apple.Notes';
+  service=new TextInsertionService({begin:vi.fn()}as unknown as ClipboardBridgeService,()=>vi.fn(),undefined,
+   {capture:async()=>({target:{name:'Target',pid:2,bundleId},token:'t'}),insert});
+  await service.captureCurrentTargetApplication();await service.insertIntoCapturedTarget('GitHub עודכן?','id-1');
+  expect(insert).toHaveBeenLastCalledWith('t','\u200fGitHub עודכן?\u200f','id-1',{});
+  bundleId='com.apple.Terminal';
+  await service.captureCurrentTargetApplication();await service.insertIntoCapturedTarget('GitHub עודכן?','id-2');
+  expect(insert).toHaveBeenLastCalledWith('t','GitHub עודכן?','id-2',{});
  });
 });
 describe('persistent native paste clipboard ownership',()=>{

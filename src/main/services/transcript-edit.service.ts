@@ -1,9 +1,8 @@
 import { getTranscriptCues } from "@shared/transcript-cues";
 import type { TranscriptEdit, TranscriptRecord } from "@shared/types";
 import { formatCallText } from "./calls/call-transcript";
-import { enhanceTranscript, type EnhanceTranscriptOptions } from "./transcript-enhancer.service";
-
-export type TranscriptContent = Pick<TranscriptRecord, "text" | "paragraphs" | "segments">;
+import type { TranscriptContent } from "../db/transcript.repository";
+import { enhanceTranscript, type EnhanceTranscriptOptions } from "./text-rules/transcript-enhancer.service";
 
 /**
  * Cue edits keep their timings and go back through the enhancer, so the reading
@@ -31,6 +30,6 @@ export function applyTranscriptEdit(
   }
 
   const joined = segments.map((cue) => cue.text).join(" ");
-  const enhanced = enhanceTranscript(joined, options);
+  const enhanced = enhanceTranscript(joined, { ...options, segments });
   return { text: enhanced.text || joined, paragraphs: enhanced.paragraphs, segments };
 }

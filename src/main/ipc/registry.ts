@@ -1,9 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import { AppError } from "@shared/errors/app-error";
-import { IPC_CHANNELS } from "@shared/ipc-channels";
 import type { InvokeChannelName } from "./policy";
 
-type IpcChannelName = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 type InvokeHandler<TRequest, TResponse> =
   (request: TRequest, event: IpcMainInvokeEvent) => Promise<TResponse> | TResponse;
 
@@ -12,18 +10,18 @@ export class IpcRegistry {
 
   constructor(
     private readonly options: {
-      validateEvent?: (channel: InvokeChannelName, event: IpcMainInvokeEvent) => void;
-    } = {}
+      validateEvent: (channel: InvokeChannelName, event: IpcMainInvokeEvent) => void;
+    }
   ) {}
 
-  register<TRequest, TResponse>(channel: IpcChannelName, handler: InvokeHandler<TRequest, TResponse>): void {
+  register<TRequest, TResponse>(channel: InvokeChannelName, handler: InvokeHandler<TRequest, TResponse>): void {
     if (this.registeredChannels.has(channel)) {
       throw new Error(`Duplicate IPC handler registration for ${channel}`);
     }
 
     ipcMain.handle(channel, async (event, request) => {
       try {
-        this.options.validateEvent?.(channel as InvokeChannelName, event);
+        this.options.validateEvent(channel, event);
         return await handler(request as TRequest, event);
       } catch (error) {
         const appError = AppError.fromUnknown(error);

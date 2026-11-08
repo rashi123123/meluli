@@ -1,55 +1,65 @@
 import { mkdirSync, existsSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { EventEmitter } from "node:events";
-import { DEFAULT_MODEL_FILENAME, DEFAULT_MODEL_ID, DEFAULT_MODEL_URL } from "@shared/constants";
 import { he } from "@shared/locale";
 import { modelStateSchema } from "@shared/schemas";
 import type { ModelDownloadProgress, ModelState } from "@shared/types";
-import type { BinaryPaths } from "../config/paths";
-import { MODEL_MANIFEST } from "../config/model-manifest";
+import { PRODUCT_ASR_ENGINE, type AsrEngine } from "../config/asr-engine";
 import { SettingsService } from "./settings.service";
 import { ModelIntegrity } from "./model-integrity";
 import { downloadVerifiedModel } from "./verified-download";
 import { isMockMode } from "../config/mock-mode";
 
-export class ModelManager extends EventEmitter {
+export class ModelManager {
   private downloadPromise: Promise<ModelState> | null = null;
   private abort = new AbortController();
   private disposed = false;
   private lastProgressAt = 0;
-  private integrity = new ModelIntegrity(MODEL_MANIFEST);
-  private manifestBytes = MODEL_MANIFEST.files.reduce((sum, file) => sum + file.bytes, 0);
+  private readonly integrity: ModelIntegrity;
+  private readonly manifestBytes: number;
 
-  constructor(private readonly modelsDir: string, private readonly settingsService: SettingsService, _binaryPaths: BinaryPaths) {
-    super();
+  /** `onProgress` hears download progress, at most every 100 ms and always the last chunk. */
+  constructor(
+    private readonly modelsDir: string,
+    private readonly settingsService: SettingsService,
+    private readonly onProgress: (progress: ModelDownloadProgress) => void = () => {},
+    private readonly engine: AsrEngine = PRODUCT_ASR_ENGINE
+  ) {
     mkdirSync(modelsDir, { recursive: true, mode: 0o700 });
+    this.manifestBytes = engine.model.manifest.files.reduce((sum, file) => sum + file.bytes, 0);
+    // Each engine keeps its own record, so switching engines never trusts the other's files.
+    const record = engine.id === "whisper" ? ".meluli-verified.json" : `.meluli-verified-${engine.id}.json`;
+    this.integrity = new ModelIntegrity(engine.model.manifest, join(modelsDir, record));
   }
 
   async dispose(): Promise<void> {
     this.disposed = true;
     this.abort.abort(new Error("Model operation canceled."));
     await this.downloadPromise?.catch(() => undefined);
-    this.removeAllListeners();
   }
 
-  private get currentModelPath(): string { return join(this.modelsDir, DEFAULT_MODEL_FILENAME); }
-  private get useMockMode(): boolean { return isMockMode(); }
+  private get currentModelPath(): string { return join(this.modelsDir, this.engine.model.fileName); }
+  private get identity() { return { id: this.engine.model.id, url: this.engine.model.url, fileName: this.engine.model.fileName }; }
   private emitProgress(bytesDownloaded: number, totalBytes: number): void {
     const now = Date.now();
     if (bytesDownloaded !== totalBytes && now - this.lastProgressAt < 100) return;
     this.lastProgressAt = now;
     const payload: ModelDownloadProgress = { bytesDownloaded, totalBytes, percent: Math.min(100, Math.round(bytesDownloaded / totalBytes * 100)) };
-    this.emit("progress", payload);
+    this.onProgress(payload);
   }
 
+  get isDownloading(): boolean { return this.downloadPromise !== null; }
+
   async getState(settings = this.settingsService.getSettings()): Promise<ModelState> {
-    const ready = this.useMockMode
+    const ready = isMockMode()
       ? existsSync(join(this.currentModelPath, ".meluli-mock-model"))
       : await this.integrity.verify(this.currentModelPath, this.abort.signal);
-    const previous = settings.modelState;
+    // The stored state is the last engine's; a switch starts this engine's from its own files.
+    const stored = settings.modelState;
+    const previous = stored.id === this.engine.model.id ? stored
+      : { ...stored, downloadState: "missing" as const, bytesDownloaded: 0, totalBytes: null, lastError: null };
     const state = modelStateSchema.parse({
-      ...previous, id: DEFAULT_MODEL_ID, url: DEFAULT_MODEL_URL, fileName: DEFAULT_MODEL_FILENAME,
+      ...previous, ...this.identity,
       filePath: ready ? this.currentModelPath : null,
       downloadState: this.downloadPromise ? "downloading" : ready ? "ready" : previous.downloadState === "error" ? "error" : "missing",
       totalBytes: previous.totalBytes ?? this.manifestBytes,
@@ -65,6 +75,11 @@ export class ModelManager extends EventEmitter {
     return state.filePath;
   }
 
+  /** The path the engine's worker loads. */
+  async requireWorkerModelPath(): Promise<string> {
+    return this.engine.model.workerPath(await this.requireModelPath());
+  }
+
   downloadModel(): Promise<ModelState> {
     if (this.disposed) return Promise.reject(new Error(he.modelDownloadFailed));
     if (this.downloadPromise) return this.downloadPromise;
@@ -74,15 +89,15 @@ export class ModelManager extends EventEmitter {
 
   private async downloadModelInternal(): Promise<ModelState> {
     const total = this.manifestBytes;
-    const base = { ...this.settingsService.getSettings().modelState, id: DEFAULT_MODEL_ID, url: DEFAULT_MODEL_URL, fileName: DEFAULT_MODEL_FILENAME };
+    const base = { ...this.settingsService.getSettings().modelState, ...this.identity };
     this.settingsService.setSetting("modelState", { ...base, filePath: null, downloadState: "downloading", bytesDownloaded: 0, totalBytes: total, lastError: null });
     try {
-      if (this.useMockMode) {
+      if (isMockMode()) {
         await mkdir(this.currentModelPath, { recursive: true, mode: 0o700 });
         await writeFile(join(this.currentModelPath, ".meluli-mock-model"), "Simulated model for isolated tests only.\n", { mode: 0o600 });
         this.emitProgress(total, total);
       } else {
-        await downloadVerifiedModel(MODEL_MANIFEST, this.currentModelPath, this.abort.signal, (received, size) => this.emitProgress(received, size));
+        await downloadVerifiedModel(this.engine.model.manifest, this.currentModelPath, this.abort.signal, (received, size) => this.emitProgress(received, size));
         this.integrity.invalidate(this.currentModelPath);
         if (!(await this.integrity.verify(this.currentModelPath, this.abort.signal))) throw new Error("Model integrity check failed.");
       }
@@ -101,7 +116,7 @@ export class ModelManager extends EventEmitter {
     rmSync(this.currentModelPath, { recursive: true, force: true });
     this.integrity.invalidate(this.currentModelPath);
     return this.settingsService.setSetting("modelState", { ...this.settingsService.getSettings().modelState,
-      id: DEFAULT_MODEL_ID, url: DEFAULT_MODEL_URL, fileName: DEFAULT_MODEL_FILENAME,
+      ...this.identity,
       filePath: null, downloadState: "missing", bytesDownloaded: 0, totalBytes: null, lastError: null
     }).modelState;
   }

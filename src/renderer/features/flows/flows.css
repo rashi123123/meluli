@@ -1,0 +1,122 @@
+/* Flows page. Uses only the app's tokens; no new colours. */
+
+.flows-intro { display: flex; flex-direction: column; gap: 6px; padding-inline: 14px; }
+.flows-intro h3 { font-size: var(--t-15); font-weight: 600; }
+.flows-intro p { max-width: 38rem; color: var(--ink2); line-height: 1.55; }
+.flows-model { color: var(--ink3); font-size: var(--t-12); font-weight: 400; }
+.flows-badge { padding: 2px 8px; border-radius: var(--r-pill); background: var(--well); color: var(--ink2); font-size: var(--t-12); white-space: nowrap; }
+.flows-field { width: 16rem; max-width: 100%; }
+
+/* Tiles: the Home cells' raised surface, icon well and title pair, set on a grid of squares. */
+.flows-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-inline-end: 4px; }
+.flows-section-head [data-slot="button"] { color: var(--ink2); }
+.flow-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 8px; }
+.flow-tile { position: relative; display: flex; flex-direction: column; align-items: stretch; gap: 6px; aspect-ratio: 1; min-width: 0; padding: 12px;
+  border: 1px solid transparent; border-radius: var(--r-cell); background: var(--surface) padding-box, var(--surface-stroke) border-box; box-shadow: var(--surface-ring);
+  color: var(--ink1); font: inherit; text-align: start; }
+button.flow-tile, .flow-tile-open { cursor: pointer; }
+.flow-tile-open { position: absolute; inset: 0; z-index: 0; border: 0; border-radius: inherit; background: transparent; }
+.flow-tile-open:focus-visible { outline-offset: -2px; }
+.flow-tile > :not(.flow-tile-open) { position: relative; z-index: 1; pointer-events: none; }
+.flow-tile [data-slot="switch"] { pointer-events: auto; }
+.flow-tile [data-slot="switch"]:not([data-checked]) { background: var(--s0); }
+/* Same as the settings rows: in light mode the off track needs the darker step to show on white. */
+@media (prefers-color-scheme: light) { .flow-tile [data-slot="switch"]:not([data-checked]) { background: var(--s3); } }
+@media (hover: hover) { button.flow-tile:hover, .flow-tile:has(.flow-tile-open:hover) { background: var(--surface-hover) padding-box, var(--surface-stroke) border-box; } }
+
+.flow-tile-top { display: flex; align-items: flex-start; justify-content: space-between; margin-block-end: auto; }
+.flow-tile .source-title > span { white-space: normal; }
+.flow-tile-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.flow-tile-meta { overflow: hidden; color: var(--ink3); font-size: var(--t-11); white-space: nowrap; text-overflow: ellipsis; }
+/* Like the info glyph on the Home cells: a quiet corner mark that says what a press does. */
+.flow-tile-corner { color: var(--ink3); }
+.flow-tile-corner .sf-symbol { width: .75rem; height: .75rem; }
+@media (hover: hover) { button.flow-tile:hover .flow-tile-corner { color: var(--ink1); } }
+.flow-tile[data-off] .source-title strong, .flow-tile[data-off] .source-icon { color: var(--ink3); }
+
+/* Builder */
+.flow-builder { max-width: 42rem; }
+.flow-builder-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.flow-builder-where { color: var(--ink3); font-size: var(--t-12); }
+.flow-title-row { display: flex; align-items: center; gap: 10px; padding-inline: 2px; }
+.flow-name[data-slot="input"] { flex: 1; min-height: 2.5rem; padding-inline: 12px; background: transparent; font-size: var(--t-17); font-weight: 600; }
+.flow-name[data-slot="input"]:hover, .flow-name[data-slot="input"]:focus-visible { background: var(--s1); }
+.flow-enabled-label { color: var(--ink2); font-size: var(--t-12); }
+
+.flow-steps { --spine: calc(14px + .875rem); display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+/* A spine through the step icons joins the cards, so the order reads as one chain from top to bottom. */
+.flow-steps > li + li { position: relative; margin-block-start: 12px; }
+.flow-steps > li + li::before { content: ""; position: absolute; inset-inline-start: var(--spine); inset-block-start: -13px; width: 1px; height: 12px; background: var(--s3); }
+
+/* Every card is the app's raised surface, like the settings rows. */
+.flow-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid transparent; border-radius: var(--r-l);
+  background: var(--surface) padding-box, var(--surface-stroke) border-box; box-shadow: var(--surface-ring); }
+.flow-card[data-status="skipped"] { opacity: .55; }
+.flow-card :is([data-slot="input"], [data-slot="select"]) { background: var(--well); }
+.flow-card-head { display: flex; align-items: center; gap: 8px; min-height: 1.75rem; }
+.flow-card-icon { display: inline-grid; place-items: center; flex: none; width: 1.75rem; height: 1.75rem; border-radius: var(--r-s); background: var(--well); color: var(--ink2); }
+.flow-card-icon .sf-symbol { width: .875rem; height: .875rem; }
+.flow-card-kind { color: var(--ink1); font-size: var(--t-13); font-weight: 500; }
+.flow-card-sub { color: var(--ink3); font-size: var(--t-12); }
+.flow-card-tools { display: flex; gap: 2px; margin-inline-start: auto; opacity: 0; transition: opacity 120ms ease-out; }
+.flow-card:hover .flow-card-tools, .flow-card:focus-within .flow-card-tools { opacity: 1; }
+@media (hover: none) { .flow-card-tools { opacity: 1; } }
+/* Card content starts under the title, not under the icon. */
+.flow-card > :not(.flow-card-head) { margin-inline-start: calc(1.75rem + 8px); }
+
+.flow-apps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.flow-chip { display: inline-flex; align-items: center; gap: 2px; min-height: 1.75rem; padding-inline: 10px 2px; border-radius: var(--r-pill); background: var(--s3); font-size: var(--t-12); font-weight: 500; }
+.flow-apps .select-field { width: 13rem; max-width: 100%; }
+.flow-add-app[data-slot="select"] { min-height: 1.75rem; color: var(--ink2); }
+.flow-note { color: var(--ink1); font-size: var(--t-12); }
+.flow-hint { color: var(--ink3); font-size: var(--t-12); line-height: 1.5; }
+
+.flow-llm { display: flex; flex-direction: column; gap: 8px; }
+.flow-instruction { width: 100%; min-height: 4.5rem; padding: 8px 10px; resize: vertical; border: 1px solid transparent; border-radius: var(--r-m); background: var(--well); color: var(--ink1); font-size: var(--t-13); line-height: 1.5; }
+.flow-instruction:focus-visible { outline-offset: 0; }
+.flow-llm-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.flow-llm-foot .select-field { width: 17rem; max-width: 100%; }
+
+.flow-condition { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--ink2); }
+.flow-condition .select-field { width: 7.5rem; }
+.flow-words[data-slot="input"] { width: 4.5rem; text-align: center; }
+
+.flow-add { display: flex; gap: 4px; padding-inline-start: calc(14px + 1.75rem); }
+.flow-add [data-slot="button"] { color: var(--ink2); }
+
+.flow-run { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: var(--r-m); background: var(--s-1); }
+.flow-run-note { color: var(--ink3); font-size: var(--t-12); }
+.flow-run p { white-space: pre-wrap; line-height: 1.5; }
+.flow-run .flow-run-meta { display: flex; align-items: center; gap: 6px; color: var(--ink3); font-size: var(--t-11); }
+
+.flow-test.workspace-setup-status { margin-block-start: 4px; }
+.flow-test-live { display: inline-flex; align-items: center; gap: 8px; }
+.flow-test-live .led { animation: flow-pulse 1.2s ease-in-out infinite; }
+@keyframes flow-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .flow-test-live .led { animation: none; } }
+.flow-delete[data-slot="button"] { color: var(--danger); }
+
+/* Overlay */
+.flow-hud-pill { display: inline-flex; align-items: center; gap: 4px; max-width: 12rem; min-height: 2rem; padding-inline: 10px 6px; border-radius: var(--r-pill); background: var(--s2); color: var(--ink1); font-size: var(--t-12); font-weight: 500; white-space: nowrap; }
+.flow-hud-pill > span { overflow: hidden; text-overflow: ellipsis; }
+.flow-hud-pill .sf-symbol { width: .625rem; height: .625rem; color: var(--ink3); }
+.flow-hud-pill[data-off] { color: var(--ink3); }
+/* The picker fits the 148 px expanded window: four flows on a 2 x 2 grid, names only (the hint is the tooltip). */
+.flow-hud-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.flow-hud-list button { width: 100%; min-height: 1.875rem; padding-inline: 10px; overflow: hidden; border: 0; border-radius: var(--r-m); background: var(--s1); color: var(--ink1);
+  font-size: var(--t-12); font-weight: 500; text-align: start; white-space: nowrap; text-overflow: ellipsis; }
+.flow-hud-list button:hover { background: var(--s2); }
+.flow-hud-list button[aria-selected="true"] { background: var(--s3); }
+.flow-hud-list button[data-off] { color: var(--ink2); }
+.flow-hud-result { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--t-13); line-height: 1.45; }
+.flow-hud-keys { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--ink3); font-size: var(--t-11); }
+.flow-hud-keys kbd { padding: 1px 5px; border-radius: 4px; background: var(--s2); color: var(--ink2); font-size: var(--t-11); }
+.flows-row-actions { display: flex; align-items: center; gap: 4px; }
+.flow-run[data-status="failed"] .flow-run-meta { color: var(--ink1); font-size: var(--t-12); }
+.flow-card[data-status="running"] .flow-card-icon { animation: flow-pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .flow-card[data-status="running"] .flow-card-icon { animation: none; } }
+
+/* The form only adds Enter-to-submit; the page keeps its own spacing. */
+.flows-connect-form { display: contents; }
+.settings-row-control:has(> .flows-field-error) { flex-direction: column; align-items: stretch; }
+.flows-field-error { max-width: 16rem; color: var(--danger); font-size: var(--t-12); }

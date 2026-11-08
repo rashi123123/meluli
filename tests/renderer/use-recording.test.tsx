@@ -424,6 +424,31 @@ describe("audio that must survive", () => {
     expect(onError).toHaveBeenCalledWith(he.microphoneDisconnected);
     expect(hook.current!.heldRecording?.reason).toBe("failed");
   });
+  const interruptAfterChunks = async (answers: Array<boolean | Error>) => {
+    recording.audioChunk = vi.fn();
+    for (const answer of answers) {
+      if (answer instanceof Error) recording.audioChunk.mockRejectedValueOnce(answer);
+      else recording.audioChunk.mockResolvedValueOnce(answer);
+    }
+    await mount();
+    await run(value => value.startRecording());
+    const listener = capture.setChunkListener.mock.calls.at(-1)![0] as (pcm: Float32Array) => void;
+    for (let index = 0; index < answers.length - 1; index += 1) {
+      await act(async () => { listener(new Float32Array(16_000)); await vi.advanceTimersByTimeAsync(0); });
+    }
+    await act(async () => { listener(new Float32Array(400)); });
+    await run(value => value.interruptRecording(he.recordingInterrupted));
+  };
+  it("counts held audio as saved only when every chunk reached disk", async () => {
+    await interruptAfterChunks([true, true, true]);
+    expect(recording.audioChunk).toHaveBeenCalledTimes(3);
+    expect(hook.current!.heldRecordingSaved()).toBe(true);
+  });
+  it("does not count a copy as saved after a later chunk failed", async () => {
+    await interruptAfterChunks([true, new Error("disk full"), true]);
+    expect(hook.current!.heldRecording?.reason).toBe("failed");
+    expect(hook.current!.heldRecordingSaved()).toBe(false);
+  });
   it("says when failed audio it was holding is gone", async () => {
     recording.sendAudio.mockRejectedValueOnce(new Error(he.transcriptionProcessFailed));
     await mount();

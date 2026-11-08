@@ -14,7 +14,7 @@ concurrency:
 jobs:
   app:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -41,3 +41,9 @@ jobs:
       - run: pnpm run build:app
       - name: Electron E2E with isolated profiles and simulated ASR
         run: pnpm exec playwright test
+      # Meluli 2.0 (D20): the release ships the native host, so its runtime and app build run on every
+      # push. Last, because the native build rebuilds out/renderer for Safari after the Electron E2E.
+      - name: Native host conformance, Node against JavaScriptCore
+        run: node scripts/meluli2/native-host-conformance.mjs
+      - name: Native app build, signed ad hoc, never launched
+        run: node scripts/meluli2/build-native-app.mjs --out .build/native-app-ci

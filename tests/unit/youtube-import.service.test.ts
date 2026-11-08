@@ -1,7 +1,7 @@
 /* @vitest-environment node */
 
 import { describe, expect, it } from "vitest";
-import { buildYtDlpDownloadArgs, buildYtDlpEnv, buildYtDlpMetadataArgs, buildYtDlpProcessError, buildYtDlpRuntimeArgs, isLinkImportInstalled } from "@main/services/youtube-import.service";
+import { buildYtDlpDownloadArgs, buildYtDlpEnv, buildYtDlpMetadataArgs, buildYtDlpProcessError, buildYtDlpRuntimeArgs, isLinkImportInstalled } from "@main/services/youtube/youtube-import.service";
 import { he } from "@shared/locale";
 
 describe("link import helper", () => {
@@ -22,8 +22,8 @@ const SOURCE_IES = "default,-generic,-mediasite,-mediasitecatalog,-mediasitename
 
 describe("buildYtDlpEnv", () => {
   it("passes on only what the helper needs", () => {
-    expect(buildYtDlpEnv({ HOME: "/Users/a", LANG: "he_IL.UTF-8", OPENSSL_CONF: "/tmp/x", PATH: "/tmp/evil", DYLD_INSERT_LIBRARIES: "/tmp/y" }))
-      .toEqual({ HOME: "/Users/a", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin", DENO_NO_UPDATE_CHECK: "1" });
+    expect(buildYtDlpEnv({ HOME: "/Users/example/", LANG: "he_IL.UTF-8", OPENSSL_CONF: "/tmp/x", PATH: "/tmp/evil", DYLD_INSERT_LIBRARIES: "/tmp/y" }))
+      .toEqual({ HOME: "/Users/example/", LANG: "he_IL.UTF-8", PATH: "/usr/bin:/bin", DENO_NO_UPDATE_CHECK: "1" });
   });
 });
 
@@ -37,6 +37,10 @@ describe("buildYtDlpMetadataArgs", () => {
       "--no-playlist",
       "--playlist-items",
       "1",
+      "--extractor-args",
+      "youtube:skip=hls",
+      "--socket-timeout",
+      "30",
       "--no-warnings",
       "https://www.youtube.com/watch?v=demo123"
     ]);
@@ -53,6 +57,10 @@ describe("buildYtDlpDownloadArgs", () => {
       "--no-playlist",
       "--playlist-items",
       "1",
+      "--extractor-args",
+      "youtube:skip=hls",
+      "--socket-timeout",
+      "30",
       "--no-warnings",
       "--no-progress",
       "--max-filesize",

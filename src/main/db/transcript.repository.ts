@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import type { CallSpeaker, TranscriptListResult, TranscriptRecord, TranscriptSegment } from "@shared/types";
-import type { TranscriptContent } from "../services/transcript-edit.service";
+
+/** The parts of a transcript an edit may change. */
+export type TranscriptContent = Pick<TranscriptRecord, "text" | "paragraphs" | "segments">;
 
 interface TranscriptRow {
   id: string;
@@ -21,6 +23,7 @@ interface TranscriptRow {
   segments_json: string | null;
   original_json: string | null;
   edited_at: number | null;
+  flow_name: string | null;
 }
 
 type OriginalContent = Pick<TranscriptRow, "text" | "paragraphs_json" | "segments_json">;
@@ -94,8 +97,19 @@ function mapRow(row: TranscriptRow): TranscriptRecord {
     modelId: row.model_id,
     language: row.language,
     segments: parseTranscriptSegments(row.segments_json),
-    editedAt: row.edited_at
+    editedAt: row.edited_at,
+    flowName: row.flow_name,
+    flowInput: row.flow_name && row.original_json ? originalText(row.original_json) : null
   };
+}
+
+function originalText(json: string): string | null {
+  try {
+    const parsed = JSON.parse(json) as Partial<OriginalContent>;
+    return typeof parsed.text === "string" ? parsed.text : null;
+  } catch {
+    return null;
+  }
 }
 
 function buildCursorWhere(cursor: number | null): { clause: string; params: unknown[] } {
@@ -111,7 +125,22 @@ function buildCursorWhere(cursor: number | null): { clause: string; params: unkn
 
 /** A long paste searches for its start, rather than failing or stalling the main process. */
 const MAX_SEARCH_QUERY_CHARS = 1000;
-const MAX_SEARCH_QUERY_TOKENS = 64;
+/** Each Hebrew word is up to 17 index scans, so a pasted paragraph searches for its first words. */
+const MAX_SEARCH_QUERY_TOKENS = 16;
+
+const HEBREW_LETTER = /[\u05D0-\u05EA]/u;
+/** Hebrew writes these letters onto the next word, so "בית" also has to find "הבית" and "ושבבית". */
+const HEBREW_PREFIXES = ["ו", "ה", "ב", "ל", "מ", "ש", "כ", "וה", "וב", "ול", "ומ", "וש", "שה", "שב", "של", "כש"];
+
+/** A word with no letter or digit (a dash, a comma) is not in the index, and as a phrase it would match nothing. */
+const SEARCHABLE = /[\p{L}\p{N}]/u;
+
+/** Every word matches as a prefix, so results appear while the word is still being typed. */
+function searchTerm(token: string): string {
+  // A single letter is already a prefix of every word that starts with it; expanding it is a scan of the index.
+  if (!HEBREW_LETTER.test(token) || [...token].length < 2) return `"${token}"*`;
+  return `(${[token, ...HEBREW_PREFIXES.map((prefix) => `${prefix}${token}`)].map((form) => `"${form}"*`).join(" OR ")})`;
+}
 
 function escapeFtsQuery(query: string): string {
   return query
@@ -119,10 +148,33 @@ function escapeFtsQuery(query: string): string {
     .slice(0, MAX_SEARCH_QUERY_CHARS)
     .replace(/["'\u0000]/g, " ")
     .split(/\s+/)
-    .filter(Boolean)
+    .filter((token) => SEARCHABLE.test(token))
     .slice(0, MAX_SEARCH_QUERY_TOKENS)
-    .map((token) => `"${token}"`)
-    .join(" ");
+    .map(searchTerm)
+    .join(" AND ");
+}
+
+/** The columns a transcription result fills, written the same way when it is first saved and when it is redone. */
+const TRANSCRIPTION_COLUMNS = [
+  "text", "raw_text", "paragraphs_json", "possible_terms_json", "uncertain_segments_json",
+  "duration_ms", "backend", "model_id", "language", "segments_json"
+] as const;
+
+const json = (value: unknown): string | null => value ? JSON.stringify(value) : null;
+
+function transcriptionValues(record: TranscriptRecord): Array<string | number | null> {
+  return [
+    record.text,
+    record.rawText ?? null,
+    json(record.paragraphs),
+    json(record.possibleTerms),
+    json(record.uncertainSegments),
+    record.durationMs ?? null,
+    record.backend ?? null,
+    record.modelId ?? null,
+    record.language ?? null,
+    json(record.segments)
+  ];
 }
 
 export class TranscriptRepository {
@@ -135,38 +187,20 @@ export class TranscriptRepository {
           id,
           created_at,
           source_type,
-          text,
-          raw_text,
-          paragraphs_json,
           imported_file_name,
           source_title,
           source_url,
-          possible_terms_json,
-          uncertain_segments_json,
-          duration_ms,
-          backend,
-          model_id,
-          language,
-          segments_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ${TRANSCRIPTION_COLUMNS.join(",\n          ")}
+        ) VALUES (?, ?, ?, ?, ?, ?, ${TRANSCRIPTION_COLUMNS.map(() => "?").join(", ")})`
       )
       .run(
         record.id,
         record.createdAt,
         record.sourceType,
-        record.text,
-        record.rawText ?? null,
-        record.paragraphs ? JSON.stringify(record.paragraphs) : null,
         record.importedFileName ?? null,
         record.sourceTitle ?? null,
         record.sourceUrl ?? null,
-        record.possibleTerms ? JSON.stringify(record.possibleTerms) : null,
-        record.uncertainSegments ? JSON.stringify(record.uncertainSegments) : null,
-        record.durationMs ?? null,
-        record.backend ?? null,
-        record.modelId ?? null,
-        record.language ?? null,
-        record.segments ? JSON.stringify(record.segments) : null
+        ...transcriptionValues(record)
       );
 
     return record;
@@ -293,6 +327,42 @@ export class TranscriptRepository {
     })();
   }
 
+  /**
+   * A flow rewrote the dictation before it was pasted. The dictation becomes the original,
+   * so history shows both and restoring brings the dictation back.
+   */
+  applyFlow(id: string, text: string, flowName: string): TranscriptRecord | null {
+    return this.db.transaction(() => {
+      const row = this.getRow(id);
+      if (!row) return null;
+      const original: OriginalContent = { text: row.text, paragraphs_json: row.paragraphs_json, segments_json: row.segments_json };
+      this.db
+        .prepare("UPDATE transcripts SET text = ?, paragraphs_json = NULL, segments_json = NULL, original_json = ?, flow_name = ? WHERE id = ?")
+        .run(text, JSON.stringify(original), flowName, id);
+      return this.getById(id);
+    })();
+  }
+
+  /**
+   * The same recording transcribed again. The row keeps its id and time; what came from the
+   * model is replaced, and so are any edits, which belonged to the text that is gone.
+   */
+  replaceTranscription(id: string, record: TranscriptRecord): TranscriptRecord | null {
+    return this.db.transaction(() => {
+      if (!this.getRow(id)) return null;
+      this.db
+        .prepare(
+          `UPDATE transcripts SET ${TRANSCRIPTION_COLUMNS.map((column) => `${column} = ?`).join(", ")},
+            edited_at = NULL, original_json = NULL, flow_name = NULL WHERE id = ?`
+        )
+        .run(
+          ...transcriptionValues(record),
+          id
+        );
+      return this.getById(id);
+    })();
+  }
+
   restoreOriginal(id: string): TranscriptRecord | null {
     return this.db.transaction(() => {
       const row = this.getRow(id);
@@ -302,7 +372,7 @@ export class TranscriptRepository {
 
       const original = JSON.parse(row.original_json) as OriginalContent;
       this.db
-        .prepare("UPDATE transcripts SET text = ?, paragraphs_json = ?, segments_json = ?, edited_at = NULL, original_json = NULL WHERE id = ?")
+        .prepare("UPDATE transcripts SET text = ?, paragraphs_json = ?, segments_json = ?, edited_at = NULL, original_json = NULL, flow_name = NULL WHERE id = ?")
         .run(original.text, original.paragraphs_json, original.segments_json, id);
       return this.getById(id);
     })();

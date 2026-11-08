@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
-import { ClipboardBridgeService, ClipboardUnavailableError } from "../../src/main/services/clipboard-bridge.service";
+import { ClipboardBridgeService, ClipboardUnavailableError } from "../../src/main/services/insertion/clipboard-bridge.service";
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 function helper() {
@@ -12,6 +12,16 @@ function helper() {
   return child;
 }
 describe("clipboard helper lifecycle", () => {
+  it("starts the helper with only the minimal environment", () => {
+    process.env.DYLD_INSERT_LIBRARIES = "/tmp/not-loaded.dylib";
+    try {
+      helper();
+      void new ClipboardBridgeService("fixture").begin("text").catch(() => undefined);
+      const env = vi.mocked(spawn).mock.calls.at(-1)![2]!.env!;
+      expect(env.DYLD_INSERT_LIBRARIES).toBeUndefined();
+      expect(env.PATH).toBe("/usr/bin:/bin");
+    } finally { delete process.env.DYLD_INSERT_LIBRARIES; }
+  });
   it('quarantines an uncertain paste until watchdog cleanup without closing stdin immediately',async()=>{
     const child=helper();const promise=new ClipboardBridgeService('fixture').begin('transcript');child.stdout.write('{"ready":true}\n');const lease=await promise;
     const pending=lease.quarantine!();expect(child.stdin.writableEnded).toBe(false);expect(lease.restore()).toBe(pending);

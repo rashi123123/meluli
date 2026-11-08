@@ -1,6 +1,6 @@
 # Known limitations
 
-Meluli is a Preview. This page lists what is known not to work, or has not been verified.
+This page lists what is known not to work, or has not been verified.
 
 ## Pasting
 
@@ -10,18 +10,20 @@ Meluli is a Preview. This page lists what is known not to work, or has not been 
 - **Helper unavailable.** If the native helper cannot run, Meluli falls back to AppleScript, which cannot confirm the text arrived, and it says so instead of reporting success.
 - **Unknown outcome.** If a paste may have been sent but its result is unknown, Meluli does not offer a retry, because the text may already be in the field. It says so and offers Copy.
 - **Cancellation.** Cancelling after pasting has started does not undo the paste.
+- **Mixed Hebrew and English.** A pasted Hebrew line that starts with an English word or number, or ends in punctuation, gets an invisible right-to-left mark at that end so the field lays it out right to left. Terminals and code editors receive the text unchanged, so a line starting with English can still show left to right there. An app that strips direction marks, or a field whose direction is fixed, can still reorder the line. Copy from History gives the text as transcribed, without the marks. Only unit tests cover this; the [manual check](TESTING.md#mixed-hebrew-and-english-paste) has to be run by hand.
 
 ## Platform
 
-- Only an Apple M3 with 24 GB on macOS 27.0.1 has been exercised. Intel Macs are not supported. Older macOS releases, Bluetooth microphones, real sleep and wake, and sustained physical dictation are unverified. Packaged tests used Chromium's fake microphone with recorded speech swapped in afterwards, so physical capture on a released build still needs the manual check in [testing](TESTING.md).
-- No signed release exists yet. The release workflow needs an Apple Developer ID, and it has never run with one. Until then builds are ad hoc signed and not notarized, so Gatekeeper may block them. Hardened runtime and the Electron fuses that block run-as-Node, `NODE_OPTIONS` and the inspector are on. An ad hoc signature still needs library validation off; a Developer ID build keeps it on.
+- Only an Apple M3 with 24 GB on macOS 27.0.1 has been exercised. Intel Macs are not supported. Older macOS releases, Bluetooth microphones, real sleep and wake, and sustained physical dictation are unverified. Automated tests of the native app record from a loopback device playing recorded speech, so physical capture on a released build still needs the manual check in [testing](TESTING.md). The native app has not been tested on macOS 13, its minimum system.
+- 0.2.0 is the first release built by the signed workflow. Builds made on a developer's machine are signed ad hoc and not notarized, so Gatekeeper may block them. Release builds run with the hardened runtime and library validation on.
 - Automatic updates work only on a signed build from the release workflow, installed in Applications. Ad hoc copies never check. The first signed version has to be installed by hand once, and macOS asks for its permissions again.
 - No installation has been tested on a Mac without developer tools. The steps are in [the release guide](RELEASE.md#clean-mac-check).
 
 ## Data
 
 - Meluli does not encrypt its history.
-- A recording's file is deleted when processing ends. If the engine fails, the audio stays in memory for ten minutes so it can be sent again, and quitting Meluli loses it.
+- Dictation audio is kept for seven days after a successful transcription, unless that is turned off in Settings. A failed recording is kept until it is transcribed or deleted from History, including across a quit or crash. Calls and file imports are not part of this. Transcribing again replaces the transcript, including any edits made to it.
+- The copy on disk is written in chunks of about a second while recording, so a crash or power loss can lose the last second.
 - A cancelled recording or transcription can be restored from the floating window for six seconds, provided the recording lasted at least three seconds. After that the audio is gone.
 - A crash can leave a temporary audio file behind. It is removed on the first launch after it is six hours old, and it stays on disk until then.
 - A link import downloads audio only to transcribe it. Meluli does not save the audio as a file. Sites can block the download, and private or sign-in content does not work.
@@ -45,6 +47,12 @@ Meluli is a Preview. This page lists what is known not to work, or has not been 
 - A recording stops after 4 hours, or when less than 200 MB of disk remains, and starting needs 1 GB free.
 - A call is transcribed after it ends, at about a fifth of its length on the test machine, and silence is skipped. Dictation takes priority between and during pieces, so a piece that gives way starts again, and a dictation that interrupts a piece can wait up to about 1.5 s.
 - With ad hoc signing, macOS asks for system audio access again after each rebuild.
+
+## Streaming engine (experimental)
+
+- It is less accurate than Whisper: 3 percentage points more word errors overall, and 8 more on mixed Hebrew and English. See [benchmarks](BENCHMARKS.md#streaming-engine--7-november-2026).
+- It has not been hand-tested in a release build with a real voice: the Settings switch and download, live text in the floating window, and pasting.
+- It runs on the CPU only.
 
 ## Performance
 

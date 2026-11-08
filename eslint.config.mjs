@@ -8,7 +8,7 @@ export default tseslint.config({
   files: ["src/**/*.{ts,tsx}"],
   languageOptions: {
     parser: tseslint.parser,
-    parserOptions: { project: ["tsconfig.node.json", "tsconfig.web.json"], tsconfigRootDir: import.meta.dirname }
+    parserOptions: { project: ["tsconfig.node.json", "tsconfig.web.json", "tsconfig.native-host.json"], tsconfigRootDir: import.meta.dirname }
   },
   plugins: { "@typescript-eslint": tseslint.plugin, "react-hooks": reactHooks },
   rules: {

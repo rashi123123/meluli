@@ -1,12 +1,13 @@
 /** Short-lived cues never leave an idle audio device/context open. */
-export async function playCue(type: "start" | "stop"): Promise<void> {
+/** "busy" is lower than both: the key was heard, but nothing is recording. */
+export async function playCue(type: "start" | "stop" | "busy"): Promise<void> {
   const context = new AudioContext();
   try {
     if (context.state === "suspended") await context.resume();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
     oscillator.type = "sine";
-    oscillator.frequency.value = type === "start" ? 660 : 440;
+    oscillator.frequency.value = type === "start" ? 660 : type === "stop" ? 440 : 300;
     gain.gain.value = 0.0001;
     oscillator.connect(gain); gain.connect(context.destination);
     oscillator.onended = () => {

@@ -3,9 +3,9 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFile, spawn } from "node:child_process";
-import { NativeInsertionClient } from "@main/services/native-insertion-client";
-import { TextInsertionService } from "@main/services/text-insertion.service";
-import type { ClipboardBridgeService } from "@main/services/clipboard-bridge.service";
+import { NativeInsertionClient } from "@main/services/insertion/native-insertion-client";
+import { TextInsertionService } from "@main/services/insertion/text-insertion.service";
+import type { ClipboardBridgeService } from "@main/services/insertion/clipboard-bridge.service";
 vi.mock("node:child_process", () => ({ spawn: vi.fn(), execFile: vi.fn() }));
 vi.mock("electron", () => ({ systemPreferences: { isTrustedAccessibilityClient: vi.fn(() => true) } }));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
@@ -218,4 +218,10 @@ describe("adaptive production client", () => {
     expect(service.getRecoveryTargetMetadata()).toMatchObject({ name: "New" });
     s.child.exitCode = 0; await s.client.dispose();
   });
+});
+it("reselects the last insertion with a fresh token, and refuses when the field changed", async () => {
+  const s=setup(), call=s.client.reselectLastInsertion();s.ready();await Promise.resolve();
+  s.reply("captured",{targetToken:"again",reason:"inserted_text_selected"});expect(await call).toBe("again");
+  const changed=s.client.reselectLastInsertion();const rejected=expect(changed).rejects.toMatchObject({state:"not_dispatched"});await Promise.resolve();s.reply("not_dispatched");await rejected;
+  expect(s.requests.map(x=>x.type)).toEqual(["reselect","reselect"]);s.child.exitCode=0;await s.client.dispose();
 });

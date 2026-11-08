@@ -1,6 +1,6 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { z } from "zod";
-import { ProcessLines } from "../process-lines";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import * as z from "zod";
+import { endHelper, RestartBudget, sendLine, spawnLineHelper } from "../line-helper";
 
 const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready") }),
@@ -25,9 +25,6 @@ export type HelperApp = { id: string; input: boolean; output: boolean };
 export type CallAudioStopped = { micOffsetMs: number; systemOffsetMs: number; systemHeard: boolean };
 
 const MAX_LINE_LENGTH = 8192;
-const RESTART_DELAY_MS = 1000;
-const RESTART_WINDOW_MS = 60_000;
-const MAX_RESTARTS = 3;
 const START_DEADLINE_MS = 10_000;
 const STOP_DEADLINE_MS = 5_000;
 const KILL_GRACE_MS = 1_000;
@@ -42,8 +39,7 @@ interface Pending<T> {
 export class CallAudioClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private prefixes: string[] | null = null;
-  private restarts: number[] = [];
-  private restartTimer: NodeJS.Timeout | null = null;
+  private readonly restarts = new RestartBudget();
   private starting: Pending<boolean> | null = null;
   private stopping: Pending<CallAudioStopped | null> | null = null;
   private lastRequest = 0;
@@ -57,7 +53,7 @@ export class CallAudioClient {
   /** Starts or stops watching. A null list stops the helper. */
   watch(prefixes: string[] | null): void {
     this.prefixes = prefixes;
-    this.restarts = [];
+    this.restarts.reset();
     if (!prefixes) {
       this.shutdown();
       return;
@@ -68,36 +64,19 @@ export class CallAudioClient {
 
   private launch(): void {
     if (!this.prefixes || this.child) return;
-    const child = spawn(this.executable, [], { stdio: ["pipe", "pipe", "pipe"] });
-    this.child = child;
-    const lines = new ProcessLines(child.stdout);
-    child.stderr.resume();
-    child.stdin.on("error", () => this.terminate(child));
-    child.once("error", () => this.childGone(child));
-    child.once("close", () => {
-      lines.close();
-      this.childGone(child);
-    });
-    lines.on("line", (line) => {
-      if (this.child === child) this.handleLine(child, line);
+    this.child = spawnLineHelper(this.executable, { schema: eventSchema, maxLineLength: MAX_LINE_LENGTH }, {
+      isCurrent: (candidate) => this.child === candidate,
+      onEvent: (_child, event) => this.handleEvent(event),
+      onGone: (gone) => this.childGone(gone)
     });
     this.send({ type: "watch", prefixes: this.prefixes });
   }
 
   private send(message: object): void {
-    this.child?.stdin.write(`${JSON.stringify(message)}\n`);
+    if (this.child) sendLine(this.child, message);
   }
 
-  private handleLine(child: ChildProcessWithoutNullStreams, line: string): void {
-    let event: z.infer<typeof eventSchema>;
-    try {
-      if (line.length > MAX_LINE_LENGTH) throw new Error("line too long");
-      event = eventSchema.parse(JSON.parse(line));
-    } catch {
-      this.terminate(child);
-      return;
-    }
-
+  private handleEvent(event: z.infer<typeof eventSchema>): void {
     if (event.type === "apps") this.onApps?.(event.apps);
     else if (event.type === "started") this.settle("starting", true, event.id);
     else if (event.type === "stopped") {
@@ -155,16 +134,12 @@ export class CallAudioClient {
 
   /** A stuck helper can ignore SIGTERM and keep capturing. */
   private terminate(child: ChildProcessWithoutNullStreams, done?: () => void): void {
-    const running = () => child.exitCode === null && child.signalCode === null;
-    if (!running()) {
+    if (child.exitCode !== null || child.signalCode !== null) {
       done?.();
       return;
     }
-    child.kill("SIGTERM");
-    setTimeout(() => {
-      if (running()) child.kill("SIGKILL");
-      done?.();
-    }, KILL_GRACE_MS).unref();
+    endHelper(child, KILL_GRACE_MS);
+    if (done) setTimeout(done, KILL_GRACE_MS).unref();
   }
 
   private childGone(child: ChildProcessWithoutNullStreams): void {
@@ -176,20 +151,11 @@ export class CallAudioClient {
     this.onGone?.();
     if (!this.prefixes) return;
 
-    const now = Date.now();
-    this.restarts = this.restarts.filter((at) => now - at < RESTART_WINDOW_MS);
-    if (this.restarts.length >= MAX_RESTARTS) return;
-    this.restarts.push(now);
-    this.restartTimer = setTimeout(() => {
-      this.restartTimer = null;
-      this.launch();
-    }, RESTART_DELAY_MS);
-    this.restartTimer.unref();
+    this.restarts.schedule(() => this.launch());
   }
 
   private shutdown(): void {
-    if (this.restartTimer) clearTimeout(this.restartTimer);
-    this.restartTimer = null;
+    this.restarts.cancel();
     const child = this.child;
     if (!child) return;
     this.child = null;

@@ -19,7 +19,9 @@ jobs:
   build:
     needs: validate
     runs-on: macos-15
-    timeout-minutes: 90
+    # Apple's first notarizations for a team can take well over an hour; each of the two
+    # submissions may wait up to 2 h (package-native-release.sh).
+    timeout-minutes: 300
     environment: release-signing
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -63,7 +65,7 @@ jobs:
           trap 'rm -f "$APPLE_API_KEY"' EXIT
           (umask 077 && printf '%s' "$APPLE_API_KEY_P8_BASE64" | base64 --decode > "$APPLE_API_KEY")
           unset APPLE_API_KEY_P8_BASE64
-          bash scripts/package-release.sh "$GITHUB_REF_NAME"
+          bash scripts/meluli2/package-native-release.sh "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: meluli-release

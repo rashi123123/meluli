@@ -1,5 +1,7 @@
 export const SUGGEST_AFTER_MS = 3_000;
 export const CALL_END_AFTER_MS = 30_000;
+/** A browser plays other tabs' sound after a call, so there the microphone alone decides, given longer. */
+export const BROWSER_CALL_END_AFTER_MS = 5 * 60_000;
 
 export interface AppActivity {
   id: string;
@@ -60,9 +62,10 @@ export class CallDetector {
   }
 
   /** An app that closes both directions has left the call. Muting keeps them open. */
-  hasEnded(id: string, now: number): boolean {
+  hasEnded(id: string, now: number, browser = false): boolean {
     const tracked = this.apps.get(id);
     if (!tracked) return true;
-    return tracked.inputSince === null && now - tracked.lastAudio >= CALL_END_AFTER_MS;
+    if (tracked.inputSince !== null) return false;
+    return now - tracked.lastAudio >= CALL_END_AFTER_MS || (browser && now - tracked.lastInput >= BROWSER_CALL_END_AFTER_MS);
   }
 }

@@ -5,7 +5,7 @@ import {
 } from "@shared/onboarding";
 import { createDefaultOnboardingState, createDefaultOnboardingTrackingState } from "@shared/onboarding-defaults";
 import { he } from "@shared/locale";
-import { getHebrewErrorMessage } from "@shared/error-utils";
+import { getHebrewErrorMessage, isCanceledMessage } from "@shared/error-utils";
 import type { ImportAudioResult } from "@shared/types";
 import type {
   AppSettings,
@@ -20,6 +20,11 @@ import { useAppState } from "@/hooks/use-app-state";
 import { useRecording } from "@/hooks/use-recording";
 import { useTranscripts } from "@/hooks/use-transcripts";
 import { AppContext, type AppContextValue } from "./app-context";
+import { mainViewSchema } from "@shared/schemas";
+import { useKeepMainWindow, useMainWindowKept } from "@/lib/keep-main-window";
+
+// A main window recreated after it was released opens on the view it was asked for.
+const initialView = (): MainView => mainViewSchema.safeParse(new URLSearchParams(window.location.search).get("view")).data ?? "workspace";
 
 export function MainAppProvider({
   children
@@ -27,10 +32,14 @@ export function MainAppProvider({
   children: React.ReactNode;
 }) {
   const appState = useAppState("main");
-  const [activeView, setActiveView] = useState<MainView>("workspace");
+  const [activeView, setActiveView] = useState<MainView>(initialView);
+  // Only this renderer hears how a model download it started ends.
+  useKeepMainWindow(appState.settings?.modelState.downloadState === "downloading");
+  const keep = useMainWindowKept();
+  useEffect(() => {
+    void window.ivritMenuBar.app.reportMainWindow({ view: activeView, keep }).catch(() => undefined);
+  }, [activeView, keep]);
   const transcripts = useTranscripts({
-    enabled: true,
-    loadLatest: true,
     loadHistory: activeView === "history" || activeView === "workspace"
   });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -248,18 +257,13 @@ export function MainAppProvider({
 
   useEffect(() => {
     const unsubscribe = window.ivritMenuBar.transcription.onFailed(({ message }) => {
-      if (message === he.transcriptionCanceled) {
+      if (isCanceledMessage(message)) {
         return;
       }
       setErrorMessage(message);
     });
     return unsubscribe;
   }, []);
-
-  const refreshSettings = async () => {
-    const nextSettings = await window.ivritMenuBar.settings.get();
-    setSettingsState(nextSettings);
-  };
 
   const updateSetting = async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const nextSettings = await window.ivritMenuBar.settings.set(key, value);
@@ -378,7 +382,7 @@ export function MainAppProvider({
       }
     } catch (error) {
       const message = getHebrewErrorMessage(error, he.importAudioFailed);
-      if (message === he.transcriptionCanceled) {
+      if (isCanceledMessage(message)) {
         setErrorMessage(null);
         return;
       }
@@ -455,17 +459,24 @@ export function MainAppProvider({
     }));
   };
 
-  const completeOnboardingStep = async (step: OnboardingStepKey) => {
+  // `declined` moves on the same way but records that the person chose Not Now.
+  const completeOnboardingStep = async (step: OnboardingStepKey, options: { declined?: boolean } = {}) => {
+    // A Mac that already lets Meluli paste skips the paste step.
+    const pasteAllowed = step === "microphone"
+      && (await window.ivritMenuBar.permissions.accessibilityStatus().catch(() => appState.accessibilityPermissionStatus)) === "granted";
+    // The download is already running, so setup ends here and Home reports its progress.
+    const toHome = (current: AppSettings) => ({ ...current.onboarding, phase: current.modelState.downloadState === "ready" ? "needs_first_transcript" as const : "needs_model" as const, surface: "workspace" as const });
     await mutateOnboarding((current) => ({
       onboarding: step === "ready"
         ? { ...current.onboarding, phase: "needs_mic", surface: "flow" }
         : step === "microphone"
-          // The download is already running, so setup ends here and Home reports its progress.
-          ? { ...current.onboarding, phase: current.modelState.downloadState === "ready" ? "needs_first_transcript" : "needs_model", surface: "workspace" }
-          : advanceToNextOnboardingPhase(current),
+          ? pasteAllowed ? toHome(current) : { ...current.onboarding, phase: "needs_paste", surface: "flow" }
+          : step === "paste"
+            ? toHome(current)
+            : advanceToNextOnboardingPhase(current),
       events: [
         {
-          name: "onboarding_step_completed",
+          name: options.declined ? "onboarding_step_exited" : "onboarding_step_completed",
           step
         }
       ]
@@ -493,7 +504,9 @@ export function MainAppProvider({
       const phase = current.onboarding.phase;
       const prevPhase =
         phase === "needs_model" || phase === "needs_hold_key"
-          ? ("needs_mic" as const)
+          ? ("needs_paste" as const)
+          : phase === "needs_paste"
+            ? ("needs_mic" as const)
           : phase === "needs_mic"
             ? ("not_started" as const)
             : null;
@@ -582,7 +595,6 @@ export function MainAppProvider({
     permissionStatus: appState.permissionStatus,
     accessibilityPermissionStatus: appState.accessibilityPermissionStatus,
     modelProgress: appState.modelProgress,
-    storagePaths: appState.storagePaths,
     lastTranscript: transcripts.latestTranscript,
     onboarding,
     activeView,
@@ -591,12 +603,10 @@ export function MainAppProvider({
     setErrorMessage,
     transcripts,
     recording,
-    refreshSettings,
     updateSetting,
     requestMicrophonePermission,
     requestAccessibilityPermission,
     downloadModel,
-    removeModel,
     importAudio: () => runAudioImport(() => window.ivritMenuBar.files.importAudio()),
     importDroppedAudio: file => runAudioImport(() => window.ivritMenuBar.files.importDroppedAudio(file)),
     submitYouTubeUrl,

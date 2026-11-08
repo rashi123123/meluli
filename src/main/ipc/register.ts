@@ -1,32 +1,18 @@
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
-import { app, dialog, shell, systemPreferences } from "electron";
+import { app, BrowserWindow, dialog, shell, systemPreferences } from "electron";
+import { accessibilityStatus, microphoneStatus, openPrivacySettingsPane } from "../system-permissions";
+import type { AppServiceContainer } from "../services/container";
 import { AppError } from "@shared/errors/app-error";
 import { ERROR_CODES } from "@shared/errors/error-codes";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
-import {
-  microphonePermissionStatusSchema,
-  modelDownloadProgressSchema
-} from "@shared/schemas";
 import type { AppSettings, MainView, OverlaySize } from "@shared/types";
-import { AUDIO_IMPORT_EXTENSIONS } from "@shared/constants";
+import { AUDIO_IMPORT_EXTENSIONS, MAX_RECORDING_SAMPLE_RATE } from "@shared/constants";
 import type { ThemeId } from "@shared/themes";
 import { he } from "@shared/locale";
-import { AppRuntime } from "../runtime";
-import type { AppDatabase } from "../db/database";
-import { ModelManager } from "../services/model-manager.service";
-import { SettingsService } from "../services/settings.service";
+import { asrEngineSchema } from "@shared/schemas";
+import { isFree, RECORDING_BUSY_MESSAGE } from "../runtime";
 import { applyTranscriptEdit } from "../services/transcript-edit.service";
-import { TranscriptionService } from "../services/transcription.service";
-import { TextInsertionService } from "../services/text-insertion.service";
 import { ShortcutManager } from "../shortcuts";
-import { TranscriptionWorkflowService } from "../services/transcription-workflow.service";
-import { YouTubeQueueService } from "../services/youtube-queue.service";
-import {
-  buildTranscriptSrt,
-  buildTranscriptSrtFileName,
-  writeTranscriptSrt
-} from "../services/subtitle-export.service";
 import { registerAppHandlers } from "./handlers/app.handlers";
 import { registerFileHandlers } from "./handlers/files.handlers";
 import { registerHistoryHandlers } from "./handlers/history.handlers";
@@ -37,158 +23,48 @@ import { registerRecordingHandlers } from "./handlers/recording.handlers";
 import { registerSettingsHandlers } from "./handlers/settings.handlers";
 import { registerTranscriptionHandlers } from "./handlers/transcription.handlers";
 import { registerYouTubeHandlers } from "./handlers/youtube.handlers";
-import type { CallService } from "../services/calls/call.service";
 import { registerCallHandlers } from "./handlers/call.handlers";
-import type { HoldKeyService } from "../services/hold-key.service";
-import type { UpdateService } from "../services/update.service";
-import { INVOKE_CHANNEL_ACCESS, type InvokeChannelName } from "./policy";
+import { registerFlowHandlers } from "./handlers/flows.handlers";
 import { IpcRegistry } from "./registry";
-import { dictationChunkSchema } from "@shared/experimental-dictation";
-import { ExperimentalDictationService, experimentalDictationRoot } from "../services/experimental-dictation.service";
-import { beginPipelineTrace, pipelineTrace } from "../pipeline-trace";
+import { pipelineTrace } from "../diagnostics/pipeline-trace";
+import { ExperimentalDictationIpc } from "./experimental-dictation.ipc";
+import { exportTranscript } from "./transcript-export";
 import {
   assertSafeRecordingAudioPayload,
   assertSafeTextInsertionInput,
   assertValidIpcSender,
-  createRendererSecurityEnvironment,
+  appRendererSecurity,
   isAllowedOpenExternalUrl
 } from "../security";
 import { isMockMode } from "../config/mock-mode";
+import { thirdPartyNoticesPath } from "../config/paths";
 import { normalizeRecordingPcm } from "../services/recording-wav";
 import { deleteAllTranscripts, deleteTranscript } from "../services/transcript-files";
 
-interface RegisterIpcDependencies {
-  database: AppDatabase;
-  runtime: AppRuntime;
-  settingsService: SettingsService;
+/** One chunk is about a second; anything past two seconds at the highest rate is not a chunk. */
+const MAX_AUDIO_CHUNK_SAMPLES = 2 * MAX_RECORDING_SAMPLE_RATE;
+
+/** The service container, plus what the app shell owns: windows, shortcuts and the theme. */
+type RegisterIpcDependencies = Omit<AppServiceContainer, "dispose"> & {
   applyTheme: (theme: ThemeId) => void;
-  getModelManager: () => ModelManager;
-  getTranscriptionService: () => TranscriptionService;
-  getTranscriptionWorkflow: () => TranscriptionWorkflowService;
-  getYouTubeQueueService: () => YouTubeQueueService;
   shortcutManager: ShortcutManager;
-  getTextInsertionService: () => TextInsertionService;
-  holdKey: HoldKeyService;
-  calls: CallService;
-  updates: UpdateService;
   installUpdate: () => void;
   hideOverlay: () => boolean;
   setOverlaySize: (size: OverlaySize) => void;
   openOverlay: () => Promise<void>;
   retargetOverlay: () => Promise<void>;
   showMain: (view: MainView) => void;
+  reportMainWindow: (sender: unknown, state: { view: MainView; keep: boolean }) => void;
   isPackaged: boolean;
-}
-
-export function microphoneStatus(): "granted" | "denied" | "not-determined" | "restricted" | "unknown" {
-  if (isMockMode()) {
-    return "granted";
-  }
-
-  try {
-    const status = systemPreferences.getMediaAccessStatus("microphone");
-    return microphonePermissionStatusSchema.parse(status);
-  } catch {
-    return "unknown";
-  }
-}
-
-function accessibilityStatus(prompt = false): "granted" | "denied" | "unknown" {
-  if (isMockMode()) {
-    return "granted";
-  }
-
-  if (process.platform !== "darwin") {
-    return "unknown";
-  }
-
-  try {
-    return systemPreferences.isTrustedAccessibilityClient(prompt) ? "granted" : "denied";
-  } catch {
-    return "unknown";
-  }
-}
-
-function openPrivacySettingsPane(kind: "Microphone" | "Accessibility" | "ListenEvent" | "AudioCapture"): Promise<boolean> {
-  if (process.platform !== "darwin") {
-    return Promise.resolve(false);
-  }
-
-  return shell
-    .openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${kind}`)
-    .then(() => true)
-    .catch(() => false);
-}
+};
 
 export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void {
-  const experimentRoot = experimentalDictationRoot(dependencies.isPackaged, dependencies.database.paths.userDataPath);
-  const experiment = experimentRoot ? new ExperimentalDictationService(
-    experimentRoot,
-    input => dependencies.getTranscriptionService().transcribe(input),
-    preview => dependencies.runtime.send(IPC_CHANNELS.dictationPreview, preview),
-    1000,
-    process.env.MELULI_DICTATION_MODE !== "offline",
-    process.env.MELULI_FINALIZE_OVERLAP === "1"
-  ) : null;
-  let experimentActive = false;
-  let experimentSessionId: string | null = null;
-  let experimentOwnerId: number | null = null;
-  const observedExperimentSenders = new WeakSet<Electron.WebContents>();
-  const rendererSecurity = createRendererSecurityEnvironment({
-    isPackaged: dependencies.isPackaged,
-    rawDevServerUrl: process.env.ELECTRON_RENDERER_URL ?? null
-  });
+  const experiment = new ExperimentalDictationIpc(dependencies);
+  const rendererSecurity = appRendererSecurity();
   const registry = new IpcRegistry({
-    validateEvent: (channel, event) => {
-      if (!(channel in INVOKE_CHANNEL_ACCESS)) {
-        throw new AppError(ERROR_CODES.security, "Rejected IPC for unknown channel.", {
-          channel
-        });
-      }
-
-      assertValidIpcSender(channel as InvokeChannelName, event, dependencies.runtime, rendererSecurity);
-    }
+    validateEvent: (channel, event) => assertValidIpcSender(channel, event, dependencies.runtime, rendererSecurity)
   });
-  let modelProgressListenerAttached = false;
-  registry.register(IPC_CHANNELS.dictationEnabled, () => Boolean(experiment));
-  registry.register(IPC_CHANNELS.dictationBegin, async (_input, event) => {
-    dependencies.runtime.assertRecordingOwner(event.sender.id);
-    if (!experiment) return null;
-    const sessionId = await experiment.begin(); experimentActive = true;
-    experimentSessionId = sessionId; experimentOwnerId = event.sender.id;
-    if (!observedExperimentSenders.has(event.sender)) {
-      observedExperimentSenders.add(event.sender);
-      const senderId = event.sender.id;
-      event.sender.once("destroyed", () => {
-        if (experimentOwnerId !== senderId) return;
-        dependencies.getTranscriptionService().cancel();
-        void experiment.cancel().catch(() => undefined);
-        experimentActive = false; experimentOwnerId = null;
-      });
-    }
-    return { sessionId };
-  });
-  registry.register(IPC_CHANNELS.dictationChunk, async (input, event) => {
-    dependencies.runtime.assertRecordingOwner(event.sender.id);
-    if (!experiment) throw new Error("Experimental dictation is disabled.");
-    const chunk = dictationChunkSchema.parse(input);
-    await experiment.append(chunk.sessionId, chunk.sequence, chunk.pcm);
-  });
-
-  const ensureModelProgressListener = () => {
-    if (modelProgressListenerAttached) {
-      return;
-    }
-
-    modelProgressListenerAttached = true;
-    dependencies.getModelManager().on("progress", (payload) => {
-      dependencies.runtime.sendTo(
-        "main",
-        IPC_CHANNELS.modelDownloadProgress,
-        modelDownloadProgressSchema.parse(payload)
-      );
-    });
-  };
+  experiment.register(registry);
 
   registerAppHandlers(registry, {
     getAppState: () => dependencies.runtime.getState(),
@@ -196,11 +72,12 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
     getVersion: () => app.getVersion(),
     onInstallUpdate: () => dependencies.installUpdate(),
     onOpenLicenses: async () => {
-      const notices = join(app.isPackaged ? process.resourcesPath : process.cwd(), "THIRD_PARTY_NOTICES.md");
+      const notices = thirdPartyNoticesPath(app);
       // openPath reports a Mac with no app for .md files as a message, not a rejection.
       if (await shell.openPath(notices)) shell.showItemInFolder(notices);
     },
-    onShowMain: (view) => dependencies.showMain(view)
+    onShowMain: (view) => dependencies.showMain(view),
+    onMainWindowReport: (sender, state) => dependencies.reportMainWindow(sender, state)
   });
 
   registerRecordingHandlers(registry, {
@@ -212,13 +89,16 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         return dependencies.getTextInsertionService().whenCaptureSettled();
       });
       const { status } = dependencies.runtime.getState();
-      if (previousStatus === "paused" ? status !== "paused" : status !== "idle" && status !== "error") {
+      if (previousStatus === "paused" ? status !== "paused" : !isFree(status)) {
         dependencies.runtime.releaseRecording(event.sender.id);
-        throw new Error("כבר יש הקלטה או עיבוד פעילים.");
+        throw new Error(RECORDING_BUSY_MESSAGE);
       }
       if (previousStatus !== "paused") {
+        // A recording whose window went away before it stopped is kept, not continued.
+        await dependencies.recordings?.keepOpenSpools();
         if (dependencies.runtime.getWindowRoleForWebContents(event.sender) === "overlay") {
           dependencies.runtime.startOverlaySession(dependencies.getTextInsertionService().getCapturedTargetApplicationName());
+          dependencies.getTranscriptionWorkflow().routeOverlayFlow();
         } else {
           dependencies.runtime.clearOverlaySession();
           dependencies.getTextInsertionService().clearTargetApplication();
@@ -248,12 +128,13 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       lastError: null
     });
     },
-    onStop: async (event) => {
-      if (experiment && experimentActive) {
-        dependencies.runtime.assertRecordingOwner(event.sender.id);
-        dependencies.getTranscriptionService().cancel();
-        await experiment.cancel(); experimentActive = false;
+    onStop: async (input, event) => {
+      if (input?.recordingId && dependencies.recordings) {
+        const { recordings } = dependencies, id = input.recordingId;
+        await (input.keepAudio ? recordings.keepSpool(id) : recordings.discardSpool(id))
+          .catch(() => console.warn("[recording] recording audio could not be closed"));
       }
+      await experiment.stop(event.sender.id);
       dependencies.runtime.releaseRecording(event.sender.id);
       dependencies.runtime.clearOverlaySession();
       dependencies.getTextInsertionService().clearTargetApplication();
@@ -273,33 +154,8 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         dependencies.runtime.releaseRecording(event.sender.id);
         dependencies.runtime.updateState({ status: "processing", activeSourceType: "microphone", timerStartedAt: null });
         dependencies.runtime.updateOverlaySession({ phase: "processing" });
-        if (experiment && experimentActive) {
-          experimentActive = false;
-          const sessionId = experimentSessionId!;
-          try {
-            beginPipelineTrace();
-            if (!dependencies.isPackaged && process.env.MELULI_RESERVE_DURING_FINALIZE === "1") {
-              dependencies.getTranscriptionWorkflow().prepareExperimentalInsertionReservation();
-            }
-            pipelineTrace("experimental_finalize", "start");
-            const result = await experiment.finish(normalizeRecordingPcm(parsed.pcm), parsed.sampleRate);
-            pipelineTrace("experimental_finalize", "end");
-            const transcript = await dependencies.getTranscriptionWorkflow().transcribePreparedRecording({
-              // Prepared ASR does not read this legacy-named field. Preserve an
-              // exact source pointer for evidence/manual recovery, not its root.
-              wavPath: join(experimentRoot!, sessionId, "original.f32le"), sourceType: "microphone", durationMs: parsed.durationMs
-            }, result);
-            await experiment.recordWorkflowOutcome(sessionId,
-              dependencies.runtime.getState().overlaySession?.phase === "paste_failed" ? "stored_paste_failed" : "store_workflow_completed", transcript.id)
-              .catch(() => console.warn("[ExperimentalDictation] Workflow receipt could not be written; audio retained."));
-            return transcript;
-          } catch (error) {
-            await dependencies.getTranscriptionWorkflow().abandonExperimentalInsertionReservation();
-            await experiment.recordWorkflowOutcome(sessionId, "failed_or_canceled_audio_retained").catch(() => undefined);
-            dependencies.getTranscriptionWorkflow().failPreparedRecording(error);
-            throw error;
-          } finally { experimentSessionId = null; experimentOwnerId = null; }
-        }
+        const prepared = experiment.finishIfActive(parsed);
+        if (prepared) return await prepared;
         return await dependencies.getTranscriptionWorkflow().transcribeRecordingAudio(parsed);
       } catch (error) {
         const pcmLength =
@@ -314,14 +170,24 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         });
         throw error;
       }
-    }
+    },
+    onAudioChunk: async (input, event) => {
+      dependencies.runtime.assertRecordingOwner(event.sender.id);
+      if (!dependencies.recordings) return false;
+      const pcm = normalizeRecordingPcm(input.pcm);
+      if (pcm.length > MAX_AUDIO_CHUNK_SAMPLES) throw new Error("Recording audio chunk is too large.");
+      await dependencies.recordings.append(input.recordingId, input.sequence, input.sampleRate, pcm);
+      return true;
+    },
+    onListStored: async () => dependencies.recordings?.list() ?? [],
+    onTranscribeStored: (id) => dependencies.getTranscriptionWorkflow().transcribeStoredRecording(id),
+    onDiscardStored: async (id) => { await dependencies.recordings?.remove(id); },
+    onStoredAudio: async (id) => (await dependencies.recordings?.readAudio(id)) ?? null
   });
 
   registerTranscriptionHandlers(registry, {
     onCancel: async () => {
-      if (experiment?.active) {
-        dependencies.getTranscriptionService().cancel();
-        await experiment.cancel(); experimentActive = false;
+      if (await experiment.cancelIfRunning()) {
         dependencies.runtime.clearOverlaySession();
         dependencies.getTextInsertionService().clearTargetApplication();
         dependencies.runtime.updateState({ status: "idle", activeSourceType: null, timerStartedAt: null });
@@ -345,9 +211,29 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
     return settings;
   };
 
+  // What a stored setting changes outside the store. Runs for every writer: the settings
+  // screen, flows, and startup resets alike.
+  const settingEffects: Partial<Record<keyof AppSettings, (settings: AppSettings) => void>> = {
+    theme: (settings) => dependencies.applyTheme(settings.theme),
+    holdKey: () => void dependencies.holdKey.sync(),
+    autoUpdate: () => dependencies.updates.sync(),
+    callDetection: () => dependencies.calls.sync(),
+    keepRecordingAudio: (settings) => {
+      if (!settings.keepRecordingAudio) void dependencies.recordings?.sweep(false).catch(() => undefined);
+    }
+  };
+  // Written by the app itself; the model handlers publish model changes when they finish.
+  const unpublished = new Set<keyof AppSettings>(["modelState", "processingTelemetry"]);
+  dependencies.settingsService.onChange((settings, key) => {
+    settingEffects[key]?.(settings);
+    if (unpublished.has(key)) return;
+    withModelState(settings).then(publishSettings).catch((error: unknown) => {
+      console.warn("[Settings] overlay not updated:", error instanceof Error ? error.message : error);
+    });
+  });
+
   registerModelHandlers(registry, {
     onDownload: async () => {
-      ensureModelProgressListener();
       const model = await dependencies.getModelManager().downloadModel();
       publishSettings(await withModelState(dependencies.settingsService.getSettings()));
       return model;
@@ -355,7 +241,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
     onRemove: async () => {
       const status = dependencies.runtime.getState().status;
       const service = dependencies.getTranscriptionService();
-      if ((status !== "idle" && status !== "error") || service.isBusy) throw new Error("אפשר להסיר את המודל לאחר סיום העבודה הפעילה.");
+      if (!isFree(status) || service.isBusy) throw new Error("אפשר להסיר את המודל לאחר סיום העבודה הפעילה.");
       service.releaseIfIdle();
       const model = dependencies.getModelManager().removeModel();
       publishSettings(await withModelState(dependencies.settingsService.getSettings()));
@@ -370,14 +256,33 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       const repository = dependencies.database.transcriptRepository;
       const transcript = repository.getById(id);
       if (!transcript) return null;
-      const { removeFillerWords } = dependencies.settingsService.getSettings();
-      return repository.update(id, applyTranscriptEdit(transcript, edit, { removeFillerWords }));
+      const { removeFillerWords, numbersAsDigits } = dependencies.settingsService.getSettings();
+      return repository.update(id, applyTranscriptEdit(transcript, edit, { removeFillerWords, numbersAsDigits }));
     },
     onRestoreOriginal: (parsed) => dependencies.database.transcriptRepository.restoreOriginal(parsed.id),
-    onDelete: (parsed) => deleteTranscript(dependencies.database, parsed.id),
+    onDelete: async (parsed) => {
+      const deleted = await deleteTranscript(dependencies.database, parsed.id);
+      await dependencies.recordings?.removeForTranscript(parsed.id)
+        .catch(() => console.warn("[history] the deleted transcript's audio could not be removed"));
+      return deleted;
+    },
     onDeleteAll: async () => {
       await dependencies.calls.clearAll();
+      await dependencies.recordings?.clear();
       return deleteAllTranscripts(dependencies.database);
+    }
+  });
+
+  registerFlowHandlers(registry, {
+    settingsService: dependencies.settingsService,
+    keys: dependencies.flowKeys,
+    flows: dependencies.flows,
+    chooseFlow: (flowId) => dependencies.getTranscriptionWorkflow().chooseOverlayFlow(flowId),
+    choosePreview: (choice) => dependencies.getTranscriptionWorkflow().chooseFlowPreview(choice),
+    revert: () => dependencies.getTranscriptionWorkflow().revertFlow(),
+    transcribeTest: (payload) => {
+      assertSafeRecordingAudioPayload(payload);
+      return dependencies.getTranscriptionWorkflow().transcribeForFlowTest(payload);
     }
   });
 
@@ -389,6 +294,14 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       if (parsed.key === "shortcut") {
         const nextShortcut = dependencies.shortcutManager.setRecordingShortcut(String(parsed.value));
         nextSettings = dependencies.settingsService.setSetting("shortcut", nextShortcut);
+      } else if (parsed.key === "asrEngine") {
+        // Never under a dictation, an import or a call piece: the switch drops the loaded model.
+        const service = dependencies.getTranscriptionService();
+        if (!isFree(dependencies.runtime.getState().status) || service.isBusy || dependencies.getModelManager().isDownloading) {
+          throw new Error("אפשר להחליף מנוע לאחר סיום העבודה הפעילה.");
+        }
+        nextSettings = dependencies.settingsService.setSetting("asrEngine", asrEngineSchema.parse(parsed.value));
+        service.releaseIfIdle();
       } else if (parsed.key === "overlayShortcut") {
         const nextShortcut = dependencies.shortcutManager.setOverlayShortcut(String(parsed.value));
         nextSettings = dependencies.settingsService.setSetting("overlayShortcut", nextShortcut);
@@ -399,13 +312,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
         );
       }
 
-      if (parsed.key === "theme") dependencies.applyTheme(nextSettings.theme);
-
-      if (parsed.key === "holdKey") void dependencies.holdKey.sync();
-      if (parsed.key === "autoUpdate") dependencies.updates.sync();
-      if (parsed.key === "callDetection") dependencies.calls.sync();
-
-      return publishSettings(await withModelState(nextSettings));
+      return withModelState(nextSettings);
     }
   });
 
@@ -479,37 +386,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies): void
       if (!(await stat(path)).isFile()) throw new Error(he.importAudioFailed);
       return dependencies.getTranscriptionWorkflow().transcribeImportedFile(path);
     },
-    onExportTranscriptSrt: async (parsed) => {
+    onExportTranscript: async (parsed, event) => {
       const transcript = dependencies.database.transcriptRepository.getById(parsed.id);
-      if (!transcript) {
-        return false;
-      }
-
-      const srt = buildTranscriptSrt(transcript);
-      if (!srt) {
-        return false;
-      }
-
-      const defaultPath = join(
-        dependencies.database.paths.transcriptsDir,
-        buildTranscriptSrtFileName(transcript)
-      );
-      const result = await dialog.showSaveDialog({
-        defaultPath,
-        filters: [
-          {
-            name: "SRT",
-            extensions: ["srt"]
-          }
-        ]
-      });
-
-      if (result.canceled || !result.filePath) {
-        return false;
-      }
-
-      await writeTranscriptSrt(result.filePath, srt);
-      return true;
+      if (!transcript) return false;
+      return exportTranscript(transcript, BrowserWindow.fromWebContents(event.sender), parsed.anchor, dependencies.database.paths.transcriptsDir);
     }
   });
 

@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  buildTranscriptFileName,
+  buildTranscriptMarkdown,
   buildTranscriptSrt,
-  buildTranscriptSrtFileName,
+  buildTranscriptVtt,
+  transcriptExportFormats,
   hasTranscriptSegments,
-  writeTranscriptSrt
+  writeTranscriptFile
 } from "@main/services/subtitle-export.service";
 
 describe("subtitle export", () => {
@@ -16,13 +19,13 @@ describe("subtitle export", () => {
     const directory = mkdtempSync(join(tmpdir(), "meluli-srt-"));
     const path = join(directory, "call.srt");
     try {
-      await writeTranscriptSrt(path, "שלום");
+      await writeTranscriptFile(path, "שלום");
       expect(statSync(path).mode & 0o777).toBe(0o600);
       expect(readFileSync(path, "utf8")).toBe("שלום");
 
       rmSync(path);
       writeFileSync(path, "older and longer text", { mode: 0o644 });
-      await writeTranscriptSrt(path, "חדש");
+      await writeTranscriptFile(path, "חדש");
       expect(statSync(path).mode & 0o777).toBe(0o600);
       expect(readFileSync(path, "utf8")).toBe("חדש");
     } finally {
@@ -83,13 +86,13 @@ describe("subtitle export", () => {
 
   it("builds a safe SRT filename from transcript metadata", () => {
     expect(
-      buildTranscriptSrtFileName({
+      buildTranscriptFileName({
         id: "t5",
         createdAt: 1,
         sourceType: "imported_file",
         text: "שלום",
         importedFileName: "notes:demo?.wav"
-      })
+      }, "srt")
     ).toBe("notes demo .wav.srt");
   });
   it("groups native word timestamps into readable cues without crossing long silence", () => {
@@ -101,6 +104,41 @@ describe("subtitle export", () => {
   it("does not export invalid numeric timestamps", () => {
     expect(buildTranscriptSrt({ id: "invalid", createdAt: 1, sourceType: "imported_file", text: "bad",
       segments: [{ start: Number.NaN, end: Infinity, text: "bad" }] })).toBeNull();
+  });
+
+  it("writes WebVTT with dotted times and no cue-ending text", () => {
+    const vtt = buildTranscriptVtt({ id: "v", createdAt: 1, sourceType: "imported_file", text: "x",
+      segments: [{ start: 1.5, end: 2, text: "a --> b" }, { start: 3, end: 4, text: "שורה\n\nשנייה" }] });
+    expect(vtt).toBe("WEBVTT\n\n00:00:01.500 --> 00:00:02.000\na → b\n\n00:00:03.000 --> 00:00:04.000\nשורה\nשנייה\n");
+  });
+
+  it("keeps a blank line or an arrow in a cue from ending an SRT cue", () => {
+    const srt = buildTranscriptSrt({ id: "s", createdAt: 1, sourceType: "imported_file", text: "x",
+      segments: [{ start: 0, end: 1, text: "שורה ראשונה\n\nשורה שנייה" }, { start: 1, end: 2, text: "a --> b" }] });
+    expect(srt).toBe("1\n00:00:00,000 --> 00:00:01,000\nשורה ראשונה\nשורה שנייה\n\n2\n00:00:01,000 --> 00:00:02,000\na → b");
+  });
+
+  it("writes & and < in WebVTT cue text as entities", () => {
+    const vtt = buildTranscriptVtt({ id: "v", createdAt: 1, sourceType: "imported_file", text: "x",
+      segments: [{ start: 2, end: 3, text: "R&D <3 <b>x</b>" }] });
+    expect(vtt).toBe("WEBVTT\n\n00:00:02.000 --> 00:00:03.000\nR&amp;D &lt;3 &lt;b>x&lt;/b>\n");
+  });
+
+  it("offers subtitles only when the transcript has timings", () => {
+    const plain = { id: "p", createdAt: 1, sourceType: "microphone" as const, text: "שלום" };
+    expect(transcriptExportFormats(plain)).toEqual(["md"]);
+    expect(buildTranscriptVtt(plain)).toBeNull();
+    expect(transcriptExportFormats({ ...plain, segments: [{ start: 0, end: 1, text: "שלום" }] })).toEqual(["md", "vtt", "srt"]);
+    expect(buildTranscriptFileName({ ...plain, importedFileName: "פגישה.wav" }, "md")).toBe("פגישה.wav.md");
+  });
+
+  it("writes Markdown with a title, a details line and the paragraphs", () => {
+    const markdown = buildTranscriptMarkdown({ id: "m", createdAt: Date.UTC(2026, 10, 5, 10), sourceType: "imported_file",
+      importedFileName: "ישיבה.m4a", durationMs: 125_000, text: "ראשון\n\nשני" });
+    const [title, details, ...rest] = markdown.trimEnd().split("\n\n");
+    expect(title).toBe("# ישיבה.m4a");
+    expect(details).toMatch(/ · 02:05$/);
+    expect(rest).toEqual(["ראשון", "שני"]);
   });
 
 });

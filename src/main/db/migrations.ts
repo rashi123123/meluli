@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { markPerformanceAudit } from "../perf-audit";
+import { markPerformanceAudit } from "../diagnostics/perf-audit";
 
 export const DATABASE_SCHEMA_VERSION = 3;
 const SEARCH_INDEX_SCHEMA_VERSION = DATABASE_SCHEMA_VERSION;
@@ -195,6 +195,10 @@ export function runMigrations(db: Database.Database): void {
 
   if (!transcriptColumns.includes("edited_at")) {
     db.exec("ALTER TABLE transcripts ADD COLUMN edited_at INTEGER;");
+  }
+
+  if (!transcriptColumns.includes("flow_name")) {
+    db.exec("ALTER TABLE transcripts ADD COLUMN flow_name TEXT;");
   }
 
   ensureTranscriptSearchIndex(db);

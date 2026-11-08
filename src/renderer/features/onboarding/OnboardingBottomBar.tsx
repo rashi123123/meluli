@@ -3,8 +3,9 @@ import { ArrowLeft } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { he } from "@shared/locale";
 
-export function OnboardingBottomBar({ primaryContent, onPrimary, onSkip, onBack, primaryDisabled = false, primaryPending = false, navigationPending = false, showBack = false }: {
-  primaryContent: ReactNode; onPrimary: () => void; onSkip?: () => void; onBack?: () => void; primaryDisabled?: boolean; primaryPending?: boolean; navigationPending?: boolean; showBack?: boolean;
+/** `note` is one quiet line under the buttons: what the primary action costs, or what skipping leaves out. */
+export function OnboardingBottomBar({ primaryContent, onPrimary, onSkip, onBack, skipLabel = he.onboardingContinueLater, note, primaryDisabled = false, primaryPending = false, navigationPending = false, showBack = false }: {
+  primaryContent: ReactNode; onPrimary: () => void; onSkip?: () => void; onBack?: () => void; skipLabel?: string; note?: string; primaryDisabled?: boolean; primaryPending?: boolean; navigationPending?: boolean; showBack?: boolean;
 }) {
   const primaryUnavailable = primaryDisabled || primaryPending || navigationPending;
   return <footer className="onboarding-actions">
@@ -14,8 +15,9 @@ export function OnboardingBottomBar({ primaryContent, onPrimary, onSkip, onBack,
       </Button>
     </div>
     {(showBack || onSkip) && <div className="onboarding-secondary-dock">
-      {showBack && onBack && <Button variant="ghost" size="sm" aria-disabled={navigationPending || undefined} onClick={() => { if (!navigationPending) onBack(); }}>{he.back}</Button>}
-      {onSkip && <Button variant="ghost" size="sm" aria-disabled={navigationPending || undefined} onClick={() => { if (!navigationPending) onSkip(); }}>{he.onboardingContinueLater}</Button>}
+      {showBack && onBack && <Button variant="ghost" size="sm" className="onboarding-back-text" aria-disabled={navigationPending || undefined} onClick={() => { if (!navigationPending) onBack(); }}>{he.back}</Button>}
+      {onSkip && <Button variant="ghost" size="sm" className="onboarding-later" aria-disabled={navigationPending || undefined} onClick={() => { if (!navigationPending) onSkip(); }}>{skipLabel}</Button>}
     </div>}
+    {note && <p className="onboarding-note">{note}</p>}
   </footer>;
 }

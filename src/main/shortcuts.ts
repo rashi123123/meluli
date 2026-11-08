@@ -1,5 +1,6 @@
 import { globalShortcut } from "electron";
 import { he } from "@shared/locale";
+import { isIsolatedE2E } from "./config/mock-mode";
 
 interface ShortcutBindings {
   recording: string;
@@ -26,7 +27,7 @@ export class ShortcutManager {
 
   /** Esc belongs to the frontmost app except during a dictation, when it means cancel. */
   setEscapeActive(active: boolean): void {
-    if (active === this.escapeClaimed || (process.env.IVRIT_E2E_MOCK === "1" && process.env.MELULI_USER_DATA)) return;
+    if (active === this.escapeClaimed || isIsolatedE2E()) return;
     if (active) this.escapeClaimed = globalShortcut.register("Escape", () => this.handlers.onEscape?.());
     else {
       globalShortcut.unregister("Escape");
@@ -36,7 +37,7 @@ export class ShortcutManager {
 
   /** Cmd-Z belongs to the frontmost app except for the moments a canceled dictation can be restored. */
   setUndoActive(active: boolean): void {
-    if (active === this.undoClaimed || (process.env.IVRIT_E2E_MOCK === "1" && process.env.MELULI_USER_DATA)) return;
+    if (active === this.undoClaimed || isIsolatedE2E()) return;
     if (active) this.undoClaimed = globalShortcut.register("CommandOrControl+Z", () => this.handlers.onUndo?.());
     else {
       globalShortcut.unregister("CommandOrControl+Z");
@@ -51,8 +52,7 @@ export class ShortcutManager {
 
     const previousBindings = this.getBindings();
     this.unregister();
-    // Protocol/UI tests must not claim the user's global keyboard shortcuts.
-    if (process.env.IVRIT_E2E_MOCK === "1" && process.env.MELULI_USER_DATA) {
+    if (isIsolatedE2E()) {
       this.bindings = { ...nextBindings };
       return this.getBindings();
     }

@@ -24,8 +24,8 @@ let root: Root;
 let current: ReturnType<typeof useTranscripts>;
 let context: AppContextValue;
 const history = { list: vi.fn(), search: vi.fn(), delete: vi.fn(), deleteAll: vi.fn() };
-function Harness({ enabled = true, loadLatest = false, loadHistory = true }) {
-  current = useTranscripts({ enabled, loadLatest, loadHistory });
+function Harness({ loadHistory = true }) {
+  current = useTranscripts({ loadHistory });
   return null;
 }
 async function render(node: ReactNode) { await act(async () => root.render(node)); }
@@ -42,7 +42,7 @@ beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   history.list.mockReset().mockResolvedValue(page()); history.search.mockReset().mockResolvedValue(page());
   history.delete.mockReset().mockResolvedValue(true); history.deleteAll.mockReset().mockResolvedValue(true);
-  Object.assign(window, { ivritMenuBar: { history, files: { exportTranscriptSrt: vi.fn(), openExternal: vi.fn() }, clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } } });
+  Object.assign(window, { ivritMenuBar: { history, files: { exportTranscript: vi.fn(), openExternal: vi.fn() }, clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } } });
   vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
   // These components use only transcript, source-action and YouTube capabilities.
   context = {
@@ -78,6 +78,7 @@ describe("transcript request ordering", () => {
   });
 
   it("exposes a failed load and clears the error after a successful retry", async () => {
+    history.list.mockResolvedValueOnce(page()); // the latest-transcript request goes first
     history.list.mockRejectedValueOnce(new Error("Database unavailable"));
     await render(<Harness />);
     expect(current.errorMessage).toContain("לא נטענו"); expect(current.isLoading).toBe(false);
@@ -89,7 +90,7 @@ describe("transcript request ordering", () => {
   it("keeps a new transcript when older latest/page requests finish after its event", async () => {
     const staleLatest = deferred<Page>(); const stalePage = deferred<Page>(); const freshPage = deferred<Page>();
     history.list.mockImplementationOnce(() => staleLatest.promise).mockImplementationOnce(() => stalePage.promise).mockImplementationOnce(() => freshPage.promise);
-    await render(<Harness loadLatest />);
+    await render(<Harness />);
     await act(async () => current.prependTranscript(record("new")));
     await act(async () => { staleLatest.resolve(page(record("old"))); stalePage.resolve(page(record("old"))); });
     expect(current.latestTranscript?.id).toBe("new"); expect(current.items[0].id).toBe("new"); expect(current.isLoading).toBe(true);
@@ -98,11 +99,12 @@ describe("transcript request ordering", () => {
   });
 
   it("dispatches only one pending pagination request and deduplicates its boundary item", async () => {
+    history.list.mockResolvedValueOnce(page()); // the latest-transcript request goes first
     history.list.mockResolvedValueOnce({ items: [record("a")], nextCursor: 100 });
     await render(<Harness />);
     const next = deferred<Page>(); history.list.mockReturnValueOnce(next.promise);
     await act(async () => { void current.loadMore(); void current.loadMore(); });
-    expect(history.list).toHaveBeenCalledTimes(2);
+    expect(history.list).toHaveBeenCalledTimes(3); // latest, first page, one next page
     await act(async () => next.resolve(page(record("a"), record("b"))));
     expect(current.items.map(item => item.id)).toEqual(["a", "b"]); expect(current.hasMore).toBe(false);
   });
@@ -115,6 +117,7 @@ describe("transcript request ordering", () => {
   });
 
   it("does not resurrect a deleted record from a previously pending page", async () => {
+    history.list.mockResolvedValueOnce(page()); // the latest-transcript request goes first
     history.list.mockResolvedValueOnce(page(record("a"), record("b")));
     await render(<Harness />);
     const stale = deferred<Page>(); history.list.mockReturnValueOnce(stale.promise);
@@ -122,6 +125,36 @@ describe("transcript request ordering", () => {
     await act(async () => current.deleteTranscript("a"));
     await act(async () => stale.resolve(page(record("a"), record("b"))));
     expect(current.items.map(item => item.id)).toEqual(["b"]);
+  });
+
+  it("keeps older loaded rows and the chosen row when a new transcript arrives", async () => {
+    const at = (id: string, createdAt: number) => ({ ...record(id), createdAt });
+    history.list.mockResolvedValueOnce(page()); // the latest-transcript request goes first
+    history.list.mockResolvedValueOnce({ items: [at("b", 300), at("c", 200)], nextCursor: 200 });
+    await render(<Harness />);
+    history.list.mockResolvedValueOnce({ items: [at("d", 100)], nextCursor: null });
+    await act(async () => current.loadMore());
+    await act(async () => current.setSelectedId("d"));
+    history.list.mockResolvedValueOnce({ items: [at("a", 400), at("b", 300)], nextCursor: 300 });
+    await act(async () => current.prependTranscript(at("a", 400), false));
+    expect(current.items.map(item => item.id)).toEqual(["a", "b", "c", "d"]);
+    expect(current.selectedTranscript?.id).toBe("d"); expect(current.hasMore).toBe(false);
+  });
+
+  it("keeps no rows or cursor from another search when a new transcript arrives mid-search", async () => {
+    const at = (id: string, createdAt: number) => ({ ...record(id), createdAt });
+    history.list.mockResolvedValueOnce(page()); // the latest-transcript request goes first
+    history.list.mockResolvedValueOnce({ items: [at("b", 300), at("c", 200)], nextCursor: 200 });
+    await render(<Harness />);
+    const pending = deferred<Page>(); history.search.mockReturnValueOnce(pending.promise);
+    await act(async () => current.setSearchQuery("שלום"));
+    expect(history.search).toHaveBeenCalledTimes(1);
+    history.search.mockResolvedValueOnce({ items: [at("a", 400), at("e", 350)], nextCursor: 350 });
+    await act(async () => current.prependTranscript(at("a", 400), false));
+    expect(current.items.map(item => item.id)).toEqual(["a", "e"]);
+    history.search.mockResolvedValueOnce(page());
+    await act(async () => current.loadMore());
+    expect(history.search).toHaveBeenLastCalledWith("שלום", 20, 350);
   });
 
   it("preserves the history and rejects when bulk deletion returns false", async () => {

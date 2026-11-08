@@ -3,8 +3,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { he } from "@shared/locale";
 import { appSettingsSchema } from "@shared/schemas";
-import { isWorkerReadyV2, TranscriptionCanceledError, TranscriptionService } from "@main/services/transcription.service";
-import { normalizeTranscriptSegments, normalizeTranscriptText, normalizeTranscriptionResult } from "@main/services/transcription-normalize";
+import { buildTranscriptRecord } from "@main/services/transcript-record";
+import { TranscriptionService } from "@main/services/transcription.service";
+import { TranscriptionCanceledError } from "@main/services/transcription-errors";
+import { isWorkerReadyV2, normalizeTranscriptSegments, normalizeTranscriptText, normalizeTranscriptionResult } from "@main/services/transcription-protocol";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -101,21 +103,8 @@ describe("buildTranscriptRecord", () => {
     const settings = appSettingsSchema.parse({
       removeFillerWords: false
     });
-    const service = new TranscriptionService(
-      {
-        getModelPath: async () => "/tmp/model",
-        binaryPaths: {
-          resourcesBasePath: "/tmp/resources",
-          whispercppWorkerBinaryPath: "/tmp/whispercpp-worker",
-          ytDlpBinaryPath: "/tmp/yt-dlp", denoBinaryPath: "/tmp/yt-dlp"
-        }
-      },
-      {
-        getSettings: () => settings
-      } as never
-    );
 
-    const record = service.buildTranscriptRecord(
+    const record = buildTranscriptRecord(settings,
       {
         wavPath: "/tmp/input.wav",
         sourceType: "imported_file",
@@ -138,19 +127,8 @@ describe("buildTranscriptRecord", () => {
     const settings = appSettingsSchema.parse({
       dictionary: [{ id: "1", heard: "מלולי", written: "Meluli" }]
     });
-    const service = new TranscriptionService(
-      {
-        getModelPath: async () => "/tmp/model",
-        binaryPaths: {
-          resourcesBasePath: "/tmp/resources",
-          whispercppWorkerBinaryPath: "/tmp/whispercpp-worker",
-          ytDlpBinaryPath: "/tmp/yt-dlp", denoBinaryPath: "/tmp/yt-dlp"
-        }
-      },
-      { getSettings: () => settings } as never
-    );
 
-    const record = service.buildTranscriptRecord(
+    const record = buildTranscriptRecord(settings,
       { wavPath: "/tmp/input.wav", sourceType: "microphone" },
       {
         text: "פתחתי את קלוד אמדי ואת מלולי",
@@ -169,11 +147,7 @@ describe("buildTranscriptRecord", () => {
 
   it("labels call transcripts and keeps the speaker on every segment", () => {
     const settings = appSettingsSchema.parse({ removeFillerWords: false, spokenCommands: true });
-    const service = new TranscriptionService(
-      { getModelPath: async () => "/tmp/model", binaryPaths: { resourcesBasePath: "/tmp/resources", whispercppWorkerBinaryPath: "/tmp/whispercpp-worker", ytDlpBinaryPath: "/tmp/yt-dlp", denoBinaryPath: "/tmp/yt-dlp" } },
-      { getSettings: () => settings } as never
-    );
-    const record = service.buildTranscriptRecord({ wavPath: "", sourceType: "call", durationMs: 60_000 }, {
+    const record = buildTranscriptRecord(settings, { wavPath: "", sourceType: "call", durationMs: 60_000 }, {
       text: "שלום סימן שאלה מה נשמע",
       language: "he",
       backend: "whispercpp",

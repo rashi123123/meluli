@@ -1,26 +1,37 @@
-import { z } from "zod";
+import * as z from "zod";
+import type { AppSettings } from "./types";
 import { DEFAULT_THEME, THEME_IDS } from "./themes";
+import { flowConnectionsSettingSchema, flowsSettingSchema } from "./flows";
 import {
   AUDIO_IMPORT_EXTENSIONS,
+  MAX_ONBOARDING_TRACKING_EVENTS,
   DEFAULT_MODEL_FILENAME,
   DEFAULT_MODEL_ID,
   DEFAULT_MODEL_URL,
   DEFAULT_OVERLAY_SHORTCUT,
   DEFAULT_SHORTCUT,
   DICTIONARY_MAX_ENTRIES,
-  DICTIONARY_MAX_LENGTH
+  DICTIONARY_MAX_LENGTH,
+  DEFAULT_TERM_PACKS,
+  MAX_RECORDING_SAMPLE_RATE,
+  TERM_PACK_IDS
 } from "./constants";
 import { he } from "./locale";
 import { createDefaultOnboardingState, createDefaultOnboardingTrackingState } from "./onboarding-defaults";
 
+/** The hold-to-talk key; native/HoldKey.swift takes the same names. */
+export const holdKeyChoiceSchema = z.enum(["off", "right_option", "right_command"]);
+/** Whisper (accurate) or the streaming zipformer (fast and light, live text). */
+export const asrEngineSchema = z.enum(["whisper", "zipformer"]);
+
 export const transcriptSourceSchema = z.enum(["microphone", "imported_file", "youtube", "call"]);
-export const transcriptionBackendSchema = z.enum(["ct2", "whispercpp", "nemo"]);
+export const transcriptionBackendSchema = z.enum(["ct2", "whispercpp", "nemo", "sherpa-onnx"]);
 export const speedPreferenceSchema = z.enum(["accurate", "balanced"]);
 export const themeSchema = z.enum(THEME_IDS);
 export const modelDownloadStateSchema = z.enum(["missing", "downloading", "ready", "error"]);
-export const onboardingPhaseSchema = z.enum(["not_started", "needs_mic", "needs_hold_key", "needs_model", "needs_first_transcript", "activated"]);
+export const onboardingPhaseSchema = z.enum(["not_started", "needs_mic", "needs_hold_key", "needs_paste", "needs_model", "needs_first_transcript", "activated"]);
 export const onboardingSurfaceSchema = z.enum(["flow", "workspace"]);
-export const onboardingStepKeySchema = z.enum(["ready", "microphone", "hold_key", "local_install", "first_transcript", "celebration"]);
+export const onboardingStepKeySchema = z.enum(["ready", "microphone", "hold_key", "paste", "local_install", "first_transcript", "celebration"]);
 export const onboardingOptionalActionSchema = z.enum(["recording_shortcut", "overlay_accessibility"]);
 export const onboardingTrackingEventNameSchema = z.enum([
   "onboarding_started",
@@ -212,7 +223,7 @@ export const onboardingTrackingEventSchema = z.object({
 });
 
 export const onboardingTrackingStateSchema = z.object({
-  events: z.array(onboardingTrackingEventSchema).max(200).prefault([])
+  events: z.array(onboardingTrackingEventSchema).max(MAX_ONBOARDING_TRACKING_EVENTS).prefault([])
 });
 
 const dictionaryEntrySchema = z.object({
@@ -235,12 +246,20 @@ const appSettingsInputSchema = z.object({
   theme: themeSchema.prefault(DEFAULT_THEME),
   speedPreference: speedPreferenceSchema.prefault("balanced"),
   removeFillerWords: z.boolean().prefault(true),
-  builtInTerms: z.boolean().prefault(true),
+  numbersAsDigits: z.boolean().prefault(true),
+  formatForApp: z.boolean().prefault(true),
+  termPacks: z.array(z.string()).optional(),
+  /** Stored before packs existed: off meant no built-in terms at all. */
+  builtInTerms: z.boolean().optional(),
   dictionary: z.array(dictionaryEntrySchema).max(DICTIONARY_MAX_ENTRIES).prefault([]),
-  holdKey: z.enum(["off", "right_option", "right_command"]).prefault("right_option"),
+  holdKey: holdKeyChoiceSchema.prefault("right_option"),
+  asrEngine: asrEngineSchema.prefault("whisper"),
   spokenCommands: z.boolean().prefault(true),
   autoUpdate: z.boolean().prefault(true),
   callDetection: z.boolean().prefault(false),
+  keepRecordingAudio: z.boolean().prefault(true),
+  flows: flowsSettingSchema.prefault([]),
+  flowConnections: flowConnectionsSettingSchema.prefault([]),
   processingTelemetry: processingTelemetrySchema.prefault({}),
   modelState: modelStateSchema.prefault({
     id: DEFAULT_MODEL_ID,
@@ -263,8 +282,14 @@ export const appSettingsSchema = appSettingsInputSchema.transform((input) => {
     activatedAt: phase === "activated" ? input.onboarding?.activatedAt ?? null : null
   });
 
+  const { builtInTerms, termPacks: storedPacks, ...rest } = input;
+  const termPacks = storedPacks
+    ? TERM_PACK_IDS.filter((id) => storedPacks.includes(id))
+    : builtInTerms === false ? [] : [...DEFAULT_TERM_PACKS];
+
   return {
-    ...input,
+    ...rest,
+    termPacks,
     onboardingCompleted: phase === "activated",
     onboarding,
     onboardingTracking: onboardingTrackingStateSchema.parse(input.onboardingTracking)
@@ -286,8 +311,29 @@ export const recordingAudioPayloadSchema = z.object({
   sampleRate: z.number().positive(),
   durationMs: z.number().nonnegative(),
   capturedAt: z.object({ micReady: z.number(), stopped: z.number() }).optional(),
-  flushIncomplete: z.literal(true).optional()
+  flushIncomplete: z.literal(true).optional(),
+  recordingId: z.uuid().optional()
 });
+
+/** About a second of audio, written to disk while the recording goes on. */
+export const recordingAudioChunkSchema = z.object({
+  recordingId: z.uuid(),
+  sequence: z.number().int().nonnegative(),
+  sampleRate: z.number().int().positive().max(MAX_RECORDING_SAMPLE_RATE),
+  pcm: z.custom<Float32Array | ArrayBuffer>((value) => isFloat32ArrayLike(value) || isArrayBufferLike(value), {
+    message: "Expected PCM chunk to be a Float32Array or ArrayBuffer."
+  })
+});
+
+export const recordingStopInputSchema = z
+  .object({
+    recordingId: z.uuid().optional(),
+    /** The recording was cut short, not thrown away, so what was written of it stays. */
+    keepAudio: z.boolean().optional()
+  })
+  .optional();
+
+export const storedRecordingInputSchema = z.object({ id: z.uuid() });
 
 export const recordingStartInputSchema = z.object({
   startedAt: z.number().int()
@@ -320,11 +366,13 @@ export const transcriptRestoreSchema = z.object({
 });
 
 export const transcriptExportSchema = z.object({
-  id: z.string()
+  id: z.string(),
+  /** Where the export menu opens, in window coordinates. */
+  anchor: z.object({ x: z.number().int().min(0).max(100_000), y: z.number().int().min(0).max(100_000) }).optional()
 });
 
-export const settingUpdateSchema = z.object({
-  key: z.enum([
+/** Every setting the renderer may write; `satisfies` keeps the list inside AppSettings. */
+const SETTING_UPDATE_KEYS = [
     "onboardingCompleted",
     "onboarding",
     "onboardingTracking",
@@ -338,15 +386,22 @@ export const settingUpdateSchema = z.object({
     "theme",
     "speedPreference",
     "removeFillerWords",
-    "builtInTerms",
+    "numbersAsDigits",
+    "formatForApp",
+    "termPacks",
     "dictionary",
     "holdKey",
+    "asrEngine",
     "spokenCommands",
     "autoUpdate",
     "callDetection",
+    "keepRecordingAudio",
     "processingTelemetry",
     "modelState"
-  ]),
+] as const satisfies readonly (keyof AppSettings)[];
+
+export const settingUpdateSchema = z.object({
+  key: z.enum(SETTING_UPDATE_KEYS),
   value: z.unknown()
 });
 
@@ -369,4 +424,5 @@ export const transcriptionErrorPayloadSchema = z.object({
 });
 
 export const overlaySizeSchema = z.enum(["compact", "expanded"]);
-export const mainViewSchema = z.enum(["workspace", "history", "dictionary", "settings", "about", "terms", "privacy"]);
+export const mainViewSchema = z.enum(["workspace", "history", "dictionary", "flows", "settings", "about", "terms", "privacy"]);
+export const mainWindowReportSchema = z.object({ view: mainViewSchema, keep: z.boolean() }).strict();

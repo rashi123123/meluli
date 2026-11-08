@@ -10,9 +10,17 @@ import {
 } from "@shared/schemas";
 
 describe("appSettingsSchema", () => {
-  it("defaults to built-in terms and an empty dictionary, and rejects a dictionary past its limits", () => {
+  it("carries the old built-in switch into term packs and drops packs it does not know", () => {
+    expect(appSettingsSchema.parse({ builtInTerms: false }).termPacks).toEqual([]);
+    expect(appSettingsSchema.parse({ builtInTerms: true }).termPacks).toEqual(["ai", "dev", "tools", "product"]);
+    expect(appSettingsSchema.parse({ builtInTerms: false, termPacks: ["design"] }).termPacks).toEqual(["design"]);
+    expect(appSettingsSchema.parse({ termPacks: ["marketing", "gone", "ai"] }).termPacks).toEqual(["ai", "marketing"]);
+    expect(appSettingsSchema.parse({ builtInTerms: false })).not.toHaveProperty("builtInTerms");
+  });
+
+  it("defaults to the original term packs and an empty dictionary, and rejects a dictionary past its limits", () => {
     const parsed = appSettingsSchema.parse({});
-    expect(parsed.builtInTerms).toBe(true);
+    expect(parsed.termPacks).toEqual(["ai", "dev", "tools", "product"]);
     expect(parsed.dictionary).toEqual([]);
 
     const entry = { id: "1", heard: "מלולי", written: "Meluli" };

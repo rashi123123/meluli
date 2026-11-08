@@ -1,3 +1,4 @@
+import type { IpcMainInvokeEvent } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
 import { droppedAudioPathSchema, transcriptExportSchema } from "@shared/schemas";
 import type { ImportAudioResult, StoragePathsInfo } from "@shared/types";
@@ -11,7 +12,7 @@ export function registerFileHandlers(
     onStoragePaths: () => StoragePathsInfo | Promise<StoragePathsInfo>;
     onImportAudio: () => Promise<ImportAudioResult>;
     onImportDroppedAudio: (path: string) => Promise<ImportAudioResult>;
-    onExportTranscriptSrt: (input: ReturnType<typeof transcriptExportSchema.parse>) => Promise<boolean>;
+    onExportTranscript: (input: ReturnType<typeof transcriptExportSchema.parse>, event: IpcMainInvokeEvent) => Promise<boolean>;
   }
 ): void {
   registry.register(IPC_CHANNELS.fileRevealPath, (targetPath) => dependencies.onRevealPath(String(targetPath ?? "")));
@@ -19,7 +20,7 @@ export function registerFileHandlers(
   registry.register(IPC_CHANNELS.fileStoragePaths, () => dependencies.onStoragePaths());
   registry.register(IPC_CHANNELS.fileImportAudio, () => dependencies.onImportAudio());
   registry.register(IPC_CHANNELS.fileImportDroppedAudio, (input) => dependencies.onImportDroppedAudio(droppedAudioPathSchema.parse(input)));
-  registry.register(IPC_CHANNELS.fileExportTranscriptSrt, (input) =>
-    dependencies.onExportTranscriptSrt(transcriptExportSchema.parse(input))
+  registry.register(IPC_CHANNELS.fileExportTranscript, (input, event) =>
+    dependencies.onExportTranscript(transcriptExportSchema.parse(input), event)
   );
 }

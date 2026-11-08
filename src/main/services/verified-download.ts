@@ -3,16 +3,8 @@ import { constants, createReadStream } from "node:fs";
 import { mkdir, open, rename, rm, lstat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 
-export interface VerifiedModelFile {
-  path: string;
-  bytes: number;
-  sha256: string;
-}
-export interface VerifiedModelManifest {
-  id: string;
-  revision: string;
-  files: readonly VerifiedModelFile[];
-}
+import type { VerifiedModelFile, VerifiedModelManifest } from "../config/model-manifest";
+import { fetchPinned, isPinnedHttpsUrl } from "./pinned-fetch";
 
 export function modelFilePath(directory: string, relativePath: string): string {
   if (!relativePath || relativePath.includes("\\") || relativePath.split("/").some(part => !part || part === "." || part === "..")) {
@@ -25,11 +17,8 @@ export function modelFilePath(directory: string, relativePath: string): string {
 }
 
 export function isAllowedModelDownloadUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") &&
-      ["huggingface.co", "hf.co"].some(host => url.hostname === host || url.hostname.endsWith(`.${host}`));
-  } catch { return false; }
+  return isPinnedHttpsUrl(value, (hostname) =>
+    ["huggingface.co", "hf.co"].some(host => hostname === host || hostname.endsWith(`.${host}`)));
 }
 
 export async function verifyModelFile(path: string, expected: VerifiedModelFile, signal?: AbortSignal): Promise<boolean> {
@@ -46,22 +35,17 @@ export async function verifyModelFile(path: string, expected: VerifiedModelFile,
   }
 }
 
-async function fetchModelFile(url: string, offset: number, signal: AbortSignal): Promise<Response> {
-  for (let redirects = 0; redirects < 6; redirects++) {
-    if (!isAllowedModelDownloadUrl(url)) throw new Error("Untrusted model download host.");
-    const response = await fetch(url, {
-      redirect: "manual",
-      credentials: "omit",
-      signal,
-      headers: offset ? { Range: `bytes=${offset}-` } : {}
-    });
-    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-    const location = response.headers.get("location");
-    await response.body?.cancel();
-    if (!location) throw new Error("Model download redirect has no destination.");
-    url = new URL(location, url).href;
-  }
-  throw new Error("Too many model download redirects.");
+function fetchModelFile(url: string, offset: number, signal: AbortSignal): Promise<Response> {
+  return fetchPinned(url, {
+    isAllowed: isAllowedModelDownloadUrl,
+    signal,
+    headers: offset ? { Range: `bytes=${offset}-` } : {},
+    messages: {
+      untrusted: "Untrusted model download host.",
+      noDestination: "Model download redirect has no destination.",
+      tooMany: "Too many model download redirects."
+    }
+  });
 }
 
 /** Downloads into a resumable partial file, then publishes only verified bytes. */

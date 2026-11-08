@@ -1,5 +1,6 @@
 name: Bug report / דיווח תקלה
 description: Report a reproducible problem without private recordings or transcripts.
+labels: ["bug", "triage"]
 body:
   - type: textarea
     id: problem
@@ -14,10 +15,35 @@ body:
       label: Steps to reproduce / איך משחזרים?
     validations:
       required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / תחום
+      options:
+        - Dictation and the floating window / הכתבה והחלון הצף
+        - Pasting into another app / הדבקה
+        - Text, punctuation and numbers / טקסט, פיסוק ומספרים
+        - Actions / פעולות
+        - History and export / היסטוריה וייצוא
+        - Calls / שיחות
+        - Setup and permissions / הגדרה והרשאות
+        - Install and updates / התקנה ועדכונים
+        - Other / אחר
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine / מנוע
+      options:
+        - Whisper (מדויק, the default)
+        - Streaming (מהיר וקל, experimental)
+        - Not related to transcription
   - type: input
     id: environment
     attributes:
       label: Meluli version, macOS version, chip and RAM
+      placeholder: "0.2.0, macOS 15.4, M2, 16 GB"
     validations:
       required: true
   - type: textarea

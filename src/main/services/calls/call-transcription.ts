@@ -1,6 +1,7 @@
 import { open, rm, stat, writeFile } from "node:fs/promises";
 import type { TranscriptSegment } from "@shared/types";
-import { frameBytes, frameLevel, pieceToCallMs, planPieces, FRAME_MS, SAMPLE_RATE, WAV_HEADER_BYTES, type CallPiece } from "./call-pieces";
+import { frameBytes, frameLevel, pieceToCallMs, planPieces, FRAME_MS, type CallPiece } from "./call-pieces";
+import { WAV_HEADER_BYTES, WORKER_SAMPLE_RATE as SAMPLE_RATE, wavHeader } from "../pcm-wav";
 import type { CallRecord, CallStore, CallTrack } from "./call-store";
 import { mergeTracks } from "./call-transcript";
 
@@ -45,23 +46,6 @@ async function readLevels(path: string): Promise<Float32Array> {
     await file.close();
   }
   return levels;
-}
-
-function wavHeader(bytes: number): Buffer {
-  const header = Buffer.alloc(WAV_HEADER_BYTES);
-  header.write("RIFF", 0, "ascii");
-  header.writeUInt32LE(36 + bytes, 4);
-  header.write("WAVEfmt ", 8, "ascii");
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(SAMPLE_RATE, 24);
-  header.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36, "ascii");
-  header.writeUInt32LE(bytes, 40);
-  return header;
 }
 
 function msToByte(ms: number): number {

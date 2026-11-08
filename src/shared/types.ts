@@ -1,5 +1,7 @@
-import type { z } from "zod";
+import type * as z from "zod";
 import type {
+  holdKeyChoiceSchema,
+  asrEngineSchema,
   mainViewSchema,
   onboardingOptionalActionSchema,
   onboardingPhaseSchema,
@@ -8,10 +10,12 @@ import type {
   onboardingTrackingEventNameSchema,
   overlayPositionSchema
 } from "./schemas";
+import type { Flow, FlowConnection, FlowFailure, FlowIcon, FlowRunStatus } from "./flows";
 import type { ThemeId } from "./themes";
+import type { TERM_PACK_IDS } from "./constants";
 
 export type TranscriptSourceType = "microphone" | "imported_file" | "youtube" | "call";
-export type TranscriptionBackend = "ct2" | "whispercpp" | "nemo";
+export type TranscriptionBackend = "ct2" | "whispercpp" | "nemo" | "sherpa-onnx";
 export type MainView = z.infer<typeof mainViewSchema>;
 export type SpeedPreference = "accurate" | "balanced";
 export type MicrophonePermissionStatus = "granted" | "denied" | "not-determined" | "restricted" | "unknown";
@@ -110,6 +114,10 @@ export interface TranscriptRecord {
   language?: string | null;
   segments?: TranscriptSegment[] | null;
   editedAt?: number | null;
+  /** The flow that rewrote this dictation before it was pasted. */
+  flowName?: string | null;
+  /** The dictation as spoken, before the flow. */
+  flowInput?: string | null;
 }
 
 /** Timed transcripts are edited cue by cue, so the main process keeps owning their timings. */
@@ -144,6 +152,24 @@ export interface OverlaySession {
   transcriptText: string | null;
   targetAppName: string | null;
   lastErrorCode: OverlaySessionErrorCode | null;
+  /** The flow this dictation will run through; null runs none. Set when recording starts. */
+  flowId?: string | null;
+  /** Flows the overlay can switch to while recording. */
+  flowChoices?: OverlayFlowChoice[];
+  flowStatus?: FlowRunStatus;
+  flowFailure?: FlowFailure;
+}
+
+export interface FlowsState {
+  flows: Flow[];
+  connections: (FlowConnection & { host: string | null; local: boolean; hasKey: boolean; ready: boolean })[];
+  keyStorageAvailable: boolean;
+}
+
+export interface OverlayFlowChoice {
+  id: string;
+  name: string;
+  icon: FlowIcon;
 }
 
 export interface OnboardingState {
@@ -167,22 +193,6 @@ export interface OnboardingTrackingState {
   events: OnboardingTrackingEvent[];
 }
 
-export interface OnboardingTrackingMetrics {
-  onboardingStartedAt: number | null;
-  microphonePermissionGrantRate: number;
-  modelInstallCompletionRate: number;
-  medianTimeToFirstTranscriptMs: number | null;
-  firstTranscriptCompletionRate: number;
-  firstTranscriptStartedAt: number | null;
-  firstTranscriptCompletedAt: number | null;
-  blockerExitCount: number;
-  blockerExitRate: number;
-  optionalStepUptake: Record<
-    OnboardingOptionalAction,
-    { completed: boolean; dismissed: boolean; status: "pending" | "completed" | "dismissed" }
-  >;
-}
-
 export interface AppStateSnapshot {
   status: AppRuntimeStatus;
   timerStartedAt: number | null;
@@ -202,9 +212,12 @@ export interface AppStateSnapshot {
 
 export type UpdateStatus = "off" | "idle" | "downloading" | "ready" | "failed";
 
-export type HoldKeyChoice = "off" | "right_option" | "right_command";
+export type HoldKeyChoice = z.infer<typeof holdKeyChoiceSchema>;
+export type AsrEngineChoice = z.infer<typeof asrEngineSchema>;
 export type HoldKeyStatus = "off" | "needs_permission" | "ready" | "unavailable";
 export type RecordingHoldPhase = "press" | "release";
+
+export type TermPackId = (typeof TERM_PACK_IDS)[number];
 
 export interface DictionaryEntry {
   id: string;
@@ -226,14 +239,33 @@ export interface AppSettings {
   theme: ThemeId;
   speedPreference: SpeedPreference;
   removeFillerWords: boolean;
-  builtInTerms: boolean;
+  numbersAsDigits: boolean;
+  formatForApp: boolean;
+  termPacks: TermPackId[];
   dictionary: DictionaryEntry[];
   holdKey: HoldKeyChoice;
+  /** Whisper, or the streaming zipformer (faster, lighter, live text). */
+  asrEngine: AsrEngineChoice;
   spokenCommands: boolean;
   autoUpdate: boolean;
   callDetection: boolean;
+  keepRecordingAudio: boolean;
+  flows: Flow[];
+  flowConnections: FlowConnection[];
   processingTelemetry: ProcessingTelemetry;
   modelState: ModelState;
+}
+
+/** A microphone recording kept on disk. */
+export type TranscriptExportFormat = "md" | "vtt" | "srt";
+
+export interface StoredRecording {
+  id: string;
+  createdAt: number;
+  durationMs: number;
+  /** `failed` waits to be transcribed; `kept` sits beside its transcript until it ages out. */
+  status: "kept" | "failed";
+  transcriptId: string | null;
 }
 
 export type RecordingPcmPayload = number[] | Float32Array | ArrayBuffer;
@@ -246,6 +278,8 @@ export interface RecordingAudioPayload {
   capturedAt?: { micReady: number; stopped: number };
   /** The microphone's last samples, about 128 ms at most, never arrived. The rest is here. */
   flushIncomplete?: true;
+  /** The copy main has been writing to disk while the recording lasted. */
+  recordingId?: string;
 }
 
 export interface TranscriptionStartInput {

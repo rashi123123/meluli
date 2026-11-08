@@ -4,7 +4,7 @@ const ring = { cx: 631, cy: 537, rx: 402, ry: 126, pathLength: 100, strokeDashar
 const box = { x: 200, width: 870 };
 
 // One colour throughout: the front of the ring cuts the object instead of being drawn over it.
-export function OrbitGlyph({ top, height, tilt = -14, ringClassName, children }: { top: number; height: number; tilt?: number; ringClassName: string; children: ReactNode }) {
+export function OrbitGlyph({ top, height, tilt = -14, ringClassName, children }: { top: number; height: number; tilt?: number; ringClassName?: string; children: ReactNode }) {
   const uid = useId().replace(/\W/g, "");
   const front = `${uid}front`, cut = `${uid}cut`, turn = `rotate(${tilt} 631 537)`;
   return <svg viewBox={`${box.x} ${top} ${box.width} ${height}`} aria-hidden="true">

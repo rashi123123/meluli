@@ -13,6 +13,8 @@ function buildFallbackLabel(index: number): string {
 export function useMicrophoneDevices(selectedDeviceId?: string | null, refreshKey?: string | null) {
   const [devices, setDevices] = useState<MicrophoneDeviceOption[]>([]);
   const [defaultLabel, setDefaultLabel] = useState<string>(he.systemMicrophone);
+  /** The list came back from the system at least once. Until then an empty list says nothing. */
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) {
@@ -40,6 +42,7 @@ export function useMicrophoneDevices(selectedDeviceId?: string | null, refreshKe
 
         setDefaultLabel(nextDefaultLabel);
         setDevices(nextDevices);
+        setLoaded(true);
       } catch {
         if (cancelled) {
           return;
@@ -47,6 +50,7 @@ export function useMicrophoneDevices(selectedDeviceId?: string | null, refreshKe
 
         setDefaultLabel(he.systemMicrophone);
         setDevices([]);
+        setLoaded(false);
       }
     };
 
@@ -70,6 +74,7 @@ export function useMicrophoneDevices(selectedDeviceId?: string | null, refreshKe
   return {
     devices,
     defaultLabel,
+    loaded,
     selectedLabel
   };
 }

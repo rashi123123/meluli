@@ -22,11 +22,11 @@ function fixture(): AppContextValue {
   settings.modelState.downloadState = "ready";
   return {
     loading: false, settings, appState: { status: "idle", timerStartedAt: null }, permissionStatus: "granted", accessibilityPermissionStatus: "granted",
-    modelProgress: null, storagePaths: null, lastTranscript: null, onboarding: deriveOnboardingDisplayState(settings, "granted"),
+    modelProgress: null, lastTranscript: null, onboarding: deriveOnboardingDisplayState(settings, "granted"),
     activeView: "workspace", setActiveView: vi.fn(), errorMessage: null, setErrorMessage: vi.fn(),
-    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), endHold: vi.fn(), startRecording: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn(), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
-    transcripts: { latestTranscript: null, items: [], selectedId: null, selectedTranscript: null, searchQuery: "", setSearchQuery: vi.fn(), setSelectedId: vi.fn(), prependTranscript: vi.fn(), updateTranscript: vi.fn(), restoreTranscript: vi.fn(), deleteTranscript: vi.fn(), deleteAllTranscripts: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), hasMore: false, isLoading: false },
-    refreshSettings: vi.fn(), updateSetting: vi.fn(), requestMicrophonePermission: vi.fn(), requestAccessibilityPermission: vi.fn(), downloadModel: vi.fn(), removeModel: vi.fn(), importAudio: vi.fn(), importDroppedAudio: vi.fn(), submitYouTubeUrl: vi.fn(), cancelActiveYouTube: vi.fn(), cancelPendingYouTube: vi.fn(), revealStorage: vi.fn(), rerunOnboarding: vi.fn(), resetEverything: vi.fn(), trackOnboardingStepViewed: vi.fn(), completeOnboardingStep: vi.fn(), continueOnboardingLater: vi.fn(), goBackOnboardingStep: vi.fn(), resumeOnboardingFlow: vi.fn(), dismissOnboardingOptionalAction: vi.fn()
+    recording: { isPreparing: false, mediaStream: null, beginHold: vi.fn(), heldRecordingSaved: vi.fn(() => false), endHold: vi.fn(), startRecording: vi.fn(), pauseRecording: vi.fn(), resumeRecording: vi.fn(), stopRecording: vi.fn(), abandonStart: vi.fn(), cancelRecording: vi.fn(), heldRecording: null, resendHeldRecording: vi.fn(), dropHeldRecording: vi.fn(), isResending: false, cancelProcessing: vi.fn(), interruptRecording: vi.fn() },
+    transcripts: { latestTranscript: null, items: [], selectedId: null, selectedTranscript: null, searchQuery: "", setSearchQuery: vi.fn(), setSelectedId: vi.fn(), prependTranscript: vi.fn(), replaceTranscript: vi.fn(), updateTranscript: vi.fn(), restoreTranscript: vi.fn(), deleteTranscript: vi.fn(), deleteAllTranscripts: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), hasMore: false, isLoading: false },
+    updateSetting: vi.fn(), requestMicrophonePermission: vi.fn(), requestAccessibilityPermission: vi.fn(), downloadModel: vi.fn(), importAudio: vi.fn(), importDroppedAudio: vi.fn(), submitYouTubeUrl: vi.fn(), cancelActiveYouTube: vi.fn(), cancelPendingYouTube: vi.fn(), revealStorage: vi.fn(), rerunOnboarding: vi.fn(), resetEverything: vi.fn(), trackOnboardingStepViewed: vi.fn(), completeOnboardingStep: vi.fn(), continueOnboardingLater: vi.fn(), goBackOnboardingStep: vi.fn(), resumeOnboardingFlow: vi.fn(), dismissOnboardingOptionalAction: vi.fn()
   };
 }
 async function render(node: ReactNode) { await act(async () => root.render(<AppContext.Provider value={context}>{node}</AppContext.Provider>)); }
@@ -70,7 +70,7 @@ describe("shortcut keyboard and async recovery", () => {
   });
 
   it("keeps failed shortcuts editable and links the recovery message to the focused field", async () => {
-    const onSave = vi.fn().mockRejectedValueOnce(new Error("Could not register the global shortcut."));
+    const onSave = vi.fn().mockRejectedValueOnce(new Error(he.shortcutRegisterFailed));
     await render(<ShortcutEditor id="shortcut" label="קיצור" description="שינוי" value="Control+R" onSave={onSave} />);
     const input = host.querySelector("input")!; await press(input);
     await act(async () => { byText(he.save).focus(); byText(he.save).click(); });
@@ -100,16 +100,16 @@ describe("settings recovery", () => {
 
   it("focuses the safe reset choice, consumes Escape, and restores the trigger", async () => {
     await render(<SettingsView />);
-    await act(async () => { byText("איפוס…").focus(); byText("איפוס…").click(); });
+    await act(async () => { byText(he.settingsResetTrigger).focus(); byText(he.settingsResetTrigger).click(); });
     expect(document.activeElement).toBe(byText(he.settingsResetCancel));
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     await act(async () => byText(he.settingsResetCancel).dispatchEvent(escape));
-    expect(escape.defaultPrevented).toBe(true); expect(document.activeElement).toBe(byText("איפוס…"));
+    expect(escape.defaultPrevented).toBe(true); expect(document.activeElement).toBe(byText(he.settingsResetTrigger));
   });
 
   it("keeps reset confirmation pending, prevents duplicate mutation and retains recovery after failure", async () => {
     const pending = deferred(); context.resetEverything = vi.fn(() => pending.promise.then(() => { throw new Error("disk failure"); }));
-    await render(<SettingsView />); await act(async () => byText("איפוס…").click());
+    await render(<SettingsView />); await act(async () => byText(he.settingsResetTrigger).click());
     const confirm = byText(he.settingsResetConfirmButton);
     await act(async () => { confirm.focus(); confirm.click(); confirm.click(); });
     expect(context.resetEverything).toHaveBeenCalledOnce(); expect(document.activeElement).toBe(confirm);

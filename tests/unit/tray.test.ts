@@ -69,11 +69,8 @@ const startTray = () => {
   const runtime = new FakeRuntime();
   new TrayManager(runtime as unknown as AppRuntime, {
     onToggleWindow: vi.fn(),
-    onOpenWorkspace: vi.fn(),
-    onOpenHistory: vi.fn(),
-    onOpenDictionary: vi.fn(),
+    onOpenView: vi.fn(),
     onStopCall: vi.fn(),
-    onOpenSettings: vi.fn(),
     onToggleRecording: vi.fn(),
     onQuit: vi.fn()
   }).init();
@@ -141,6 +138,23 @@ describe("TrayManager", () => {
     runtime.publish({ ...idle, status: "processing" });
     const items = trayMock.setContextMenu.mock.lastCall![0] as Array<{ label?: string }>;
     expect(items.map((item) => item.label)).toContain(he.dictionaryTitle);
+  });
+
+  it("ignores a click on a menu item the state has moved past", () => {
+    const runtime = new FakeRuntime();
+    const onToggleRecording = vi.fn();
+    new TrayManager(runtime as unknown as AppRuntime, {
+      onToggleWindow: vi.fn(), onOpenView: vi.fn(), onStopCall: vi.fn(), onToggleRecording, onQuit: vi.fn()
+    }).init();
+    type Item = { label?: string; click?: () => void };
+    const itemFor = (label: string) => (trayMock.setContextMenu.mock.lastCall![0] as Item[]).find((item) => item.label === label)!;
+    runtime.publish({ ...idle, status: "processing" });
+    const cancel = itemFor(he.trayCancelProcessing);
+    runtime.publish(idle);
+    cancel.click!();
+    expect(onToggleRecording).not.toHaveBeenCalled();
+    itemFor(he.trayStartRecording).click!();
+    expect(onToggleRecording).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the timer digits at a fixed width", () => {

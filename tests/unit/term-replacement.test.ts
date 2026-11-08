@@ -1,8 +1,8 @@
 /* @vitest-environment node */
 
 import { describe, expect, it } from "vitest";
-import { applyTerms, buildTermMatcher, type TermEntry } from "@main/services/term-replacement";
-import { enhanceTranscript } from "@main/services/transcript-enhancer.service";
+import { applyTerms, buildTermMatcher, type TermEntry } from "@main/services/text-rules/term-replacement";
+import { enhanceTranscript } from "@main/services/text-rules/transcript-enhancer.service";
 
 const entries: TermEntry[] = [
   { heard: "קלוד אמדי", written: "CLAUDE.md" },
@@ -48,6 +48,26 @@ describe("applyTerms", () => {
 
     const blocked = buildTermMatcher({ entries, notPrefixed: ["בלוג", "מדוקר"] });
     expect(applyTerms("כתבתי בלוג והוא מדוקר", blocked)).toBe("כתבתי בלוג והוא מדוקר");
+  });
+
+  it("keeps a protected word under a second prefix letter", () => {
+    const blocked = buildTermMatcher({ entries: [...entries, { heard: "לוגים", written: "logs" }], notPrefixed: ["בלוג", "בלוגים"] });
+    for (const text of ["כתבתי בבלוג שלי", "הבלוג שלי", "אני כותב לבלוג", "ובלוג חדש", "פרסמתי בלוגים", "קראתי את הבלוגים שלו"]) {
+      expect(applyTerms(text, blocked)).toBe(text);
+    }
+    expect(applyTerms("הלוג מראה שגיאה", blocked)).toBe("ה־log מראה שגיאה");
+  });
+
+  it("takes a personal name only after a prefix that can come before a name", () => {
+    const names = buildTermMatcher({
+      personal: [{ heard: "אור", written: "Or" }, { heard: "דור", written: "Dor" }, { heard: "תום", written: "Tom" },
+        { heard: "עמית", written: "Amit" }, { heard: "נוי", written: "Noy" }],
+      entries
+    });
+    for (const text of ["לאור המצב נדחה", "הדור הבא", "בתום הפגישה", "העמית שלי", "הבית בנוי"]) {
+      expect(applyTerms(text, names)).toBe(text);
+    }
+    expect(applyTerms("אור הגיע ודיברתי עם עמית ובעמית", names)).toBe("Or הגיע ודיברתי עם Amit וב־Amit");
   });
 
   it("requires three letters before accepting a prefix", () => {
@@ -107,7 +127,8 @@ describe("applyTerms", () => {
     const text = "זה משפט רגיל בעברית שחוזר על עצמו שוב ושוב ".repeat(2400);
     expect(text.length).toBeGreaterThan(100_000);
 
-    const runs = Array.from({ length: 5 }, () => {
+    // The fastest of many runs, so a busy machine (the full suite runs files in parallel) does not decide it.
+    const runs = Array.from({ length: 15 }, () => {
       const startedAt = performance.now();
       applyTerms(text, large);
       return performance.now() - startedAt;

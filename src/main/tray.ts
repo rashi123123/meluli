@@ -1,12 +1,12 @@
 import { app, Menu, Tray, nativeImage, systemPreferences } from "electron";
 import { join } from "node:path";
-import type { AppStateSnapshot } from "@shared/types";
+import { resourcesRoot } from "./config/paths";
+import type { AppStateSnapshot, MainView } from "@shared/types";
 import { he } from "@shared/locale";
-import { AppRuntime } from "./runtime";
+import { AppRuntime, isRecording, isWorking, RUNTIME_STATE_EVENT, TRAY_READY_EVENT } from "./runtime";
 import { buildTrayPresentation, type TrayVisualState } from "./tray-presentation";
 
 const READY_VISIBLE_MS = 10_000;
-const TRAY_READY_EVENT = "tray-ready";
 const WAVE_FRAME_COUNT = 6;
 const WAVE_FRAME_MS = 130;
 const waveFile = (frame: number) => `tray-processing${frame}Template.png`;
@@ -26,9 +26,7 @@ const STATUS_SYMBOLS: Record<TrayVisualState, string> = {
 };
 const iconCache = new Map<string, ReturnType<typeof nativeImage.createEmpty>>();
 function resolveTrayIconPath(fileName: string): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, "icons", fileName)
-    : join(process.cwd(), "resources", "icons", fileName);
+  return join(resourcesRoot(app), "icons", fileName);
 }
 
 function resolveIcon(fileName: string): ReturnType<typeof nativeImage.createEmpty> {
@@ -41,6 +39,11 @@ function resolveIcon(fileName: string): ReturnType<typeof nativeImage.createEmpt
   icon.setTemplateImage(true);
   iconCache.set(fileName, icon);
   return icon;
+}
+
+/** What the menu's first item does in this state. */
+function recordingIntent(snapshot: AppStateSnapshot): "stop" | "cancel" | "start" {
+  return isRecording(snapshot.status) ? "stop" : isWorking(snapshot.status) ? "cancel" : "start";
 }
 
 export class TrayManager {
@@ -56,10 +59,7 @@ export class TrayManager {
     private readonly runtime: AppRuntime,
     private readonly handlers: {
       onToggleWindow: () => void;
-      onOpenWorkspace: () => void;
-      onOpenHistory: () => void;
-      onOpenDictionary: () => void;
-      onOpenSettings: () => void;
+      onOpenView: (view: MainView) => void;
       onToggleRecording: () => void;
       onStopCall: () => void;
       onQuit: () => void;
@@ -75,7 +75,7 @@ export class TrayManager {
       this.handlers.onToggleWindow();
     });
 
-    this.runtime.on("state", (snapshot: AppStateSnapshot) => {
+    this.runtime.on(RUNTIME_STATE_EVENT, (snapshot: AppStateSnapshot) => {
       this.render(snapshot);
     });
     this.runtime.on(TRAY_READY_EVENT, () => {
@@ -121,10 +121,11 @@ export class TrayManager {
       this.lastTitle = presentation.title;
     }
 
+    const intent = recordingIntent(snapshot);
     const recordingAction =
-      snapshot.status === "recording" || snapshot.status === "paused"
+      isRecording(snapshot.status)
         ? { label: he.trayStopAndTranscribe, symbol: "stop.circle" }
-        : snapshot.status === "youtube_downloading" || snapshot.status === "processing"
+        : isWorking(snapshot.status)
           ? { label: he.trayCancelProcessing, symbol: "xmark.circle" }
           : { label: he.trayStartRecording, symbol: "record.circle" };
     const contextMenuKey = [
@@ -150,7 +151,10 @@ export class TrayManager {
         {
           label: recordingAction.label,
           icon: nativeImage.createMenuSymbol(recordingAction.symbol),
-          click: this.handlers.onToggleRecording
+          // A menu that was open while the state moved on does only what its label said, or nothing.
+          click: () => {
+            if (recordingIntent(this.runtime.getState()) === intent) this.handlers.onToggleRecording();
+          }
         },
         ...(snapshot.call?.recording ? [{
           label: he.callStop,
@@ -161,22 +165,22 @@ export class TrayManager {
         {
           label: he.workspace,
           icon: nativeImage.createMenuSymbol("house"),
-          click: this.handlers.onOpenWorkspace
+          click: () => this.handlers.onOpenView("workspace")
         },
         {
           label: he.history,
           icon: nativeImage.createMenuSymbol("clock"),
-          click: this.handlers.onOpenHistory
+          click: () => this.handlers.onOpenView("history")
         },
         {
           label: he.dictionaryTitle,
           icon: nativeImage.createMenuSymbol("book.closed"),
-          click: this.handlers.onOpenDictionary
+          click: () => this.handlers.onOpenView("dictionary")
         },
         {
           label: he.settings,
           icon: nativeImage.createMenuSymbol("gearshape"),
-          click: this.handlers.onOpenSettings
+          click: () => this.handlers.onOpenView("settings")
         },
         { type: "separator" },
         {

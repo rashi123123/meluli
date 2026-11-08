@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { MODELS_DIR_NAME, TRANSCRIPTS_DIR_NAME } from "@shared/constants";
 import { appSettingsSchema } from "@shared/schemas";
 import type { AppSettings, TranscriptListResult, TranscriptRecord } from "@shared/types";
-import { markPerformanceAudit } from "../perf-audit";
-import type { TranscriptContent } from "../services/transcript-edit.service";
+import { markPerformanceAudit } from "../diagnostics/perf-audit";
+import type { TranscriptContent } from "./transcript.repository";
 import { runMigrations, DATABASE_SCHEMA_VERSION } from "./migrations";
 import { SettingsRepository } from "./settings.repository";
 import { TranscriptRepository } from "./transcript.repository";
@@ -27,6 +27,8 @@ export interface TranscriptRepositoryLike {
   search(query: string, limit: number, cursor?: number | null): TranscriptListResult;
   update(id: string, content: TranscriptContent): TranscriptRecord | null;
   restoreOriginal(id: string): TranscriptRecord | null;
+  applyFlow(id: string, text: string, flowName: string): TranscriptRecord | null;
+  replaceTranscription(id: string, record: TranscriptRecord): TranscriptRecord | null;
   delete(id: string): boolean;
   deleteAll(): boolean;
 }
@@ -92,11 +94,25 @@ function createMockRepositories(): Pick<AppDatabase, "db" | "settingsRepository"
           limit,
           cursor
         ),
+      applyFlow: (id, text, flowName) => {
+        const record = transcripts.find((item) => item.id === id);
+        if (!record) return null;
+        if (!originals.has(id)) originals.set(id, record);
+        const next = { ...record, text, paragraphs: null, segments: null, flowName, flowInput: record.text };
+        transcripts = transcripts.map((item) => (item.id === id ? next : item));
+        return next;
+      },
       update: (id, content) => {
         const record = transcripts.find((item) => item.id === id);
         if (!record) return null;
         if (!originals.has(id)) originals.set(id, record);
         return replaceTranscript({ ...record, ...content, editedAt: Date.now() });
+      },
+      replaceTranscription: (id, record) => {
+        const current = transcripts.find((item) => item.id === id);
+        if (!current) return null;
+        originals.delete(id);
+        return replaceTranscript({ ...record, id, createdAt: current.createdAt, sourceType: current.sourceType, editedAt: null });
       },
       restoreOriginal: (id) => {
         const original = originals.get(id);

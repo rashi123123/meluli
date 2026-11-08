@@ -45,10 +45,19 @@ func anythingElseHappened() -> Bool {
     }
 }
 
+/// Runs only while the key is down, so an idle helper has no timer of its own.
+var keyWatch: DispatchSourceTimer?
+
+func stopKeyWatch() {
+    keyWatch?.cancel()
+    keyWatch = nil
+}
+
 func release() {
     arming?.cancel()
     arming = nil
     isDown = false
+    stopKeyWatch()
     if reported {
         reported = false
         emit("up")
@@ -84,12 +93,22 @@ func handleFlags(_ event: CGEvent) {
     let work = DispatchWorkItem(block: arm)
     arming = work
     DispatchQueue.main.asyncAfter(deadline: .now() + armingDelay, execute: work)
+    if isPhysical { startKeyWatch() }
 }
 
 /** A lost key-up must not leave the microphone open. A posted event has no physical key to check. */
 func reconcile() {
     guard let key = watched, isDown, isPhysical else { return }
     if !CGEventSource.keyState(.hidSystemState, key: CGKeyCode(key.code)) { release() }
+}
+
+func startKeyWatch() {
+    stopKeyWatch()
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + 0.25, repeating: 0.25)
+    timer.setEventHandler(handler: reconcile)
+    keyWatch = timer
+    timer.resume()
 }
 
 let callback: CGEventTapCallBack = { _, type, event, _ in
@@ -121,7 +140,22 @@ func startTap() {
     tap = created
     CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(nil, created, 0), .commonModes)
     CGEvent.tapEnable(tap: created, enable: true)
+    startPermissionChecks()
     emit("ready")
+}
+
+// Input Monitoring can be revoked with no event, so a running tap checks it every five seconds.
+// The leeway lets macOS batch this wakeup with others.
+var permissionChecks: DispatchSourceTimer?
+
+func startPermissionChecks() {
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + 5, repeating: 5, leeway: .seconds(1))
+    timer.setEventHandler {
+        if !CGPreflightListenEventAccess() { fail("permission") }
+    }
+    permissionChecks = timer
+    timer.resume()
 }
 
 func handleLine(_ line: String) {
@@ -150,16 +184,6 @@ case "--self-test":
 default:
     break
 }
-
-let checks = DispatchSource.makeTimerSource(queue: .main)
-checks.schedule(deadline: .now() + 0.25, repeating: 0.25)
-var ticks = 0
-checks.setEventHandler {
-    reconcile()
-    ticks += 1
-    if ticks % 20 == 0, tap != nil, !CGPreflightListenEventAccess() { fail("permission") }
-}
-checks.resume()
 
 DispatchQueue.global(qos: .utility).async {
     while let line = readLine() {

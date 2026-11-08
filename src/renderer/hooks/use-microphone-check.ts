@@ -34,6 +34,8 @@ const disconnectedError = "המיקרופון נותק. אפשר לחבר אות
 const minimumSignalRms = 0.012;
 const sustainedSignalMs = 240;
 const sampleIntervalMs = 32;
+/** A gap between frames longer than this restarts the sustained-signal count. */
+const maxFrameGapMs = 120;
 
 function microphoneError(error: unknown): string {
   const name = typeof error === "object" && error !== null && "name" in error && typeof error.name === "string" ? error.name : "";
@@ -156,7 +158,7 @@ export function useMicrophoneCheck({ enabled, deviceId, onRequestPermission }: M
         if (!isCurrent()) return;
         if (lastSampleAt === null || now - lastSampleAt >= sampleIntervalMs) {
           // A delayed frame cannot count the unobserved interval as input.
-          if (lastSampleAt !== null && now - lastSampleAt > 120) signalSince = null;
+          if (lastSampleAt !== null && now - lastSampleAt > maxFrameGapMs) signalSince = null;
           lastSampleAt = now;
           try {
             analyser.getFloatTimeDomainData(samples);

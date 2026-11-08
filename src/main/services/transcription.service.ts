@@ -1,76 +1,33 @@
-import { pipelineTrace } from "../pipeline-trace";
-import { EventEmitter } from "node:events";
+import { terminateChild } from "./terminate-child";
+import { pipelineTrace } from "../diagnostics/pipeline-trace";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type {
-  TranscriptRecord,
-  TranscriptSegment,
-  TranscriptionBackend,
-  TranscriptionStartInput,
-  WorkerReadyV2,
-  WorkerVadCapability
-} from "@shared/types";
-import { DEFAULT_TRANSCRIPTION_BACKEND, DEFAULT_MODEL_ID, DEFAULT_MODEL_REVISION } from "@shared/constants";
-import { formatCallText } from "./calls/call-transcript";
+import type { TranscriptionBackend, TranscriptionStartInput } from "@shared/types";
+import { PRODUCT_ASR_ENGINE, type AsrEngine } from "../config/asr-engine";
+import { minimalChildEnv } from "./child-env";
 import { he } from "@shared/locale";
-import { resolveWorkerCommand, type BinaryPaths } from "../config/paths";
+import { resolveWorkerBinary, type BinaryPaths } from "../config/paths";
 import { SettingsService } from "./settings.service";
-import { normalizeTranscriptionResult } from "./transcription-normalize";
-import { applyTerms, termMatcherForSettings } from "./term-replacement";
-import { applySpokenCommands, resolveSpokenBreaks } from "./spoken-commands";
-import { enhanceTranscript } from "./transcript-enhancer.service";
+import {
+  isLiveWorkerMessage,
+  isSupportedReady,
+  normalizeTranscriptionResult,
+  progressPayload,
+  workerProcessError,
+  type NormalizedTranscriptionResult,
+  type TranscriptionProgressPayload,
+  type TranscribeRequest,
+  type LiveRequest,
+  type LiveWorkerMessage,
+  type WarmupRequest,
+  type WorkerMessage,
+  type WorkerRequest
+} from "./transcription-protocol";
+import { TranscriptionCanceledError } from "./transcription-errors";
 import { ProcessLines } from "./process-lines";
 import { isMockMode } from "../config/mock-mode";
+import { mockTranscription } from "./transcription-mock";
 
-export interface NormalizedTranscriptionResult {
-  text: string;
-  language: string | null;
-  segments: TranscriptSegment[] | null;
-  backend: TranscriptionBackend;
-  modelId: string;
-}
-
-interface WarmupRequest {
-  type: "warmup";
-  jobId: string;
-  modelPath: string;
-  useGpu?: boolean;
-}
-
-export interface TranscriptionProgressPayload {
-  stage: "starting" | "processing";
-  audioDurationMs?: number | null;
-  processedAudioMs?: number | null;
-  progressRatio?: number | null;
-  setupElapsedMs?: number | null;
-}
-
-export type WorkerMessage =
-  | {
-      type: "ready";
-      protocolVersion?: number;
-      workerVersion?: string;
-      backend?: TranscriptionBackend;
-      capabilities?: {
-        vad?: {
-          supported?: boolean;
-          mode?: WorkerVadCapability["mode"];
-          requiresModelPath?: boolean;
-        };
-      };
-    }
-  | { type: "health"; ok: true }
-  | { type: "warmed"; jobId: string }
-  | {
-      type: "progress";
-      jobId: string;
-      stage: "loading" | "processing";
-      audioDurationSec?: number | null;
-      processedAudioSec?: number | null;
-      progressRatio?: number | null;
-    }
-  | { type: "result"; jobId: string; result: { text?: string | null; language?: string | null; segments?: unknown[] | null }; timing?: Record<string, number> }
-  | { type: "error"; jobId?: string; code?: string | null; message?: string | null }
-  | { type: "canceled"; jobId: string };
+export type { TranscriptionProgressPayload } from "./transcription-protocol";
 
 export interface TranscriptionDependencies {
   /** Isolated research configuration; absent in production. */
@@ -78,7 +35,26 @@ export interface TranscriptionDependencies {
   modelId?: string;
   getModelPath: () => Promise<string>;
   binaryPaths: BinaryPaths;
+  /** The engine the worker runs, read at each spawn (the person's choice); the product engine when absent. */
+  engine?: AsrEngine | (() => AsrEngine);
 }
+
+/** Hears a live dictation session on the worker (streaming engines only). */
+export interface LiveChannelListener {
+  message(message: LiveWorkerMessage): void;
+  /** The worker went away; nothing more arrives for the session. */
+  lost(): void;
+}
+
+export interface LiveChannel {
+  modelPath: string;
+  /** False when the worker is gone, the channel is closed, or the pipe is backed up. */
+  send(request: LiveRequest): boolean;
+  close(): void;
+}
+
+/** Live audio queued in the pipe beyond this means the worker cannot keep up. */
+const LIVE_PIPE_LIMIT_BYTES = 4 * 1024 * 1024;
 
 interface ActiveJob {
   id: string;
@@ -91,7 +67,15 @@ interface ActiveJob {
   extendTimeout: () => void;
   cancelFallbackTimeout: NodeJS.Timeout | null;
   cancelRequested: boolean;
+  /** A call piece can be all noise; it then has no words, which is not a failure. */
+  allowEmpty: boolean;
   onProgress?: ((payload: TranscriptionProgressPayload) => void) | undefined;
+}
+
+export interface TranscribeOptions {
+  onProgress?: (payload: TranscriptionProgressPayload) => void;
+  /** Keeps the text when the model splits a letter. Only for work that is never pasted. */
+  repairText?: boolean;
 }
 
 interface PendingWarmupJob {
@@ -101,53 +85,19 @@ interface PendingWarmupJob {
   timeout: NodeJS.Timeout;
 }
 
-
-export class TranscriptionCanceledError extends Error {
-  constructor() {
-    super(he.transcriptionCanceled);
-    this.name = "TranscriptionCanceledError";
-  }
-}
-
-export function isTranscriptionCanceledError(error: unknown): error is TranscriptionCanceledError {
-  return error instanceof TranscriptionCanceledError || (
-    error instanceof Error &&
-    (error.message.includes("Transcription canceled.") || error.message.includes(he.transcriptionCanceled))
-  );
-}
-
-
-export function isWorkerReadyV2(
-  message: WorkerMessage & { type: "ready" }
-): message is WorkerReadyV2 {
-  return (
-    typeof message.protocolVersion === "number" &&
-    Number.isFinite(message.protocolVersion) &&
-    typeof message.workerVersion === "string" &&
-    message.backend === "whispercpp" &&
-    typeof message.capabilities?.vad?.supported === "boolean" &&
-    (message.capabilities.vad.mode === "ct2_filter" || message.capabilities.vad.mode === "whispercpp_native" || message.capabilities.vad.mode === "none") &&
-    typeof message.capabilities.vad.requiresModelPath === "boolean"
-  );
-}
-
-// The native worker needs no setting from its environment. Anything else, such as DYLD_* or
-// GGML_BACKEND_PATH, could load code into a process that sees everything the user dictates.
+/** The native worker needs no setting from its environment. */
 export function buildWorkerEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin" };
-  for (const key of ["HOME", "TMPDIR", "LANG"]) {
-    if (source[key]) env[key] = source[key];
-  }
-  return env;
+  return minimalChildEnv(source);
 }
 
-function buildWorkerProcessError(message?: string | null): Error {
-  if (message?.trim()) {
-    return new Error(message.trim());
-  }
-
-  return new Error(he.transcriptionProcessFailed);
-}
+/** The worker must say it is ready within this long of starting. */
+const WORKER_READY_TIMEOUT_MS = 20_000;
+/** A worker that answered within this long is not asked again before the next job. */
+const HEALTH_FRESH_MS = 10_000;
+const HEALTH_TIMEOUT_MS = 4_000;
+const WARMUP_TIMEOUT_MS = 3 * 60_000;
+/** A worker that does not confirm a cancel within this long is killed instead. */
+const CANCEL_FALLBACK_MS = 1_500;
 
 /** How long the worker may stay silent. It reports after every window of audio, so a long job runs for hours. */
 function buildJobTimeoutMs(input: TranscriptionStartInput): number {
@@ -162,7 +112,7 @@ function buildJobTimeoutMs(input: TranscriptionStartInput): number {
 
 export const MODEL_IDLE_TIMEOUT_MS = 5 * 60_000;
 
-export class TranscriptionService extends EventEmitter {
+export class TranscriptionService {
   private idleTimer: NodeJS.Timeout | null = null;
   private operationCount = 0;
   private recordingActive = false;
@@ -171,6 +121,8 @@ export class TranscriptionService extends EventEmitter {
   private disposed = false;
   private workerOutput: ProcessLines | null = null;
   private worker: ChildProcessWithoutNullStreams | null = null;
+  /** The engine the running worker was started for. */
+  private workerEngine: AsrEngine | null = null;
   private activeJob: ActiveJob | null = null;
   private pendingWarmupJob: PendingWarmupJob | null = null;
   private prewarmPromise: Promise<void> | null = null;
@@ -188,25 +140,80 @@ export class TranscriptionService extends EventEmitter {
   private lastHealthCheckAt = 0;
   /** A call piece in progress. Anything the user started goes first. */
   private backgroundRun: Promise<unknown> | null = null;
+  /** A user job waiting for the call piece to give way; a cancel meanwhile is meant for it. */
+  private foregroundWait: { canceled: boolean } | null = null;
+  /** The live dictation session's listener, while one is open. */
+  private live: LiveChannelListener | null = null;
 
   constructor(
     private readonly dependencies: TranscriptionDependencies,
     private readonly settingsService: SettingsService
-  ) {
-    super();
-  }
+  ) {}
 
   setRecordingActive(active: boolean): void {
     if (this.recordingActive === active) return;
     this.recordingActive = active;
-    if (active && this.backgroundRun) this.cancel();
+    if (active && this.backgroundRun) this.cancelCurrent();
     if (active) this.clearIdleTimer();
     else this.scheduleIdleRelease();
   }
 
-  get backend(): TranscriptionBackend { return DEFAULT_TRANSCRIPTION_BACKEND; }
+  private get chosenEngine(): AsrEngine {
+    const engine = this.dependencies.engine;
+    return (typeof engine === "function" ? engine() : engine) ?? PRODUCT_ASR_ENGINE;
+  }
 
-  get modelId(): string { return this.dependencies.modelId ?? DEFAULT_MODEL_ID + "@" + DEFAULT_MODEL_REVISION; }
+  /** The running worker's engine, so a job's labels match the worker that ran it; otherwise the choice. */
+  private get engine(): AsrEngine { return this.workerEngine ?? this.chosenEngine; }
+
+  get backend(): TranscriptionBackend { return this.engine.backend; }
+
+  get modelId(): string { return this.dependencies.modelId ?? `${this.engine.model.id}@${this.engine.model.revision}`; }
+
+  /** Whether the chosen engine gives live sessions (the next dictation's engine). */
+  get streaming(): boolean { return this.chosenEngine.streaming; }
+
+  /**
+   * Opens a live dictation session on the worker, starting it and loading the model first.
+   * The worker stays up until `close()`; if it dies meanwhile the listener hears `lost()`.
+   */
+  async openLiveChannel(listener: LiveChannelListener): Promise<LiveChannel> {
+    if (!this.chosenEngine.streaming) throw new Error(he.transcriptionProcessFailed);
+    if (this.disposed) throw new TranscriptionCanceledError();
+    this.operationCount += 1;
+    this.clearIdleTimer();
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      if (this.live === listener) this.live = null;
+      this.operationCount -= 1;
+      this.scheduleIdleRelease();
+    };
+    try {
+      await this.prewarm();
+      if (!this.worker) await this.ensureWorker();
+      const modelPath = await this.dependencies.getModelPath();
+      if (closed || this.disposed || !this.worker) throw new TranscriptionCanceledError();
+      const worker = this.worker;
+      const previous = this.live;
+      this.live = listener;
+      if (previous && previous !== listener) previous.lost();
+      return {
+        modelPath,
+        close,
+        send: (request) => {
+          if (closed || this.live !== listener || this.worker !== worker || worker.stdin.destroyed) return false;
+          if (worker.stdin.writableLength > LIVE_PIPE_LIMIT_BYTES) return false;
+          worker.stdin.write(`${JSON.stringify(request)}\n`);
+          return true;
+        }
+      };
+    } catch (error) {
+      close();
+      throw error;
+    }
+  }
 
   get isBusy(): boolean { return this.operationCount > 0 || this.recordingActive; }
 
@@ -221,8 +228,7 @@ export class TranscriptionService extends EventEmitter {
     this.disposed = true;
     this.setupCanceled = true;
     this.clearIdleTimer();
-    void this.restartWorker(new TranscriptionCanceledError());
-    this.removeAllListeners();
+    this.restartWorker(new TranscriptionCanceledError());
   }
 
   private clearIdleTimer(): void {
@@ -240,13 +246,17 @@ export class TranscriptionService extends EventEmitter {
     this.idleTimer.unref();
   }
 
-  async transcribe(
-    input: TranscriptionStartInput,
-    options?: { onProgress?: (payload: TranscriptionProgressPayload) => void }
-  ): Promise<NormalizedTranscriptionResult> {
+  async transcribe(input: TranscriptionStartInput, options?: TranscribeOptions): Promise<NormalizedTranscriptionResult> {
     if (this.backgroundRun) {
-      this.cancel();
-      await this.backgroundRun;
+      const wait = { canceled: false };
+      this.foregroundWait = wait;
+      this.cancelCurrent();
+      try {
+        await this.backgroundRun;
+      } finally {
+        if (this.foregroundWait === wait) this.foregroundWait = null;
+      }
+      if (wait.canceled) throw new TranscriptionCanceledError();
     }
     return this.reserve(input, options);
   }
@@ -263,10 +273,7 @@ export class TranscriptionService extends EventEmitter {
     }
   }
 
-  private async reserve(
-    input: TranscriptionStartInput,
-    options?: { onProgress?: (payload: TranscriptionProgressPayload) => void }
-  ): Promise<NormalizedTranscriptionResult> {
+  private async reserve(input: TranscriptionStartInput, options?: TranscribeOptions): Promise<NormalizedTranscriptionResult> {
     if (this.disposed) throw new TranscriptionCanceledError();
     // Reserve the job before awaiting worker startup or model warmup.
     if (this.transcriptionPending) throw new Error(he.transcriptionAlreadyRunning);
@@ -283,35 +290,12 @@ export class TranscriptionService extends EventEmitter {
     }
   }
 
-  private async runTranscription(
-    input: TranscriptionStartInput,
-    options?: { onProgress?: (payload: TranscriptionProgressPayload) => void }
-  ): Promise<NormalizedTranscriptionResult> {
-    if (isMockMode()) {
-      const text = input.sourceType === "youtube"
-        ? `${he.mockTranscriptPrefix} ${input.sourceTitle ?? he.mockTranscriptVideoFallback}`
-        : input.sourceType === "imported_file"
-          ? `${he.mockTranscriptPrefix} ${input.importedFileName ?? he.mockTranscriptFileFallback}`
-          : he.mockTranscriptLocal;
-
-      return {
-        text,
-        language: "he",
-        segments: [
-          {
-            start: 0,
-            end: Math.max(2, Math.round((input.durationMs ?? 2_000) / 1000)),
-            text
-          }
-        ],
-        backend: DEFAULT_TRANSCRIPTION_BACKEND,
-        modelId: DEFAULT_MODEL_ID + "@" + DEFAULT_MODEL_REVISION
-      };
-    }
+  private async runTranscription(input: TranscriptionStartInput, options?: TranscribeOptions): Promise<NormalizedTranscriptionResult> {
+    if (isMockMode()) return mockTranscription(input, this.backend, this.modelId);
 
     const settings = this.settingsService.getSettings();
-    const backend = DEFAULT_TRANSCRIPTION_BACKEND;
-    const modelId = this.dependencies.modelId ?? DEFAULT_MODEL_ID + "@" + DEFAULT_MODEL_REVISION;
+    const backend = this.backend;
+    const modelId = this.modelId;
     console.log("[TranscriptionService] resolved transcription route", {
       sourceType: input.sourceType,
       backend,
@@ -330,24 +314,25 @@ export class TranscriptionService extends EventEmitter {
 
     const startedAt = Date.now();
     const startingProgress: TranscriptionProgressPayload = { stage: "starting" };
-    this.emit("progress", startingProgress);
     options?.onProgress?.(startingProgress);
-    pipelineTrace("engine_ready_wait", "start", { workerRunning: Boolean(this.worker), warming: Boolean(this.prewarmPromise || this.pendingWarmupJob) });
+    pipelineTrace("engine_ready_wait", "start", { workerRunning: Boolean(this.worker), warming: Boolean(this.prewarmPromise) });
     await this.ensureWorker();
-    if (this.prewarmPromise || this.pendingWarmupJob) {
+    if (this.prewarmPromise) {
       try {
         await this.prewarm();
       } catch {
         // Let the real transcription attempt surface any model/runtime error.
       }
+      // A worker that died while warming is replaced rather than handed the job.
+      if (!this.worker) await this.ensureWorker();
     }
     pipelineTrace("engine_ready_wait", "end");
 
     if (this.setupCanceled || this.disposed) throw new TranscriptionCanceledError();
-    const request = {
+    const request: TranscribeRequest = {
       type: "transcribe", jobId: crypto.randomUUID(), wavPath: input.wavPath,
       modelPath: model.filePath, useGpu: settings.metalEnabled,
-      ...(input.sourceType === "call" ? { repairText: true } : {})
+      ...(input.sourceType === "call" || options?.repairText ? { repairText: true } : {})
     };
 
     return new Promise((resolve, reject) => {
@@ -358,7 +343,7 @@ export class TranscriptionService extends EventEmitter {
         }
 
         const timeoutError = new Error(he.transcriptionProcessFailed);
-        void this.restartWorker(timeoutError);
+        this.restartWorker(timeoutError);
       };
       const timeoutMs = buildJobTimeoutMs(input);
 
@@ -376,6 +361,7 @@ export class TranscriptionService extends EventEmitter {
         },
         cancelFallbackTimeout: null,
         cancelRequested: false,
+        allowEmpty: input.sourceType === "call",
         onProgress: options?.onProgress
       };
       this.activeJob = job;
@@ -383,15 +369,25 @@ export class TranscriptionService extends EventEmitter {
       try {
         this.sendWorkerMessage(request);
       } catch (error) {
-        void this.restartWorker(error instanceof Error ? error : new Error(he.transcriptionProcessFailed));
+        this.restartWorker(error instanceof Error ? error : new Error(he.transcriptionProcessFailed));
       }
     });
   }
 
+  /** The user's cancel. While their job waits for a call piece to stop, it is their job that ends. */
   cancel(): boolean {
+    if (this.foregroundWait) {
+      this.foregroundWait.canceled = true;
+      return true;
+    }
+    return this.cancelCurrent();
+  }
+
+  /** Cancels the job holding the worker now. */
+  private cancelCurrent(): boolean {
     if (this.transcriptionPending && !this.activeJob) {
       this.setupCanceled = true;
-      void this.restartWorker(new TranscriptionCanceledError());
+      this.restartWorker(new TranscriptionCanceledError());
       return true;
     }
     if (!this.worker || !this.activeJob) {
@@ -408,8 +404,8 @@ export class TranscriptionService extends EventEmitter {
       jobId: this.activeJob.id
     });
     this.activeJob.cancelFallbackTimeout = setTimeout(() => {
-      void this.restartWorker(new TranscriptionCanceledError());
-    }, 1_500);
+      this.restartWorker(new TranscriptionCanceledError());
+    }, CANCEL_FALLBACK_MS);
     return true;
   }
 
@@ -448,29 +444,7 @@ export class TranscriptionService extends EventEmitter {
     }
 
     await this.ensureWorker();
-
-    if (this.pendingWarmupJob) {
-      await new Promise<void>((resolve, reject) => {
-        const pending = this.pendingWarmupJob;
-        if (!pending) {
-          resolve();
-          return;
-        }
-
-        const originalResolve = pending.resolve;
-        const originalReject = pending.reject;
-        pending.resolve = () => {
-          originalResolve();
-          resolve();
-        };
-        pending.reject = (error) => {
-          originalReject(error);
-          reject(error);
-        };
-      });
-      return;
-    }
-
+    // prewarm() lets one run at a time, so no other warmup can be waiting here.
     if (this.activeJob) {
       return;
     }
@@ -482,8 +456,8 @@ export class TranscriptionService extends EventEmitter {
           return;
         }
 
-        void this.restartWorker(new Error(he.transcriptionProcessFailed));
-      }, 3 * 60_000);
+        this.restartWorker(new Error(he.transcriptionProcessFailed));
+      }, WARMUP_TIMEOUT_MS);
 
       this.pendingWarmupJob = {
         id: jobId,
@@ -501,71 +475,22 @@ export class TranscriptionService extends EventEmitter {
       try {
         this.sendWorkerMessage(request);
       } catch (error) {
-        void this.restartWorker(error instanceof Error ? error : new Error(he.transcriptionProcessFailed));
+        this.restartWorker(error instanceof Error ? error : new Error(he.transcriptionProcessFailed));
       }
     });
   }
 
-  buildTranscriptRecord(input: TranscriptionStartInput, result: NormalizedTranscriptionResult): TranscriptRecord {
-    const settings = this.settingsService.getSettings();
-    const terms = termMatcherForSettings(settings);
-    // A lecture that says "סימן שאלה" means the words, so commands apply to dictation only.
-    const spokenCommands = settings.spokenCommands && input.sourceType === "microphone";
-    const enhanced = enhanceTranscript(result.text, {
-      removeFillerWords: settings.removeFillerWords,
-      terms,
-      spokenCommands
-    });
-
-    const record: TranscriptRecord = {
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-      sourceType: input.sourceType,
-      text: enhanced.text || enhanced.rawText,
-      rawText: enhanced.rawText,
-      paragraphs: enhanced.paragraphs,
-      importedFileName: input.importedFileName ?? null,
-      sourceTitle: input.sourceTitle ?? null,
-      sourceUrl: input.sourceUrl ?? null,
-      possibleTerms: enhanced.possibleTerms,
-      uncertainSegments: enhanced.uncertainSegments,
-      durationMs: input.durationMs ?? null,
-      backend: result.backend,
-      modelId: result.modelId,
-      language: result.language ?? "he",
-      segments: result.segments?.map((segment) => {
-        const text = applyTerms(segment.text, terms);
-        return { ...segment, text: spokenCommands ? resolveSpokenBreaks(applySpokenCommands(text)) : text };
-      }) ?? null
-    };
-
-    if (input.sourceType === "call" && record.segments) {
-      const clean = (text: string) => {
-        const turn = enhanceTranscript(text, { removeFillerWords: settings.removeFillerWords, terms });
-        return (turn.text || turn.rawText).replace(/\s*\n+\s*/g, " ");
-      };
-      Object.assign(record, formatCallText(record.segments, clean), { rawText: formatCallText(result.segments ?? [], (text) => text).text });
-    }
-
-    console.log("[TranscriptionService] built transcript record", {
-      sourceType: record.sourceType,
-      backend: record.backend,
-      modelId: record.modelId
-    });
-
-    return record;
-  }
-
   private async ensureWorker(): Promise<void> {
     if (this.disposed || this.setupCanceled) throw new TranscriptionCanceledError();
-    if (!this.worker || !this.readyPromise) {
+    // The person chose another engine since this worker started (settings allow it only when idle).
+    if (!this.worker || !this.readyPromise || this.workerEngine?.id !== this.chosenEngine.id) {
       this.spawnWorker();
       await this.readyPromise;
       return;
     }
 
     await this.readyPromise;
-    if (Date.now() - this.lastHealthCheckAt < 10_000) {
+    if (Date.now() - this.lastHealthCheckAt < HEALTH_FRESH_MS) {
       return;
     }
 
@@ -579,13 +504,15 @@ export class TranscriptionService extends EventEmitter {
   }
 
   private spawnWorker(): void {
-    this.teardownWorker();
+    // A job that asked to cancel ends as canceled, so a call piece is repeated rather than failed.
+    this.teardownWorker(new Error(he.transcriptionProcessFailed), this.activeJob?.cancelRequested ? new TranscriptionCanceledError() : undefined);
 
-    const workerCommand = resolveWorkerCommand(this.dependencies.binaryPaths);
+    this.workerEngine = this.chosenEngine;
+    const workerBinary = resolveWorkerBinary(this.dependencies.binaryPaths, this.engine.workerDir);
     console.log("[TranscriptionService] spawning transcription worker", {
-      backend: DEFAULT_TRANSCRIPTION_BACKEND
+      backend: this.engine.backend
     });
-    const child = spawn(workerCommand.command, [...workerCommand.baseArgs, "serve"], {
+    const child = spawn(workerBinary, ["serve"], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...buildWorkerEnv(process.env), ...this.dependencies.workerEnv }
     });
@@ -596,8 +523,8 @@ export class TranscriptionService extends EventEmitter {
       this.readyReject = reject;
       this.readyTimeout = setTimeout(() => {
         reject(new Error(he.transcriptionProcessFailed));
-        void this.restartWorker(new Error(he.transcriptionProcessFailed));
-      }, 20_000);
+        this.restartWorker(new Error(he.transcriptionProcessFailed));
+      }, WORKER_READY_TIMEOUT_MS);
     });
 
     this.workerOutput = new ProcessLines(child.stdout);
@@ -605,7 +532,7 @@ export class TranscriptionService extends EventEmitter {
       if (this.worker === child) this.handleWorkerStdout(line);
     });
     child.stdin.on("error", () => {
-      if (this.worker === child) void this.restartWorker(new Error(he.transcriptionProcessFailed));
+      if (this.worker === child) this.restartWorker(new Error(he.transcriptionProcessFailed));
     });
 
     let lastStderrChunk: string | null = null;
@@ -617,9 +544,7 @@ export class TranscriptionService extends EventEmitter {
         lastStderrChunk = "Worker wrote diagnostics to stderr";
       }
 
-      const payload: TranscriptionProgressPayload = { stage: "processing" };
-      this.emit("progress", payload);
-      this.activeJob?.onProgress?.(payload);
+      this.activeJob?.onProgress?.({ stage: "processing" });
     });
 
     child.on("error", (error) => {
@@ -627,41 +552,34 @@ export class TranscriptionService extends EventEmitter {
       console.error("[TranscriptionService] worker process error", {
         kind: error instanceof Error ? error.name : "UnknownError"
       });
-      void this.restartWorker(error instanceof Error ? error : new Error(he.transcriptionProcessFailed));
+      this.restartWorker(error instanceof Error ? error : new Error(he.transcriptionProcessFailed));
     });
 
     child.on("close", (code, signal) => {
       if (this.worker !== child) return;
       const job = this.activeJob;
-      const warmupJob = this.pendingWarmupJob;
-      const initReject = this.readyReject;
-      const healthReject = this.pendingHealth?.reject;
-
       console.error("[TranscriptionService] worker process exited", {
         code,
         signal,
         hadActiveJob: Boolean(job),
         lastStderrChunk
       });
-
-      this.teardownWorker();
-
-      if (initReject) {
-        initReject(new Error(he.transcriptionProcessFailed));
-      }
-      if (healthReject) {
-        healthReject(new Error(he.transcriptionProcessFailed));
-      }
-      if (warmupJob) {
-        warmupJob.reject(new Error(he.transcriptionProcessFailed));
-      }
-      if (job) {
-        job.reject(job.cancelRequested ? new TranscriptionCanceledError() : new Error(he.transcriptionProcessFailed));
-      }
+      // A job that asked to cancel ends as canceled even though the worker died on the way.
+      this.restartWorker(new Error(he.transcriptionProcessFailed), job?.cancelRequested ? new TranscriptionCanceledError() : undefined);
     });
   }
 
-  private teardownWorker(): void {
+  /**
+   * Drops the worker. Whatever was still waiting on it fails with `error` (the job with `jobError`),
+   * so no caller is left waiting on a worker that is gone; the next request starts a new one.
+   */
+  private teardownWorker(error: Error = new Error(he.transcriptionProcessFailed), jobError: Error = error): void {
+    const activeJob = this.activeJob;
+    const warmupJob = this.pendingWarmupJob;
+    const readyReject = this.readyReject;
+    const healthReject = this.pendingHealth?.reject;
+    const live = this.live;
+    this.live = null;
     this.clearIdleTimer();
     this.workerOutput?.close();
     this.workerOutput = null;
@@ -694,28 +612,22 @@ export class TranscriptionService extends EventEmitter {
 
     const child = this.worker;
     this.worker = null;
+    this.workerEngine = null;
     if (child && !child.killed) {
       child.removeAllListeners();
       child.on("error", () => undefined);
-      child.kill("SIGTERM");
-      const killFallback = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-      }, 1_000);
-      killFallback.unref();
-      child.once("close", () => clearTimeout(killFallback));
+      terminateChild(child);
     }
-  }
-
-  private async restartWorker(error: Error): Promise<void> {
-    const activeJob = this.activeJob;
-    const warmupJob = this.pendingWarmupJob;
-    const readyReject = this.readyReject;
-    const healthReject = this.pendingHealth?.reject;
-    this.teardownWorker();
     readyReject?.(error);
     healthReject?.(error);
     warmupJob?.reject(error);
-    activeJob?.reject(error);
+    activeJob?.reject(jobError);
+    live?.lost();
+  }
+
+  /** Drops the worker and fails everything waiting on it; the next request starts a new one. */
+  private restartWorker(error: Error, jobError: Error = error): void {
+    this.teardownWorker(error, jobError);
   }
 
   private async healthCheck(): Promise<void> {
@@ -727,7 +639,7 @@ export class TranscriptionService extends EventEmitter {
       const timeout = setTimeout(() => {
         this.pendingHealth = null;
         reject(new Error(he.transcriptionProcessFailed));
-      }, 4_000);
+      }, HEALTH_TIMEOUT_MS);
 
       this.pendingHealth = {
         resolve: () => {
@@ -765,9 +677,14 @@ export class TranscriptionService extends EventEmitter {
       return;
     }
 
+    if (isLiveWorkerMessage(message)) {
+      this.live?.message(message);
+      return;
+    }
+
     if (message.type === "ready") {
-      if (!isWorkerReadyV2(message) || message.protocolVersion !== 2 || message.backend !== DEFAULT_TRANSCRIPTION_BACKEND) {
-        void this.restartWorker(new Error(he.transcriptionProcessFailed));
+      if (!isSupportedReady(message, this.engine)) {
+        this.restartWorker(new Error(he.transcriptionProcessFailed));
         return;
       }
       console.log("[TranscriptionService] worker ready", {
@@ -794,14 +711,6 @@ export class TranscriptionService extends EventEmitter {
 
     const warmupJob = this.pendingWarmupJob;
 
-    // Backward compatibility: older worker builds may emit a generic error
-    // for unsupported "warmup" requests without including a jobId.
-    if (warmupJob && message.type === "error" && !("jobId" in message)) {
-      clearTimeout(warmupJob.timeout);
-      this.pendingWarmupJob = null;
-      warmupJob.reject(buildWorkerProcessError(message.message));
-      return;
-    }
     if (warmupJob && "jobId" in message && message.jobId === warmupJob.id) {
       // A loading/progress message does not complete the warmup request.
       if (message.type !== "warmed" && message.type !== "error") return;
@@ -809,7 +718,7 @@ export class TranscriptionService extends EventEmitter {
       this.pendingWarmupJob = null;
 
       if (message.type === "error") {
-        warmupJob.reject(buildWorkerProcessError(message.message));
+        warmupJob.reject(workerProcessError(message.message));
         return;
       }
 
@@ -826,27 +735,7 @@ export class TranscriptionService extends EventEmitter {
 
     if (message.type === "progress") {
       job.extendTimeout();
-      const payload: TranscriptionProgressPayload = {
-        stage: message.stage === "processing" ? "processing" : "starting",
-        audioDurationMs:
-          typeof message.audioDurationSec === "number" && Number.isFinite(message.audioDurationSec)
-            ? Math.round(Math.max(0, message.audioDurationSec) * 1000)
-            : null,
-        processedAudioMs:
-          typeof message.processedAudioSec === "number" && Number.isFinite(message.processedAudioSec)
-            ? Math.round(Math.max(0, message.processedAudioSec) * 1000)
-            : null,
-        progressRatio:
-          typeof message.progressRatio === "number" && Number.isFinite(message.progressRatio)
-            ? Math.max(0, Math.min(1, message.progressRatio))
-            : null,
-        setupElapsedMs:
-          message.stage === "processing"
-            ? Math.max(0, Date.now() - job.startedAt)
-            : null
-      };
-      this.emit("progress", payload);
-      job.onProgress?.(payload);
+      job.onProgress?.(progressPayload(message, job.startedAt));
       return;
     }
 
@@ -867,7 +756,7 @@ export class TranscriptionService extends EventEmitter {
     }
 
     if (message.type === "error") {
-      job.reject(buildWorkerProcessError(message.code === "invalid_utf8" ? he.transcriptionInvalidOutput : message.message));
+      job.reject(workerProcessError(message.code === "invalid_utf8" ? he.transcriptionInvalidOutput : message.message));
       return;
     }
 
@@ -876,6 +765,10 @@ export class TranscriptionService extends EventEmitter {
         Object.entries(message.timing ?? {}).filter(([, value]) => typeof value === "number")
       ));
       const normalized = normalizeTranscriptionResult(message);
+      if (!normalized.text && job.allowEmpty) {
+        job.resolve({ ...normalized, segments: [], backend: job.backend, modelId: job.modelId });
+        return;
+      }
       if (!normalized.text) {
         job.reject(new Error(he.transcriptionEmptyResult));
         return;
@@ -889,7 +782,7 @@ export class TranscriptionService extends EventEmitter {
     }
   }
 
-  private sendWorkerMessage(payload: unknown): void {
+  private sendWorkerMessage(payload: WorkerRequest): void {
     if (!this.worker || this.worker.stdin.destroyed) {
       throw new Error(he.transcriptionProcessFailed);
     }

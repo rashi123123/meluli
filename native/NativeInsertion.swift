@@ -19,7 +19,19 @@ struct Target {
     /// Adaptive targets may refuse, retry and paste without a readable field. Research targets stay strict.
     let insertability: String?
 }
+/// The last paste this helper proved, so a flow can swap it for the original text.
+struct Inserted {
+    let app: NSRunningApplication
+    let element: AXUIElement
+    let text: String
+    let start: Int
+    let length: Int
+    let launch: Date?
+    let method: String
+    let insertability: String?
+}
 var captured: Target?
+var lastInserted: Inserted?
 var dispatched = Set<String>()
 func now() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
 func ms(_ start: UInt64) -> Double { Double(now() - start) / 1_000_000 }
@@ -112,7 +124,7 @@ func handle(_ request: [String: Any]) -> [String: Any] {
         guard ["ax_selected_text", "unicode_events", "native_paste"].contains(method) else { return result("not_dispatched", "unsupported_method") }
         // Meluli's own windows are not a new target, so they must not spend the one already held.
         if let excluded = request["excludePid"] as? Int32, NSWorkspace.shared.frontmostApplication?.processIdentifier == excluded { return result("not_dispatched", "own_application") }
-        captured = nil
+        captured = nil; lastInserted = nil
         guard let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier ?? (adaptive ? "" : nil) else { return result("not_dispatched", "target_unavailable") }
         if adaptive {
             let ax = AXUIElementCreateApplication(app.processIdentifier); AXUIElementSetMessagingTimeout(ax, 0.3)
@@ -151,6 +163,34 @@ func handle(_ request: [String: Any]) -> [String: Any] {
             "target": ["pid": app.processIdentifier, "bundleId": bundle, "name": app.localizedName ?? bundle,
                 "role": role, "method": method, "textSha256": sha(text), "selectionStart": range.location, "selectionLength": range.length,
                 "capability": block == nil ? "unvalidated" : "blocked_known_incompatibility", "frameworkVersion": version ?? "not_detected"]])
+    }
+    if type == "reselect" {
+        // Single use, and only over the exact text this helper confirmed. Anything the
+        // user typed since then fails the comparison and leaves the field untouched.
+        guard let last = lastInserted, !last.app.isTerminated, last.launch == last.app.launchDate else { return result("not_dispatched", "stale_target") }
+        lastInserted = nil
+        last.app.activate(options: [])
+        let deadline = Date(timeIntervalSinceNow: 0.75)
+        while NSWorkspace.shared.frontmostApplication?.processIdentifier != last.app.processIdentifier && Date() < deadline { tick() }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == last.app.processIdentifier else { return result("not_dispatched", "target_not_active") }
+        let ax = AXUIElementCreateApplication(last.app.processIdentifier); AXUIElementSetMessagingTimeout(ax, 0.75)
+        let logical = last.method == "native_paste" || last.insertability != nil
+        guard let field = focused(ax), CFEqual(field, last.element),
+              (logical ? logicalText(field) : attr(field, kAXValueAttribute) as? String) == last.text,
+              let cursor = selection(field), cursor.location == last.start + last.length, cursor.length == 0 else { return result("not_dispatched", "field_text_or_selection_changed") }
+        var pasted = CFRange(location: last.start, length: last.length)
+        guard let value = AXValueCreate(.cfRange, &pasted),
+              AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString, value) == .success else { return result("not_dispatched", "selection_not_applied") }
+        let selected = Date(timeIntervalSinceNow: 0.3)
+        var applied = false
+        repeat {
+            if let range = selection(field), range.location == pasted.location, range.length == pasted.length { applied = true } else { tick() }
+        } while !applied && Date() < selected
+        guard applied else { return result("not_dispatched", "selection_not_applied") }
+        let token = UUID().uuidString
+        captured = Target(app: last.app, element: field, window: nil, text: last.text, selection: pasted, token: token,
+            launch: last.launch, method: last.method, blockedReason: nil, insertability: last.insertability == nil ? nil : "verified")
+        return result("captured", "inserted_text_selected", ["targetToken": token])
     }
     guard type == "insert", let operation = request["operationId"] as? String,
           let token = request["targetToken"] as? String, let text = request["text"] as? String,
@@ -214,7 +254,7 @@ func handle(_ request: [String: Any]) -> [String: Any] {
     }
     // One dispatch only. Native-paste callers hold the clipboard lease through
     // acknowledgment; an unknown outcome is quarantined and never resent.
-    dispatched.insert(operation); captured = nil
+    dispatched.insert(operation); captured = nil; lastInserted = nil
     let mutation = now()
     let error: AXError
     if target.method == "unicode_events" || target.method == "native_paste" {
@@ -239,6 +279,8 @@ func handle(_ request: [String: Any]) -> [String: Any] {
             // This bounded observation is not proof of arbitrary future stability.
             if Double(now() - firstObserved!) / 1_000_000 >= 100 {
                 timings["verification"] = ms(verification)
+                lastInserted = Inserted(app: target.app, element: field, text: expected, start: range.location, length: (text as NSString).length,
+                    launch: target.launch, method: target.method, insertability: nil)
                 return result("confirmed", "exact_value_and_cursor_stable", ["mutations": 1, "axError": error.rawValue, "method": target.method])
             }
         } else {
@@ -291,7 +333,7 @@ func insertAdaptive(_ target: Target, _ insertability: String, _ operation: Stri
     guard let down = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
           let up = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else { return result("not_dispatched", "event_construction_failed", ["mutations": 0]) }
     down.flags = .maskCommand; up.flags = .maskCommand
-    dispatched.insert(operation); captured = nil
+    dispatched.insert(operation); captured = nil; lastInserted = nil
     let mutation = now()
     down.postToPid(pid); up.postToPid(pid)
     mark("mutation", ms(mutation))
@@ -309,6 +351,11 @@ func insertAdaptive(_ target: Target, _ insertability: String, _ operation: Stri
             if firstObserved == nil { firstObserved = now(); mark("first_expected_observation", ms(verification)) }
             if Double(now() - firstObserved!) / 1_000_000 >= 100 {
                 mark("verification", ms(verification))
+                // Only an exact landing can be found again; a normalized one has no known span.
+                if exact, let observed = logicalText(field) {
+                    lastInserted = Inserted(app: target.app, element: field, text: observed, start: state.range.location, length: (text as NSString).length,
+                        launch: target.launch, method: target.method, insertability: insertability)
+                }
                 return result("confirmed", exact ? "exact_value_and_cursor_stable" : "normalized_by_target", ["mutations": 1, "method": target.method])
             }
         } else { firstObserved = nil }

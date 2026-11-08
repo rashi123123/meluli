@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { deriveOnboardingDisplayState } from "@shared/onboarding";
-import { getHebrewErrorMessage } from "@shared/error-utils";
+import { getHebrewErrorMessage, isCanceledMessage } from "@shared/error-utils";
 import { he } from "@shared/locale";
 import { useAppState } from "@/hooks/use-app-state";
 import { useRecording } from "@/hooks/use-recording";
@@ -22,7 +22,7 @@ export function OverlayAppProvider({
 
   useEffect(() => {
     const unsubscribe = window.ivritMenuBar.transcription.onFailed(({ message }) => {
-      if (message === he.transcriptionCanceled) {
+      if (isCanceledMessage(message)) {
         return;
       }
 

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="he" dir="rtl" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Dev-only page. No connection leaves this machine: the dev server and its HMR socket are local. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline';
+        connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*;
+        img-src 'self' data: blob:;
+        style-src 'self' 'unsafe-inline';
+        media-src 'self' blob:;
+        font-src 'self' data:;
+        object-src 'none';
+        base-uri 'none';
+        form-action 'none';
+      "
+    />
+    <title>Meluli Lab</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./lab/main.tsx"></script>
+  </body>
+</html>

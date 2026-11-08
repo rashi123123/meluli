@@ -9,6 +9,7 @@ import { he } from "@shared/locale";
 import { CallStatus } from "./CallStatus";
 import { RecordingArea } from "./RecordingArea";
 import { RecentTranscripts } from "./RecentTranscripts";
+import { isMicrophoneBlocked } from "@/lib/microphone-permission";
 
 export function WorkspaceView() {
   const { lastTranscript, onboarding, settings, permissionStatus, trackOnboardingStepViewed, resumeOnboardingFlow } = useAppContext();
@@ -35,7 +36,7 @@ export function WorkspaceView() {
   const workspaceOnboarding = showWorkspaceGuidance || modelLost ? onboarding : null;
   const showFirstTranscriptGuide = onboarding?.phase === "needs_first_transcript" && onboarding.showWorkspaceGuidance
     && !settings?.onboarding.dismissedOptionalActions.includes("recording_shortcut");
-  const microphoneBlocked = Boolean(onboarding?.activated) && (permissionStatus === "denied" || permissionStatus === "restricted");
+  const microphoneBlocked = Boolean(onboarding?.activated) && isMicrophoneBlocked(permissionStatus);
 
   useEffect(() => {
     const stepToTrack = showWorkspaceGuidance ? onboarding?.step : null;
@@ -46,18 +47,19 @@ export function WorkspaceView() {
 
   return <div className="workspace-stack">
     <p className="sr-only" role="status">{modelReadyMessage}</p>
-    {workspaceOnboarding && <OnboardingWorkspaceCard phase={workspaceOnboarding.phase} activeStep={workspaceOnboarding.step} onResumeSetup={() => void resumeOnboardingFlow()} />}
+    {workspaceOnboarding && <OnboardingWorkspaceCard phase={workspaceOnboarding.phase} onResumeSetup={() => void resumeOnboardingFlow()} />}
     {showFirstTranscriptGuide && <FirstTranscriptGuide />}
     {microphoneBlocked && <section className="workspace-setup-status" aria-label={he.microphoneBlockedTitle}>
       <Warning />
       <div className="workspace-setup-copy"><strong role="status">{he.microphoneBlockedTitle}</strong><p>{he.microphoneBlockedBody}</p></div>
       <Button variant="secondary" size="sm" onClick={() => void window.ivritMenuBar.permissions.openMicrophoneSettings()}>{he.openSystemSettings}</Button>
     </section>}
-    <CallStatus />
     <RecordingArea />
+    {/* Call progress and failures sit under the recorder, so they never push the main control down. */}
+    <CallStatus />
     {lastTranscript && showLatest && <div className="latest-result">
       <div className="transcript-tray"><TranscriptDocument key={lastTranscript.id} transcript={lastTranscript} onClose={() => setShowLatest(false)} /></div>
     </div>}
-    <RecentTranscripts />
+    <RecentTranscripts excludeId={lastTranscript && showLatest ? lastTranscript.id : undefined} />
   </div>;
 }

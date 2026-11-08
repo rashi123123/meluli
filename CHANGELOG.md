@@ -1,9 +1,54 @@
 # Changelog
 
-## 0.1.0-preview.3 — 2026-11-04
+## 0.2.0 — 2026-11-08
 
-- Ship the first Developer ID signed, notarized DMG and ZIP from the release workflow. Earlier copies were signed ad hoc, so they cannot update to this one: install it by hand once, and macOS asks for the microphone and Accessibility again. History and settings stay.
+Meluli 2.0. The first release built, signed and notarized by the release workflow. Earlier copies were signed ad hoc, so they cannot update to this one: install it by hand once, and macOS asks for the microphone and Accessibility again. History, settings and saved keys stay.
+
+### Native app
+
+- Run as a native macOS app. Electron is gone from the release: the same services run in the system's JavaScriptCore, and the window is a WebKit view that exists only while it is open. With the window closed the app idles at about 59 MiB in two processes, against 119 MiB in five for 0.1. History, settings, saved keys and permissions carry over, because the app keeps its identifier, data folder and keychain item.
+- Update in place from the same feed, checking that the downloaded app carries this app's signature, identifier and the version the feed names, and keeping the old copy until the new one is in place.
+- Remember the model's verified fingerprint, so a launch no longer re-reads the 834 MB model before Settings answers.
 - Install with Homebrew: `brew install --cask rashi123123/meluli/meluli`.
+
+### Dictation and text
+
+- Write dictation audio to disk while recording. A recording whose transcription failed, or that was interrupted by a quit or crash, waits at the top of History until it is transcribed or deleted. Successful recordings are kept for seven days and can be transcribed again from History; Settings turns that off.
+- Keep mixed Hebrew and English in order when pasting: a Hebrew line that starts with an English word or ends in punctuation gets an invisible right-to-left mark. Terminals and code editors receive the text unchanged.
+- Play a kept dictation from History. Clicking a sentence plays from it and marks it while it plays; speed is 1×, 1.25× or 1.5×. The audio never leaves the Mac.
+- Export a transcript as Markdown, WebVTT or SRT from one Export menu. Subtitles are offered only when the transcript has timings.
+- After a correction that swaps a word or two, offer to add the pair to the dictionary, with undo. Larger rewrites and punctuation changes are not offered.
+- Underline words the transcriber may have misheard with a soft dotted line. Clicking one opens the editor with that word selected. The flags are a text heuristic, not the model's confidence.
+- Write spoken numbers in digits: 23, 10,000, 20%, 15 באוגוסט, 8:20 and 37.2. Numbers up to ten and words like באר שבע stay as words.
+- Give a question a question mark when it opens with a clear question word or ends in ", נכון", and put back a missing comma before אבל and אלא.
+- Fit the pasted copy to the target app: a one-line chat message drops its closing period, and a terminal gets a single line. History keeps the full text.
+- End a sentence at a clear pause and start a paragraph at a long one. Write spoken email and web addresses and phone numbers in their usual form. With spoken commands on, keep only the correction in "בשלוש, סליחה, בארבע", and turn "דבר ראשון… דבר שני…" into a numbered list.
+- Split the built-in terms into packs that switch on and off: AI, development, work tools and product start on, and new design and marketing packs start off.
+- Pick the microphone from its name on Home's recording card.
+- Show blocked permissions in Settings with the same status light as granted ones.
+- Add an experimental streaming engine, "מהיר וקל (ניסיוני)" in Settings → Transcription. It shows the text while you speak and has it ready about 30 ms after you stop, using a third of Whisper's memory, but it makes about 3 percentage points more word errors. Whisper stays the default, and the streaming model downloads only after it is chosen.
+
+### Actions
+
+- Add actions (flows): a chain of language-model and word-count steps that runs on a dictation before it is pasted. Each app belongs to one flow, and the floating window can switch flows, or pick none, while recording. A flow pastes at once with a way back to the original, or shows a preview first: the dictation key pastes the result and Esc pastes the original. A failed step pastes the dictation as spoken. Connections are your own key for OpenRouter, Gemini, Groq or an OpenAI-compatible address, or Ollama on this Mac; each is approved once for its host, and keys are encrypted with a Keychain-held key. Four templates, and a test dictation in the builder that pastes and stores nothing.
+- Add OpenAI and Anthropic connections to flows, and add a key straight from a model step.
+
+### Setup and interface
+
+- Add a paste step to setup that asks for Accessibility and shows the result, warn when the microphone is blocked or silent, and stage the welcome screen.
+- Say in the floating window what state it is in, and keep a hold of the dictation key made while the text is still being written.
+- Ask before anything that cannot be undone: deleting a recording, a transcript or a connection, turning off kept audio, and resetting.
+- Group Settings into dictation, text, general and data, put the model first while it is not ready, merge the two microphone rows, and refuse shortcuts macOS keeps for itself.
+- Rewrite the privacy and about pages to list every network use.
+- Use the system font throughout.
+
+### Fixes
+
+- Fix link imports that sat on "downloading" for minutes: YouTube's HLS manifest is skipped, and a stalled connection gives up after 30 seconds.
+- Stop a false call suggestion, and keep a spoken question mark or colon before a spoken line break.
+- Restart the hold-key helper when its event tap fails, instead of asking for permission again.
+- Report a failed startup or an unreadable page bridge instead of hanging silently.
+- Fix what a full review and a security pass of the app found.
 
 ## 0.1.0-preview.2 — 2026-11-02
 

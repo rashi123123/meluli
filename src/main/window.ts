@@ -1,17 +1,13 @@
-import { app, BrowserWindow, nativeTheme, screen } from "electron";
+import { BrowserWindow, nativeTheme, screen } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "@shared/constants";
+import { WINDOW_ROLE_QUERY_KEY } from "@shared/window-role";
 import { createAppIcon } from "./app-icon";
 import { getCurrentTheme, getWindowBackground } from "./theme";
-import {
-  canEnableSandboxedPreload,
-  createRendererSecurityEnvironment,
-  isTrustedRendererUrl,
-  RENDERER_ENTRY_PATH
-} from "./security";
-import type { OverlayPosition, OverlaySize } from "@shared/types";
-import type { AppWindowRole } from "./runtime";
+import { appRendererSecurity, isTrustedRendererUrl, RENDERER_ENTRY_PATH } from "./security";
+import type { MainView, OverlayPosition, OverlaySize } from "@shared/types";
+import type { AppWindowRole } from "@shared/window-role";
 import { clampOverlayPosition, presetOverlayPosition } from "./overlay-position";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -26,33 +22,21 @@ const CALL_WINDOW_SIZES: Record<CallWindowMode, { width: number; height: number 
   recording: { width: 240, height: 60 }
 };
 
-function getRendererSecurityEnvironment() {
-  return createRendererSecurityEnvironment({
-    isPackaged: app.isPackaged,
-    rawDevServerUrl: process.env.ELECTRON_RENDERER_URL ?? null
-  });
-}
-
-function loadRendererWindow(window: BrowserWindow, mode: AppWindowRole): void {
-  const environment = getRendererSecurityEnvironment();
-  if (!app.isPackaged && environment.devServerUrl) {
+function loadRendererWindow(window: BrowserWindow, mode: AppWindowRole, view: MainView | null = null): void {
+  const environment = appRendererSecurity();
+  const query: Record<string, string> = { [WINDOW_ROLE_QUERY_KEY]: mode, theme: getCurrentTheme(), ...(view ? { view } : {}) };
+  if (environment.devServerUrl) {
     const url = new URL(environment.devServerUrl.toString());
-    url.searchParams.set("window", mode);
-    url.searchParams.set("theme", getCurrentTheme());
+    for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
     void window.loadURL(url.toString());
     return;
   }
 
-  void window.loadFile(RENDERER_ENTRY_PATH, {
-    query: {
-      window: mode,
-      theme: getCurrentTheme()
-    }
-  });
+  void window.loadFile(RENDERER_ENTRY_PATH, { query });
 }
 
 function applyWindowSecurity(window: BrowserWindow, role: AppWindowRole): void {
-  const environment = getRendererSecurityEnvironment();
+  const environment = appRendererSecurity();
 
   window.webContents.setWindowOpenHandler(() => ({
     action: "deny"
@@ -70,7 +54,8 @@ function applyWindowSecurity(window: BrowserWindow, role: AppWindowRole): void {
 function createWindowPreferences() {
   return {
     preload: join(__dirname, "../preload/index.cjs"),
-    sandbox: canEnableSandboxedPreload(),
+    // The preload uses only contextBridge and ipcRenderer.
+    sandbox: true,
     contextIsolation: true,
     nodeIntegration: false,
     webSecurity: true,
@@ -80,7 +65,8 @@ function createWindowPreferences() {
   } as const;
 }
 
-export function createMainWindow(): BrowserWindow {
+/** `view` opens a recreated window on that screen, since a navigation sent before it loads is lost. */
+export function createMainWindow(view: MainView | null = null): BrowserWindow {
   const window = new BrowserWindow({
     width: DEFAULT_WINDOW_SIZE.width,
     height: DEFAULT_WINDOW_SIZE.height,
@@ -113,7 +99,8 @@ export function createMainWindow(): BrowserWindow {
       input.key.toLowerCase() === "w"
     ) {
       event.preventDefault();
-      window.hide();
+      // Through the close handler, so Cmd+W hides the same way as the close button.
+      window.close();
     }
   });
 
@@ -121,14 +108,19 @@ export function createMainWindow(): BrowserWindow {
     window.show();
   });
 
-  loadRendererWindow(window, "main");
+  loadRendererWindow(window, "main", view);
 
   return window;
 }
 
-export function createOverlayWindow(): BrowserWindow {
+/** A borderless panel that floats over every space, full-screen apps included. */
+function createFloatingPanel(
+  role: "overlay" | "call",
+  size: { width: number; height: number },
+  behaviour: { focusable: boolean; movable: boolean }
+): BrowserWindow {
   const window = new BrowserWindow({
-    ...OVERLAY_WINDOW_SIZES.compact,
+    ...size,
     show: false,
     type: "panel",
     frame: false,
@@ -140,8 +132,7 @@ export function createOverlayWindow(): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: true,
     hasShadow: false,
-    focusable: true,
-    movable: true,
+    ...behaviour,
     roundedCorners: false,
     acceptFirstMouse: true,
     hiddenInMissionControl: true,
@@ -149,48 +140,23 @@ export function createOverlayWindow(): BrowserWindow {
     webPreferences: createWindowPreferences()
   });
 
-  applyWindowSecurity(window, "overlay");
-
+  applyWindowSecurity(window, role);
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   window.setAlwaysOnTop(true, "floating");
+  return window;
+}
+
+export function createOverlayWindow(): BrowserWindow {
+  const window = createFloatingPanel("overlay", OVERLAY_WINDOW_SIZES.compact, { focusable: true, movable: true });
   window.setFullScreenable(false);
-
   loadRendererWindow(window, "overlay");
-
   return window;
 }
 
 /** Never takes keyboard focus, so clicking it leaves the user typing in the call's chat. */
 export function createCallWindow(): BrowserWindow {
-  const window = new BrowserWindow({
-    ...CALL_WINDOW_SIZES.suggestion,
-    show: false,
-    type: "panel",
-    frame: false,
-    transparent: true,
-    backgroundColor: "#00000000",
-    resizable: false,
-    minimizable: false,
-    maximizable: false,
-    fullscreenable: false,
-    skipTaskbar: true,
-    hasShadow: false,
-    focusable: false,
-    movable: false,
-    roundedCorners: false,
-    acceptFirstMouse: true,
-    hiddenInMissionControl: true,
-    icon: createAppIcon(),
-    webPreferences: createWindowPreferences()
-  });
-
-  applyWindowSecurity(window, "call");
-
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  window.setAlwaysOnTop(true, "floating");
-
+  const window = createFloatingPanel("call", CALL_WINDOW_SIZES.suggestion, { focusable: false, movable: false });
   loadRendererWindow(window, "call");
-
   return window;
 }
 
@@ -227,10 +193,9 @@ export function positionOverlayWindow(window: BrowserWindow, preset: OverlayPosi
     return;
   }
   if (!positionedOverlays.has(window)) {
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    const x = display.workArea.x + (display.workArea.width - bounds.width) / 2;
-    const y = display.workArea.y + display.workArea.height - bounds.height - 24;
-    const position = clampOverlayPosition({ ...bounds, x, y }, display.workArea);
+    // First show in "last" mode: there is no last place yet, so it starts where the "bottom" preset puts it.
+    const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const position = clampOverlayPosition({ ...bounds, ...presetOverlayPosition("bottom", bounds, workArea) }, workArea);
     window.setPosition(position.x, position.y, false);
     positionedOverlays.add(window);
     return;

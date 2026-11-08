@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Stop } from "@/components/icons";
+import { RecordButton } from "@/components/RecordButton";
 import { Button } from "@/components/ui/button";
 import { formatDurationMs } from "@/lib/format";
 import { applyTheme } from "@/lib/theme";
+import { usePointerFeedback } from "@/components/usePointerFeedback";
 import { he } from "@shared/locale";
 import type { CallAppKind, CallState } from "@shared/types";
 
@@ -18,12 +19,13 @@ function Elapsed({ startedAt }: { startedAt: number }) {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  return <span className="hud-time">{formatDurationMs(Math.max(0, now - startedAt))}</span>;
+  return <span className="hud-time" dir="ltr" aria-hidden="true">{formatDurationMs(Math.max(0, now - startedAt))}</span>;
 }
 
 /** The only place a call recording begins, and the place it can always be stopped. */
 export default function CallApp() {
   const [call, setCall] = useState<CallState | null>(null);
+  usePointerFeedback();
 
   useEffect(() => {
     void window.ivritMenuBar.app.state().then((state) => setCall(state.call ?? null));
@@ -42,8 +44,7 @@ export default function CallApp() {
         <div className="hud-row">
           <span className="hud-caption" role="status">{he.callRecording}</span>
           <Elapsed startedAt={call.recording.startedAt} />
-          <Button type="button" variant="plain" className="capsule-round" aria-label={he.callStop} title={he.callStop}
-            onClick={() => void window.ivritMenuBar.call.stop()}><Stop /></Button>
+          <div className="capsule app-no-drag" data-quiet="true"><RecordButton mode="stop" label={he.callStop} onClick={() => void window.ivritMenuBar.call.stop()} /></div>
         </div>
       </section>
     </main>;

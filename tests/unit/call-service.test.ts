@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppStateSnapshot, CallState, TranscriptSegment } from "../../src/shared/types";
 import { CallService, MAX_CALL_MS, type CallServiceDependencies } from "../../src/main/services/calls/call.service";
 import type { CallAudioStopped } from "../../src/main/services/calls/call-audio.client";
-import { WAV_HEADER_BYTES } from "../../src/main/services/calls/call-pieces";
+import { WAV_HEADER_BYTES } from "../../src/main/services/pcm-wav";
+import { atomicTemporaryPath } from "../../src/main/services/system-probes";
 
 class FakeRuntime extends EventEmitter {
   state = { status: "idle" } as AppStateSnapshot;
@@ -35,14 +36,19 @@ class FakeAudio {
   dispose = vi.fn();
   directory: string | null = null;
   startResult = true;
+  private recording = false;
   async start(directory: string) {
     this.directory = directory;
+    this.recording = true;
     return this.startResult;
   }
   stopped: CallAudioStopped | null = { micOffsetMs: 0, systemOffsetMs: 0, systemHeard: true };
   tracks: Partial<Record<"mic" | "system", Buffer>> = { mic: speechWav(), system: speechWav() };
+  /** Like the helper, writes the tracks once per recording: a second stop (say, the service's own tick after a test
+   * already stopped it and another copy took the folder over) writes nothing. */
   async stop() {
-    for (const [track, audio] of Object.entries(this.tracks)) await writeFile(join(this.directory!, `${track}.wav`), audio);
+    if (this.recording) for (const [track, audio] of Object.entries(this.tracks)) await writeFile(join(this.directory!, `${track}.wav`), audio);
+    this.recording = false;
     return this.stopped;
   }
 }
@@ -100,6 +106,73 @@ describe("CallService", () => {
     expect(callState().suggestion).toBe("zoom");
     expect(callState().recording).toBeNull();
     expect(audio.directory).toBeNull();
+  });
+
+  describe("Meluli's own microphone", () => {
+    const webKit = [{ id: "com.apple.WebKit.GPU", input: true, output: false }];
+
+    it("does not read its own dictation, heard through WebKit, as a Safari call", async () => {
+      await service.initialize();
+      runtime.updateState({ status: "recording" });
+      audio.onApps!(webKit);
+      clock += 4_000;
+      audio.onApps!(webKit);
+      expect(callState().suggestion).toBeNull();
+    });
+
+    it("does not count WebKit input that began a moment before main heard of the recording", async () => {
+      await service.initialize();
+      audio.onApps!(webKit);
+      runtime.updateState({ status: "recording" });
+      clock += 4_000;
+      audio.onApps!(webKit);
+      expect(callState().suggestion).toBeNull();
+    });
+
+    it("still offers a Safari call when Meluli is not recording", async () => {
+      await service.initialize();
+      audio.onApps!(webKit);
+      clock += 4_000;
+      audio.onApps!(webKit);
+      expect(callState().suggestion).toBe("browser");
+    });
+
+    it("still offers a call in an app with its own process while dictating", async () => {
+      await service.initialize();
+      runtime.updateState({ status: "recording" });
+      const chrome = [{ id: "com.google.Chrome.helper", input: true, output: true }];
+      audio.onApps!(chrome);
+      clock += 4_000;
+      audio.onApps!(chrome);
+      expect(callState().suggestion).toBe("browser");
+    });
+
+    it("keeps recording a Safari call while Meluli is in front", async () => {
+      let meluliInFront = false;
+      service = build({ ownsMicrophone: () => meluliInFront });
+      await service.initialize();
+      const safari = [{ id: "com.apple.WebKit.GPU", input: true, output: true }];
+      audio.onApps!(safari);
+      clock += 4_000;
+      audio.onApps!(safari);
+      await service.accept();
+      expect(callState().recording?.app).toBe("browser");
+      meluliInFront = true;
+      for (let minute = 0; minute < 6; minute += 1) {
+        clock += 60_000;
+        audio.onApps!(safari);
+      }
+      expect(callState().recording?.app).toBe("browser");
+    });
+
+    it("asks the owner check when one is given", async () => {
+      service = build({ ownsMicrophone: () => true });
+      await service.initialize();
+      audio.onApps!(webKit);
+      clock += 4_000;
+      audio.onApps!(webKit);
+      expect(callState().suggestion).toBeNull();
+    });
   });
 
   it("does not run below macOS 14.2", async () => {
@@ -223,7 +296,7 @@ describe("CallService", () => {
 
   it("does not carry a start fault over to the next call", async () => {
     const start = audio.start.bind(audio);
-    audio.start = async directory => { audio.onFault!("microphone"); audio.start = start; return false; };
+    audio.start = async () => { audio.onFault!("microphone"); audio.start = start; return false; };
     await startCall();
     expect(callState().recording).toBeNull();
     clock += 60 * 60 * 1000;
@@ -355,9 +428,9 @@ describe("CallService", () => {
   });
 
   describe("when the record cannot be written", () => {
-    /** A folder in the way of the temporary file fails every save until it is removed. */
-    const blockSaves = (directory: string) => mkdir(join(directory, "call.json.tmp"), { recursive: true });
-    const unblockSaves = (directory: string) => rmdir(join(directory, "call.json.tmp"));
+    /** A folder where writeJsonAtomic stages call.json fails every save until it is removed. */
+    const blockSaves = (directory: string) => mkdir(atomicTemporaryPath(join(directory, "call.json")), { recursive: true });
+    const unblockSaves = (directory: string) => rmdir(atomicTemporaryPath(join(directory, "call.json")));
 
     it("keeps a finished call's audio and offers a retry that still has its offsets", async () => {
       const records: { micOffsetMs: number; partial: boolean }[] = [];

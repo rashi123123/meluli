@@ -1,3 +1,4 @@
+import { BrowserWindow, Notification } from "electron";
 import { he } from "@shared/locale";
 import type { AppSettings, TranscriptRecord } from "@shared/types";
 
@@ -32,4 +33,17 @@ export function buildTranscriptCompletionNotification(transcript: Pick<Transcrip
     title: he.completionNotificationTitle,
     body: subject ? `${he.completionNotificationBody} ${subject}` : he.completionNotificationBody
   };
+}
+
+/** Shows the system notification for a long transcript finished while Meluli was in the background. */
+export function notifyTranscriptCompletion(
+  settings: Pick<AppSettings, "completionNotificationsEnabled">,
+  transcript: TranscriptRecord,
+  onClick: () => void
+): void {
+  if (!Notification.isSupported()) return;
+  if (!shouldNotifyTranscriptCompletion({ settings, transcript, appFocused: BrowserWindow.getFocusedWindow() !== null })) return;
+  const notification = new Notification(buildTranscriptCompletionNotification(transcript));
+  notification.on("click", onClick);
+  notification.show();
 }

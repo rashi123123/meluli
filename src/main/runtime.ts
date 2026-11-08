@@ -3,8 +3,31 @@ import type { BrowserWindow, WebContents } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
 import type { AppStateSnapshot, MainView, OverlaySession, RecordingHoldPhase } from "@shared/types";
 
-export type AppWindowRole = "main" | "overlay" | "call";
-const TRAY_READY_EVENT = "tray-ready";
+import type { AppWindowRole } from "@shared/window-role";
+
+/** Emitted on the runtime with the new snapshot after every state change. Not a renderer channel. */
+export const RUNTIME_STATE_EVENT = "state";
+/** Emitted on the runtime when a transcript is ready, so the tray can show it. Not a renderer channel. */
+export const TRAY_READY_EVENT = "tray-ready";
+export const RECORDING_BUSY_MESSAGE = "כבר יש הקלטה או עיבוד פעילים.";
+
+type Status = AppStateSnapshot["status"];
+/** Nothing is recording or being processed; an error left on screen does not hold anything up. */
+export const isFree = (status: Status): boolean => status === "idle" || status === "error";
+/** A microphone recording is open, running or paused. */
+export const isRecording = (status: Status): boolean => status === "recording" || status === "paused";
+/** A job is downloading or being transcribed. */
+export const isWorking = (status: Status): boolean => status === "processing" || status === "youtube_downloading";
+/** The user's own dictation is still in progress: recording, or the microphone audio is being transcribed. */
+export const isDictating = (status: Status, source: AppStateSnapshot["activeSourceType"]): boolean =>
+  isRecording(status) || (status === "processing" && source === "microphone");
+/** Nothing runs and no dictation session is open, so the app the user is in may become the paste target. */
+export const mayRetarget = (state: AppStateSnapshot): boolean => isFree(state.status) && !state.overlaySession;
+
+/** A new job may start only when no window holds the microphone and nothing is recording or processing. */
+export function assertNothingRunning(runtime: Pick<AppRuntime, "hasRecordingOwner" | "getState">): void {
+  if (runtime.hasRecordingOwner() || !isFree(runtime.getState().status)) throw new Error(RECORDING_BUSY_MESSAGE);
+}
 
 export class AppRuntime extends EventEmitter {
   private state: AppStateSnapshot = {
@@ -34,8 +57,8 @@ export class AppRuntime extends EventEmitter {
   claimRecording(senderId: number): void {
     const { status } = this.state;
     if (status === "paused" && this.recordingOwner === senderId) return;
-    if (this.recordingOwner !== null || (status !== "idle" && status !== "error")) {
-      throw new Error("כבר יש הקלטה או עיבוד פעילים.");
+    if (this.recordingOwner !== null || !isFree(status)) {
+      throw new Error(RECORDING_BUSY_MESSAGE);
     }
     this.recordingOwner = senderId;
   }
@@ -72,6 +95,10 @@ export class AppRuntime extends EventEmitter {
   releaseRecording(senderId: number): void {
     this.assertRecordingOwner(senderId);
     this.recordingOwner = null;
+  }
+
+  isRecordingOwner(senderId: number): boolean {
+    return this.recordingOwner === senderId;
   }
 
   hasRecordingOwner(): boolean {
@@ -228,7 +255,7 @@ export class AppRuntime extends EventEmitter {
   }
 
   private commitState(): void {
-    this.emit("state", this.state);
+    this.emit(RUNTIME_STATE_EVENT, this.state);
     this.send(IPC_CHANNELS.appState, this.state);
   }
 
@@ -258,7 +285,7 @@ export class AppRuntime extends EventEmitter {
 
   setHeldRecording(reason: "failed" | "canceled" | null): void {
     this.heldRecording = reason;
-    this.emit("state", this.state);
+    this.emit(RUNTIME_STATE_EVENT, this.state);
   }
 
   requestRecordingUndo(): void {

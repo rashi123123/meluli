@@ -1,6 +1,7 @@
-import { Suspense, lazy, useEffect, useRef } from "react";
+import { MilestoneScope } from "./components/milestone-sweep";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import appIcon from "@/assets/app-icon.png";
-import { BookClosed, ClockCounterClockwise, GearSix, House } from "@/components/icons";
+import { BookClosed, ClockCounterClockwise, GearSix, House, Wand } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { LoadingMark } from "@/components/LoadingMark";
 import { SearchInput } from "@/components/SearchInput";
@@ -15,6 +16,7 @@ import type { MainView } from "@shared/types";
 
 const HistoryPanel = lazy(() => import("@/features/history/HistoryPanel").then(m => ({ default: m.HistoryPanel })));
 const DictionaryView = lazy(() => import("@/features/dictionary/DictionaryView").then(m => ({ default: m.DictionaryView })));
+const FlowsView = lazy(() => import("@/features/flows/FlowsView").then(m => ({ default: m.FlowsView })));
 const SettingsView = lazy(() => import("@/features/settings/SettingsView").then(m => ({ default: m.SettingsView })));
 const InfoPage = lazy(() => import("@/features/info/InfoPage").then(m => ({ default: m.InfoPage })));
 
@@ -27,13 +29,23 @@ const isInfoView = (view: MainView): view is keyof typeof INFO_PAGES => view in 
 
 export default function App() {
   usePointerFeedback();
-  const { loading, loadFailed, settings, onboarding, activeView, setActiveView, appState, errorMessage, setErrorMessage, lastTranscript, transcripts } = useAppContext();
+  const { loading, loadFailed, settings, onboarding, accessibilityPermissionStatus, activeView, setActiveView, appState, errorMessage, setErrorMessage, lastTranscript, transcripts } = useAppContext();
   const showOnboarding = Boolean(onboarding?.showFlow);
   const heading = useRef<HTMLHeadingElement>(null);
   const mainContent = useRef<HTMLElement>(null);
   const homeButton = useRef<HTMLButtonElement>(null);
   const previousView = useRef(`${showOnboarding}:${activeView}`);
   const returnFocus = useRef<HTMLElement | null>(null);
+  // ⌘C copies without a button to say so, so a short notice does.
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  // Search belongs to History; a query left behind would quietly filter Home's recent list.
+  const { searchQuery, setSearchQuery } = transcripts;
+  useEffect(() => { if (activeView !== "history" && searchQuery) setSearchQuery(""); }, [activeView, searchQuery, setSearchQuery]);
   const navigate = (view: MainView) => {
     setActiveView(view);
   };
@@ -51,6 +63,9 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && activeView !== "workspace" && !showOnboarding && !event.defaultPrevented) {
+        // Escape inside a field belongs to the field, so a half-typed entry is never thrown away.
+        const field = event.target;
+        if (field instanceof HTMLElement && (field.matches("input, textarea, select") || field.isContentEditable)) return;
         event.preventDefault();
         if (isInfoView(activeView)) {
           setActiveView("settings");
@@ -64,7 +79,8 @@ export default function App() {
         });
         return;
       }
-      if (!event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return;
+      // A field that took the key, such as a shortcut being recorded, keeps it.
+      if (!event.metaKey || event.altKey || event.ctrlKey || event.shiftKey || event.defaultPrevented) return;
       // event.code, so these keep working on a Hebrew keyboard layout.
       if (event.code === "Comma" && !showOnboarding) {
         event.preventDefault();
@@ -73,7 +89,7 @@ export default function App() {
       }
       if (event.code === "KeyF" && !showOnboarding) {
         event.preventDefault();
-        if (activeView !== "workspace" && activeView !== "history") setActiveView("history");
+        if (activeView !== "history") setActiveView("history");
         requestAnimationFrame(() => document.getElementById("history-search")?.focus());
         return;
       }
@@ -84,44 +100,49 @@ export default function App() {
       const text = activeView === "history" ? transcripts.selectedTranscript?.text : activeView === "workspace" ? lastTranscript?.text : null;
       if (!text) return;
       event.preventDefault();
-      void window.ivritMenuBar.clipboard.writeText(text).catch(() => setErrorMessage("ההעתקה לא הצליחה. אפשר לבחור את הטקסט ולהעתיק ידנית."));
+      void window.ivritMenuBar.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setErrorMessage("ההעתקה לא הצליחה. אפשר לבחור את הטקסט ולהעתיק ידנית."));
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeView, showOnboarding, lastTranscript, transcripts.selectedTranscript, setActiveView, setErrorMessage]);
 
-  const title = showOnboarding ? "הגדרה ראשונית" : activeView === "workspace" ? "בית" : activeView === "history" ? he.history : activeView === "dictionary" ? he.dictionaryTitle : activeView === "settings" ? he.settings : INFO_PAGES[activeView].title;
+  const title = showOnboarding ? "הגדרה ראשונית" : activeView === "workspace" ? "בית" : activeView === "history" ? he.history : activeView === "dictionary" ? he.dictionaryTitle : activeView === "flows" ? "פעולות" : activeView === "settings" ? he.settings : INFO_PAGES[activeView].title;
   const operationStatus = appState.status === "recording" ? he.recording : appState.status === "paused" ? he.paused : appState.status === "processing" ? he.visualizerThinking : appState.status === "youtube_downloading" ? he.visualizerDownloading : "";
   const modelState = settings?.modelState.downloadState;
   const modelReady = modelState === "ready";
   const modelLabel = modelState === "downloading" ? "מורידים מנוע" : "הגדרת מנוע";
   const settingsArea = activeView === "settings" || isInfoView(activeView);
-  const setupSteps = ["היכרות", "בדיקת המיקרופון", "מנוע התמלול"];
+  // Paste already allowed before setup is skipped, so the bar only counts what is still ahead.
+  const progressIndex = onboarding?.progressIndex ?? 1;
+  const setupSteps = accessibilityPermissionStatus === "granted" && progressIndex < 3
+    ? [he.onboardingSetupStepWelcome, he.onboardingSetupStepMicrophone]
+    : [he.onboardingSetupStepWelcome, he.onboardingSetupStepMicrophone, he.onboardingSetupStepPaste];
 
   useEffect(() => { document.title = `${title} — מלולי`; }, [title]);
+  // Until the app has loaded, every page would show the same loading or failure surface.
+  const navLocked = loading || loadFailed;
 
-  return <main className={`desktop-app instrument-app${showOnboarding ? " is-onboarding" : ""}`} onFocusCapture={(event) => {
+  return <MilestoneScope><main className={`desktop-app instrument-app${showOnboarding ? " is-onboarding" : ""}`} onFocusCapture={(event) => {
     if (activeView === "workspace" && !showOnboarding && event.target instanceof HTMLElement && event.target.matches("button, input, select, textarea, a")) returnFocus.current = event.target;
   }}>
     <a className="skip-link" href="#main-content" onClick={(event) => { event.preventDefault(); document.getElementById("main-content")?.focus(); }}>דילוג לתוכן הראשי</a>
     {showOnboarding ? <header className="setup-window-header app-drag">
       <div className="instrument-header"><img className="sidebar-brand-mark" src={appIcon} alt="" /><h1>מלולי</h1></div>
-      <div className="onboarding-progress" role="group" aria-label={he.onboardingStepOfTotal.replace("{current}", String(onboarding?.progressIndex ?? 1)).replace("{total}", String(setupSteps.length))}>
-        <span className="setup-progress-label">{setupSteps[(onboarding?.progressIndex ?? 1) - 1]}</span>
-        <div className="setup-progress-segments" aria-hidden="true">{setupSteps.map((step, index) => <span key={step} data-reached={index < (onboarding?.progressIndex ?? 1)} />)}</div>
-        <span className="setup-progress-count" dir="ltr" aria-hidden="true">{onboarding?.progressIndex ?? 1}<span>/</span>{setupSteps.length}</span>
+      <div className="onboarding-progress" role="group" aria-label={`${setupSteps[Math.min(progressIndex, setupSteps.length) - 1]} · ${he.onboardingStepOfTotal.replace("{current}", String(Math.min(progressIndex, setupSteps.length))).replace("{total}", String(setupSteps.length))}`}>
+        <div className="setup-progress-segments" aria-hidden="true">{setupSteps.map((step, index) => <span key={step} data-reached={index < progressIndex} />)}</div>
       </div>
     </header> : <aside className="desktop-sidebar">
       <header className="instrument-header app-drag"><img className="sidebar-brand-mark" src={appIcon} alt="" /><h1>מלולי</h1></header>
       <nav aria-label={he.mainNavigation} className="desktop-navigation">
-        <Button ref={homeButton} variant="ghost" data-motion="instant" aria-label={operationStatus ? `בית — ${operationStatus}` : "בית"} aria-current={activeView === "workspace" ? "page" : undefined} onClick={() => navigate("workspace")}>
+        <Button ref={homeButton} variant="ghost" data-motion="instant" disabled={navLocked} aria-label={operationStatus ? `בית — ${operationStatus}` : "בית"} aria-current={activeView === "workspace" ? "page" : undefined} onClick={() => navigate("workspace")}>
           <span className="nav-tile"><House /></span><span className="nav-label">בית</span>
           {operationStatus && <><span className="nav-operation-status">{operationStatus}</span><span className="nav-operation-dot" /></>}
         </Button>
-        <Button variant="ghost" data-motion="instant" aria-label={he.history} aria-current={activeView === "history" ? "page" : undefined} onClick={() => navigate("history")}><span className="nav-tile"><ClockCounterClockwise /></span><span className="nav-label">{he.history}</span></Button>
-        <Button variant="ghost" data-motion="instant" aria-label={he.dictionaryTitle} aria-current={activeView === "dictionary" ? "page" : undefined} onClick={() => navigate("dictionary")}><span className="nav-tile"><BookClosed /></span><span className="nav-label">{he.dictionaryTitle}</span></Button>
+        <Button variant="ghost" data-motion="instant" disabled={navLocked} aria-label={he.history} aria-current={activeView === "history" ? "page" : undefined} onClick={() => navigate("history")}><span className="nav-tile"><ClockCounterClockwise /></span><span className="nav-label">{he.history}</span></Button>
+        <Button variant="ghost" data-motion="instant" disabled={navLocked} aria-label={he.dictionaryTitle} aria-current={activeView === "dictionary" ? "page" : undefined} onClick={() => navigate("dictionary")}><span className="nav-tile"><BookClosed /></span><span className="nav-label">{he.dictionaryTitle}</span></Button>
+        <Button variant="ghost" data-motion="instant" disabled={navLocked} aria-label="פעולות" aria-current={activeView === "flows" ? "page" : undefined} onClick={() => navigate("flows")}><span className="nav-tile"><Wand /></span><span className="nav-label">פעולות</span></Button>
       </nav>
-      {!loading && <footer className="sidebar-footer">
+      {!loading && !loadFailed && <footer className="sidebar-footer">
         <Button variant="ghost" data-motion="instant" aria-label={he.settings} aria-current={settingsArea ? "page" : undefined} onClick={() => navigate("settings")}><span className="nav-tile"><GearSix /></span><span className="nav-label">{he.settings}</span></Button>
         {!modelReady && <button type="button" className="model-status" aria-label={`${modelLabel} — ניהול מנוע התמלול`} onClick={() => navigate("settings")}>
           <span className="led" data-tone={modelState === "downloading" ? undefined : "alert"} />
@@ -132,8 +153,9 @@ export default function App() {
     <div className="desktop-main">
       {!showOnboarding && <header className="desktop-toolbar app-drag">
         <h2 ref={heading} className="sr-only" tabIndex={-1}>{title}</h2>
-        {!loading && (activeView === "workspace" || activeView === "history") && <div className="toolbar-tools app-no-drag">
-          <div className="toolbar-search"><SearchInput value={transcripts.searchQuery} onChange={transcripts.setSearchQuery} placeholder={he.searchPlaceholder} inputId="history-search" /></div>
+        {/* Search waits for something to search; a typed query keeps it, even with no matches. */}
+        {!loading && !loadFailed && activeView === "history" && (transcripts.latestTranscript || transcripts.searchQuery) && <div className="toolbar-tools app-no-drag">
+          <div className="toolbar-search"><SearchInput value={transcripts.searchQuery} onChange={transcripts.setSearchQuery} placeholder={he.searchPlaceholder} inputId="history-search" shortcut="⌘F" keyShortcuts="Meta+F" /></div>
         </div>}
       </header>}
       <p className="sr-only" role="status">{activeView !== "workspace" && !showOnboarding ? operationStatus : ""}</p>
@@ -145,6 +167,7 @@ export default function App() {
           <Suspense fallback={<div className="loading-surface" role="status"><LoadingMark /></div>}>
             {activeView === "history" && <HistoryPanel />}
             {activeView === "dictionary" && <DictionaryView />}
+            {activeView === "flows" && <FlowsView />}
             {activeView === "settings" && <div className="settings-page"><SettingsView /><footer className="settings-links"><Button size="sm" variant="ghost" onClick={() => navigate("about")}>{he.about}</Button><Button size="sm" variant="ghost" onClick={() => navigate("terms")}>{he.termsOfUse}</Button><Button size="sm" variant="ghost" onClick={() => navigate("privacy")}>{he.privacy}</Button></footer></div>}
             {isInfoView(activeView) && <InfoPage key={activeView} {...INFO_PAGES[activeView]} onBack={() => navigate("settings")} showVersion={activeView === "about"}>
               {activeView === "about" && <>
@@ -155,7 +178,8 @@ export default function App() {
           </Suspense>
         </>}
       </section>
+      {!errorMessage && <NoticeToast message={copied ? he.transcriptCopied : ""} onDismiss={() => setCopied(false)} />}
       <NoticeToast message={errorMessage ?? ""} onDismiss={() => setErrorMessage(null)} urgent />
     </div>
-  </main>;
+  </main></MilestoneScope>;
 }

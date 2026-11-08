@@ -1,6 +1,6 @@
-export const SAMPLE_RATE = 16_000;
+import { WORKER_SAMPLE_RATE as SAMPLE_RATE } from "../pcm-wav";
+
 export const FRAME_MS = 30;
-export const WAV_HEADER_BYTES = 44;
 const FRAME_SAMPLES = (SAMPLE_RATE * FRAME_MS) / 1000;
 const MIN_THRESHOLD = 0.006;
 /** Anything this loud is kept, so a speaker who barely pauses does not become the noise floor. */

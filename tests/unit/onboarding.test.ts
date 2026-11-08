@@ -2,12 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { appSettingsSchema } from "@shared/schemas";
-import type { OnboardingTrackingState } from "@shared/types";
-import {
-  appendOnboardingTrackingEvent,
-  buildOnboardingTrackingMetrics,
-  deriveOnboardingDisplayState
-} from "@shared/onboarding";
+import { deriveOnboardingDisplayState } from "@shared/onboarding";
 
 describe("deriveOnboardingDisplayState", () => {
   it.each(["needs_mic", "needs_model"] as const)("finishing prerequisites from %s in the background does not invent activation", phase => {
@@ -18,8 +13,7 @@ describe("deriveOnboardingDisplayState", () => {
       phase: "needs_first_transcript",
       surface: "workspace",
       activated: false,
-      showFlow: false,
-      showCelebration: false
+      showFlow: false
     });
     expect(settings.onboarding.activatedAt).toBeNull();
     expect(settings.onboardingTracking.events).toHaveLength(0);
@@ -28,6 +22,20 @@ describe("deriveOnboardingDisplayState", () => {
   it("moves a profile stored on the old hold key step to the transcription engine", () => {
     const settings = appSettingsSchema.parse({ onboarding: { phase: "needs_hold_key", surface: "flow" } });
     expect(deriveOnboardingDisplayState(settings, "granted")).toMatchObject({ phase: "needs_model", step: "local_install", showFlow: true });
+  });
+
+  it("keeps the paste step in the flow while the engine is ready, and counts it as the last step", () => {
+    const settings = appSettingsSchema.parse({ onboarding: { phase: "needs_paste", surface: "flow" } });
+    settings.modelState.downloadState = "ready";
+    expect(deriveOnboardingDisplayState(settings, "granted")).toMatchObject({ phase: "needs_paste", step: "paste", showFlow: true, progressIndex: 3 });
+    const model = appSettingsSchema.parse({ onboarding: { phase: "needs_model", surface: "flow" } });
+    expect(deriveOnboardingDisplayState(model, "granted")).toMatchObject({ step: "local_install", progressIndex: 3 });
+  });
+
+  it("resolves a paste step left on Home to whatever is still missing", () => {
+    const settings = appSettingsSchema.parse({ onboarding: { phase: "needs_paste", surface: "workspace" } });
+    settings.modelState.downloadState = "ready";
+    expect(deriveOnboardingDisplayState(settings, "granted")).toMatchObject({ phase: "needs_first_transcript", showFlow: false });
   });
 
   it.each(["needs_mic", "needs_model"] as const)("keeps %s in the flow until explicit continuation even with ready prerequisites", phase => {
@@ -50,8 +58,7 @@ describe("deriveOnboardingDisplayState", () => {
       phase: "activated",
       surface: "workspace",
       activated: true,
-      showFlow: false,
-      pendingOptionalActions: []
+      showFlow: false
     });
     expect(settings.onboarding.activatedAt).toBe(100);
   });
@@ -124,79 +131,6 @@ describe("deriveOnboardingDisplayState", () => {
       activated: false,
       showFlow: false,
       showWorkspaceGuidance: true
-    });
-  });
-});
-
-describe("buildOnboardingTrackingMetrics", () => {
-  it("derives completion and timing metrics from local onboarding events", () => {
-    const tracking = [
-      {
-        name: "onboarding_started" as const,
-        occurredAt: 100,
-        phase: "not_started" as const,
-        step: "ready" as const
-      },
-      {
-        name: "onboarding_step_viewed" as const,
-        occurredAt: 200,
-        phase: "needs_mic" as const,
-        step: "microphone" as const
-      },
-      {
-        name: "onboarding_step_completed" as const,
-        occurredAt: 400,
-        phase: "needs_mic" as const,
-        step: "microphone" as const
-      },
-      {
-        name: "onboarding_step_completed" as const,
-        occurredAt: 800,
-        phase: "needs_model" as const,
-        step: "local_install" as const
-      },
-      {
-        name: "first_transcript_started" as const,
-        occurredAt: 900,
-        phase: "needs_first_transcript" as const,
-        step: "first_transcript" as const,
-        sourceType: "microphone" as const
-      },
-      {
-        name: "first_transcript_completed" as const,
-        occurredAt: 1300,
-        phase: "activated" as const,
-        step: "first_transcript" as const,
-        sourceType: "microphone" as const
-      },
-      {
-        name: "optional_step_dismissed" as const,
-        occurredAt: 1500,
-        phase: "activated" as const,
-        step: "celebration" as const,
-        optionalAction: "overlay_accessibility" as const
-      }
-    ].reduce(
-      (state, event) =>
-        appendOnboardingTrackingEvent(state, {
-          optionalAction: null,
-          sourceType: null,
-          ...event
-        }),
-      { events: [] } as OnboardingTrackingState
-    );
-
-    expect(buildOnboardingTrackingMetrics(tracking)).toMatchObject({
-      onboardingStartedAt: 100,
-      microphonePermissionGrantRate: 1,
-      modelInstallCompletionRate: 1,
-      medianTimeToFirstTranscriptMs: 1200,
-      firstTranscriptCompletionRate: 1,
-      blockerExitCount: 0,
-      optionalStepUptake: {
-        overlay_accessibility: { status: "dismissed" },
-        recording_shortcut: { status: "pending" }
-      }
     });
   });
 });

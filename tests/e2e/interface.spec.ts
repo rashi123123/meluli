@@ -99,7 +99,9 @@ test("the dictionary has its own sidebar screen and left Settings", async ({}, i
   await dictionary.click();
   await expect(page.getByRole("heading", { name: he.dictionaryTitle, exact: true })).toBeFocused();
   await expect(dictionary).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("switch", { name: he.builtInTerms })).toBeVisible();
+  for (const name of Object.values(he.termPackNames)) await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: he.termPackNames.dev, exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: he.termPackNames.design, exact: true })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByLabel(he.dictionaryHeard)).toBeVisible();
   expect(await page.locator('[data-sf-symbol="character.book.closed.fill.he"]').evaluate(el => getComputedStyle(el).maskImage)).not.toContain("undefined");
   await page.screenshot({ path: info.outputPath("dictionary.png") });
@@ -109,8 +111,8 @@ test("the dictionary has its own sidebar screen and left Settings", async ({}, i
   await page.keyboard.press("Escape");
 });
 
-test("Rounded fonts, SF Symbols, narrow windows and enlarged text stay usable", async ({}, info) => {
-  expect(await page.locator(".desktop-sidebar h1").evaluate(el => getComputedStyle(el).fontFamily)).toContain("Meluli Rounded");
+test("System fonts, SF Symbols, narrow windows and enlarged text stay usable", async ({}, info) => {
+  expect(await page.locator(".desktop-sidebar h1").evaluate(el => getComputedStyle(el).fontFamily)).toContain("system-ui");
   expect(await page.locator('[data-sf-symbol="gearshape.fill"]').evaluate(el => getComputedStyle(el).maskImage)).not.toContain("undefined");
   for (const width of [MIN_WINDOW_SIZE.width, 320]) {
     await app.evaluate(({ BrowserWindow }, width) => { const main = BrowserWindow.getAllWindows()[0]; main.setMinimumSize(320, 560); main.setSize(width, 700); }, width);

@@ -5,19 +5,22 @@ import { resolveUserDataPath } from "./config/user-data";
 import { APP_ID, APP_NAME, DEFAULT_OVERLAY_SHORTCUT, DEFAULT_SHORTCUT } from "@shared/constants";
 import { IPC_CHANNELS } from "@shared/ipc-channels";
 import { deriveOnboardingDisplayState } from "@shared/onboarding";
-import { microphoneStatus, registerIpcHandlers } from "./ipc/register";
+import { registerIpcHandlers } from "./ipc/register";
+import { microphoneStatus } from "./system-permissions";
 import { createMainWindow, createOverlayWindow, positionOverlayWindow, resizeOverlayWindow, createCallWindow, placeCallWindow, type CallWindowMode } from "./window";
 import { attachOverlaySnap } from "./overlay-snap";
 import { applyTheme, getWindowBackground } from "./theme";
 import { HoldToTalk } from "./hold-to-talk";
 import { OverlayController } from "./overlay-controller";
 import { TrayManager } from "./tray";
+import { MainWindowHost } from "./main-window-host";
+import type { MainView } from "@shared/types";
 import { ShortcutManager } from "./shortcuts";
 import { createAppServiceContainer } from "./services/container";
 import { createAppIcon } from "./app-icon";
 import { clearDevelopmentEnv, debugSwitchesAllowed, findRefusedSwitch } from "./launch-switches";
 import {
-  createRendererSecurityEnvironment,
+  appRendererSecurity,
   installSessionPermissionHandlers
 } from "./security";
 import {
@@ -25,7 +28,8 @@ import {
   schedulePerformanceAuditStop,
   startPerformanceAudit,
   stopPerformanceAudit
-} from "./perf-audit";
+} from "./diagnostics/perf-audit";
+import { isDictating, isFree, isRecording, isWorking, mayRetarget, RUNTIME_STATE_EVENT } from "./runtime";
 
 const refusedSwitch = app.isPackaged && !debugSwitchesAllowed()
   ? findRefusedSwitch([...process.argv, ...process.execArgv])
@@ -38,7 +42,14 @@ if (refusedSwitch) {
 // A shipped app must never accept the test doubles, which report a paste that did not happen.
 if (app.isPackaged) clearDevelopmentEnv(process.env);
 
-let mainWindow: BrowserWindow | null = null;
+let mainHost: MainWindowHost | null = null;
+// A main window hidden this long gives its renderer back. Reopening after that costs a page load.
+const DEFAULT_MAIN_RELEASE_MS = 30_000;
+const requestedMainRelease = Number(process.env.MELULI_MAIN_RELEASE_MS ?? DEFAULT_MAIN_RELEASE_MS);
+const MAIN_RELEASE_MS = Number.isFinite(requestedMainRelease) ? requestedMainRelease : DEFAULT_MAIN_RELEASE_MS;
+// Quitting waits this long for services to stop, and exits regardless after the deadline.
+const QUIT_CLEANUP_MS = 10_000;
+const QUIT_DEADLINE_MS = 20_000;
 let overlayWindow: BrowserWindow | null = null;
 let disposeOverlaySnap: (() => void) | null = null;
 let overlayController: OverlayController | null = null;
@@ -93,27 +104,12 @@ function installProcessPipeGuards(): void {
   process.stderr?.on("error", ignoreBrokenPipe);
 }
 
-function showMainWindow(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return;
-  }
-
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
+function showMainWindow(view: MainView | null = null): void {
+  mainHost?.show(view);
 }
 
 function toggleMainWindow(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return;
-  }
-
-  if (mainWindow.isVisible()) {
-    mainWindow.hide();
-    return;
-  }
-
-  showMainWindow();
+  mainHost?.toggle();
 }
 
 function showOverlayWindow(activate = true): void {
@@ -155,11 +151,8 @@ function registerOverlayWindowLifecycle(window: BrowserWindow, services: ReturnT
     const state = services.runtime.getState();
     // Selecting a text field while the idle HUD is open updates its paste target.
     // Recording/processing/recovery sessions keep the target captured at start.
-    if ((state.status === "idle" || state.status === "error") && !state.overlaySession) {
-      void services.getTextInsertionService().captureCurrentTargetApplication(() => {
-        const latest = services.runtime.getState();
-        return (latest.status === "idle" || latest.status === "error") && !latest.overlaySession;
-      });
+    if (mayRetarget(state)) {
+      void services.getTextInsertionService().captureCurrentTargetApplication(() => mayRetarget(services.runtime.getState()));
     }
   });
 
@@ -182,7 +175,7 @@ async function bootstrap(): Promise<void> {
     app.quit();
     return;
   }
-  app.on("second-instance", showMainWindow);
+  app.on("second-instance", () => showMainWindow());
   await app.whenReady();
   await startPerformanceAudit(app.getPath("userData"));
   markPerformanceAudit("app:ready");
@@ -199,10 +192,7 @@ async function bootstrap(): Promise<void> {
   });
   markPerformanceAudit("services:create:end");
   currentServices = services;
-  const rendererSecurity = createRendererSecurityEnvironment({
-    isPackaged: app.isPackaged,
-    rawDevServerUrl: process.env.ELECTRON_RENDERER_URL ?? null
-  });
+  const rendererSecurity = appRendererSecurity();
 
   markPerformanceAudit("security:session-handlers:start");
   installSessionPermissionHandlers(session.defaultSession, services.runtime, rendererSecurity);
@@ -213,11 +203,7 @@ async function bootstrap(): Promise<void> {
 
   const cancelActiveWork = () => {
     const current = services.runtime.getState();
-    if (current.status === "youtube_downloading") {
-      return services.getYouTubeQueueService().cancelActive();
-    }
-
-    if (current.status === "processing" && current.activeSourceType === "youtube") {
+    if (current.status === "youtube_downloading" || (current.status === "processing" && current.activeSourceType === "youtube")) {
       return services.getYouTubeQueueService().cancelActive();
     }
 
@@ -228,28 +214,30 @@ async function bootstrap(): Promise<void> {
     return false;
   };
 
-  overlayController = new OverlayController({
+  const overlay = new OverlayController({
     runtime: services.runtime,
     textInsertion: services.getTextInsertionService,
     show: showOverlayWindow,
-    hide: () => { overlayWindow?.hide(); }
+    hide: () => { overlayWindow?.hide(); },
+    flowPreview: (choice) => services.getTranscriptionWorkflow().chooseFlowPreview(choice)
   });
-  const handleRecordingToggle = () => overlayController!.toggleRecording();
-  const handleOverlayShortcut = () => overlayController!.open();
+  overlayController = overlay;
+  const handleRecordingToggle = () => overlay.toggleRecording();
+  const handleOverlayShortcut = () => overlay.open();
 
   const holdToTalk = new HoldToTalk({
     setupComplete: () => {
       const { phase } = deriveOnboardingDisplayState(services.settingsService.getSettings(), microphoneStatus());
       return phase === "needs_first_transcript" || phase === "activated";
     },
-    begin: () => { void overlayController!.beginHold(); },
-    end: () => overlayController!.endHold(),
+    begin: () => { void overlay.beginHold(); },
+    end: () => overlay.endHold(),
     test: (pressed) => services.runtime.sendTo("main", IPC_CHANNELS.holdKeyPressed, pressed)
   });
   services.holdKey.onDown = () => holdToTalk.press();
   services.holdKey.onUp = () => holdToTalk.release();
   // A key that is ready to be held must not wait for the floating window to load.
-  services.runtime.on("state", () => {
+  services.runtime.on(RUNTIME_STATE_EVENT, () => {
     if (!isQuitting && services.runtime.getState().holdKey?.status === "ready") ensureOverlayWindow(services);
   });
 
@@ -262,7 +250,9 @@ async function bootstrap(): Promise<void> {
     if (mode === callWindowMode) return;
     callWindowMode = mode;
     if (!mode) {
-      callWindow?.hide();
+      // Call state lives in the main process, so a hidden call window holds nothing worth a renderer.
+      if (callWindow && !callWindow.isDestroyed()) callWindow.destroy();
+      callWindow = null;
       return;
     }
     if (!callWindow || callWindow.isDestroyed()) {
@@ -279,16 +269,16 @@ async function bootstrap(): Promise<void> {
     placeCallWindow(callWindow, mode);
     callWindow.showInactive();
   };
-  services.runtime.on("state", syncCallWindow);
+  services.runtime.on(RUNTIME_STATE_EVENT, syncCallWindow);
 
   const handleTrayRecordingAction = async () => {
     const current = services.runtime.getState();
-    if (current.status === "youtube_downloading" || current.status === "processing") {
+    if (isWorking(current.status)) {
       cancelActiveWork();
       return;
     }
 
-    if ((current.status === "recording" || current.status === "paused") && !current.overlaySession) {
+    if (isRecording(current.status) && !current.overlaySession) {
       // A main-window recording stops in place, without bringing up the floating window.
       ensureOverlayWindow(services);
       services.runtime.requestRecordingToggle();
@@ -299,12 +289,8 @@ async function bootstrap(): Promise<void> {
   };
 
   const shortcutManager = new ShortcutManager({
-    onRecordingToggle: () => {
-      void handleRecordingToggle();
-    },
-    onOverlayOpen: () => {
-      void handleRecordingToggle();
-    },
+    onRecordingToggle: () => void handleRecordingToggle(),
+    onOverlayOpen: () => void handleRecordingToggle(),
     onEscape: () => services.runtime.requestRecordingCancel(),
     onUndo: () => services.runtime.requestRecordingUndo()
   });
@@ -315,14 +301,14 @@ async function bootstrap(): Promise<void> {
     const { status, activeSourceType, overlaySession } = services.runtime.getState();
     const insertion = services.getTextInsertionService();
     const onTarget = insertion.isAttentionOnTarget();
-    const dictating = status === "recording" || status === "paused" || (status === "processing" && activeSourceType === "microphone");
+    const dictating = isDictating(status, activeSourceType);
     shortcutManager.setEscapeActive(dictating && Boolean(overlaySession) && onTarget);
     // Canceling clears the target, so Undo stays with the app the cancel happened in.
     const undoable = services.runtime.getHeldRecording() === "canceled";
     undoHome = undoable ? undoHome ?? insertion.getFrontmostPid() : null;
     shortcutManager.setUndoActive(undoable && insertion.getFrontmostPid() === undoHome);
   };
-  services.runtime.on("state", claimDictationKeys);
+  services.runtime.on(RUNTIME_STATE_EVENT, claimDictationKeys);
   services.getTextInsertionService().onFrontmostChanged = claimDictationKeys;
   powerMonitor.on("suspend", () => {
     services.runtime.requestRecordingInterrupt();
@@ -341,8 +327,9 @@ async function bootstrap(): Promise<void> {
     });
     markPerformanceAudit("shortcuts:register:end");
   } catch {
-    services.settingsService.setSetting("shortcut", DEFAULT_SHORTCUT);
-    services.settingsService.setSetting("overlayShortcut", DEFAULT_OVERLAY_SHORTCUT);
+    // The defaults stand in for this session only. The saved shortcuts stay, so a key combination
+    // another app held at login comes back on the next launch.
+    console.warn("[shortcuts] saved shortcuts are unavailable, using the defaults for now");
     try {
       shortcutManager.registerAll({
         recording: DEFAULT_SHORTCUT,
@@ -357,78 +344,65 @@ async function bootstrap(): Promise<void> {
 
   markPerformanceAudit("ipc:register:start");
   registerIpcHandlers({
-    database: services.database,
-    runtime: services.runtime,
-    settingsService: services.settingsService,
-    getModelManager: services.getModelManager,
-    getTranscriptionService: services.getTranscriptionService,
-    getTranscriptionWorkflow: services.getTranscriptionWorkflow,
-    getYouTubeQueueService: services.getYouTubeQueueService,
+    ...services,
     shortcutManager,
-    getTextInsertionService: services.getTextInsertionService,
-    holdKey: services.holdKey,
-    calls: services.calls,
-    updates: services.updates,
     // Electron installs once every window has closed, and Meluli's windows only hide on close.
-    installUpdate: () => quitSafely(() => services.updates.install()),
+    // The update is staged before anything is torn down, so one that cannot install leaves the app running.
+    // The finish step is the driver's own: Electron's installs and relaunches, the native one quits onto its staged swap.
+    installUpdate: () => quitSafely(() => services.updates.install(), () => services.updates.prepareInstall()),
     hideOverlay: hideOverlayWindow,
     setOverlaySize: (size) => { if (overlayWindow && !overlayWindow.isDestroyed()) resizeOverlayWindow(overlayWindow, size); },
     openOverlay: handleOverlayShortcut,
-    retargetOverlay: () => overlayController!.retarget(),
-    showMain: (view) => {
-      services.runtime.requestMainNavigation(view);
-      showMainWindow();
-    },
+    retargetOverlay: () => overlay.retarget(),
+    showMain: (view) => showMainWindow(view),
+    reportMainWindow: (sender, state) => mainHost?.report(sender, state),
     applyTheme: (theme) => {
       applyTheme(theme);
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(getWindowBackground());
+      mainHost?.current?.setBackgroundColor(getWindowBackground());
     },
     isPackaged: app.isPackaged
   });
   markPerformanceAudit("ipc:register:end");
 
   markPerformanceAudit("main-window:create:start");
-  mainWindow = createMainWindow();
+  mainHost = new MainWindowHost({
+    create: (view) => createMainWindow(view),
+    attach: (window) => {
+      window.on("close", (event) => {
+        if (isQuitting) return;
+        event.preventDefault();
+        mainHost?.hide();
+      });
+      services.runtime.setWindow("main", window);
+    },
+    // The renderer that started a recording owns its audio, and a running job reports to it.
+    mustKeep: (window) => {
+      const { status } = services.runtime.getState();
+      return services.runtime.isRecordingOwner(window.webContents.id) || !isFree(status);
+    },
+    navigate: (view) => services.runtime.requestMainNavigation(view),
+    isQuitting: () => isQuitting,
+    releaseDelayMs: MAIN_RELEASE_MS
+  });
+  const firstMainWindow = mainHost.ensure();
   markPerformanceAudit("main-window:create:end");
-  mainWindow.webContents.once("did-finish-load", () => {
+  firstMainWindow.webContents.once("did-finish-load", () => {
     markPerformanceAudit("main-window:did-finish-load");
   });
-  mainWindow.once("ready-to-show", () => {
+  firstMainWindow.once("ready-to-show", () => {
     markPerformanceAudit("main-window:ready-to-show");
     schedulePerformanceAuditStop("startup-idle");
   });
-  mainWindow.on("close", (event) => {
-    if (isQuitting) {
-      return;
-    }
-
-    event.preventDefault();
-    mainWindow?.hide();
-  });
-  services.runtime.setWindow("main", mainWindow);
   markPerformanceAudit("main-window:attached");
   showMainWindow();
+  // Destroying the hidden main window must not end a menu bar app.
+  app.on("window-all-closed", () => {});
 
   const tray = new TrayManager(services.runtime, {
     onToggleWindow: () => {
       toggleMainWindow();
     },
-    onOpenWorkspace: () => {
-      services.runtime.requestMainNavigation("workspace");
-      showMainWindow();
-    },
-    onOpenHistory: () => {
-      services.runtime.requestMainNavigation("history");
-      showMainWindow();
-    },
-    onOpenDictionary: () => {
-      services.runtime.requestMainNavigation("dictionary");
-      showMainWindow();
-    },
-    onOpenSettings: () => {
-      services.runtime.requestMainNavigation("settings");
-      showMainWindow();
-    },
+    onOpenView: (view) => showMainWindow(view),
     onToggleRecording: () => {
       void handleTrayRecordingAction();
     },
@@ -450,36 +424,29 @@ async function bootstrap(): Promise<void> {
 
   app.on("activate", () => {
     ensureDockVisibility();
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      mainWindow = createMainWindow();
-      mainWindow.on("close", (event) => {
-        if (isQuitting) {
-          return;
-        }
-
-        event.preventDefault();
-        mainWindow?.hide();
-      });
-      services.runtime.setWindow("main", mainWindow);
-    }
-
     showMainWindow();
   });
 
-  function quitSafely(finish: () => void): void {
+  function quitSafely(finish: () => void, prepare?: () => boolean): void {
     const { status, activeSourceType } = services.runtime.getState();
-    const dictationAtRisk = status === "recording" || status === "paused" || (status === "processing" && activeSourceType === "microphone")
+    const dictationAtRisk = isDictating(status, activeSourceType)
       || services.runtime.getHeldRecording() === "failed";
     if (dictationAtRisk && !systemShuttingDown && dialog.showMessageBoxSync({
-      type: "warning", message: he.quitLosesDictation, detail: he.quitLosesDictationDetail,
+      type: "warning", message: he.quitLosesDictation,
+      detail: services.recordings ? he.quitKeepsDictationDetail : he.quitLosesDictationDetail,
       buttons: [he.keepDictation, he.quitAnyway], defaultId: 0, cancelId: 0
     }) === 0) return;
+    if (prepare && !prepare()) return;
     isQuitting = true;
     shortcutManager.dispose();
     disposeOverlaySnap?.();
     // Destroying renderer windows releases microphones/AudioContexts immediately.
     for (const window of BrowserWindow.getAllWindows()) window.destroy();
-    void Promise.allSettled([services.dispose(), stopPerformanceAudit("before-quit")]).then(finish);
+    // Destroying the windows no longer quits by itself (window-all-closed is handled), so a cleanup
+    // that hangs or an update install that fails must not leave a process with no windows behind.
+    setTimeout(() => app.exit(0), QUIT_DEADLINE_MS);
+    const cleanup = Promise.allSettled([services.dispose(), stopPerformanceAudit("before-quit")]);
+    void Promise.race([cleanup, new Promise((done) => setTimeout(done, QUIT_CLEANUP_MS))]).then(finish);
   }
 
   app.on("before-quit", (event) => {
@@ -489,4 +456,11 @@ async function bootstrap(): Promise<void> {
   });
 }
 
-if (!refusedSwitch) void bootstrap();
+// Any startup that throws ends the app with a message. Before the window opens, a throw used to leave a
+// process with no window that held the profile's single-instance lock, so every later launch handed over
+// to it and nothing opened.
+if (!refusedSwitch) void bootstrap().catch((error: unknown) => {
+  console.error("[startup] failed", error);
+  dialog.showErrorBox(APP_NAME, he.startupFailed);
+  app.exit(1);
+});

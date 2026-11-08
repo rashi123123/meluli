@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { InsertionJournal } from "@main/services/insertion-journal";
+import { InsertionJournal } from "@main/services/insertion/insertion-journal";
 import { offlineResearchConfig } from "@main/services/offline-research-config";
 const directories: string[] = [];
 afterEach(async () => { for (const path of directories.splice(0)) await rm(path, { recursive: true, force: true }); });

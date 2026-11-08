@@ -7,7 +7,8 @@ const objects = {
   search: { tilt: -36, transform: "translate(243.01 827.10) scale(8.0020)", d: "M8.78906-41.0645C8.78906-22.168 24.0723-6.88477 42.9688-6.88477C47.998-6.88477 52.7344-7.95898 57.0312-9.86328L68.3594 1.46484C70.5566 3.66211 73.584 4.73633 76.6602 4.73633C83.2031 4.73633 88.1836-0.292969 88.1836-6.78711C88.1836-9.76562 87.1582-12.6953 84.8633-14.9902L73.7305-26.123C75.9277-30.6152 77.1484-35.6934 77.1484-41.0645C77.1484-59.9609 61.8652-75.2441 42.9688-75.2441C24.0723-75.2441 8.78906-59.9609 8.78906-41.0645ZM23.7793-41.0645C23.7793-51.6113 32.4219-60.2539 42.9688-60.2539C53.5645-60.2539 62.1582-51.6113 62.1582-41.0645C62.1582-30.5176 53.5645-21.875 42.9688-21.875C32.4219-21.875 23.7793-30.5176 23.7793-41.0645Z" }
 } as const;
 
+// A search runs on every keystroke, so its empty state appears often and stays still.
 export function EmptyMark({ kind }: { kind: keyof typeof objects }) {
   const { tilt, ...shape } = objects[kind];
-  return <span className="empty-mark"><OrbitGlyph top={175} height={740} tilt={tilt} ringClassName="empty-mark-ring"><path {...shape} /></OrbitGlyph></span>;
+  return <span className="empty-mark"><OrbitGlyph top={175} height={740} tilt={tilt} ringClassName={kind === "search" ? undefined : "empty-mark-ring"}><path {...shape} /></OrbitGlyph></span>;
 }

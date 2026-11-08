@@ -3,7 +3,7 @@ import { mkdtemp,readFile,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect,it } from 'vitest';
-import { beginPipelineTrace,configurePipelineTrace,pipelineTrace } from '@main/pipeline-trace';
+import { beginPipelineTrace,configurePipelineTrace,pipelineTrace } from '@main/diagnostics/pipeline-trace';
 it('records monotonic stage and main-process CPU counters only when configured',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'meluli-trace-'));const file=join(directory,'events.jsonl');
  try{

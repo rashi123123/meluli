@@ -22,7 +22,7 @@ export function ThemePicker({ value, labelledBy, onChange }: { value: ThemeId; l
         <SwatchLayer swatch={THEMES[id].swatch} />
         {id === "system" && <SwatchLayer swatch={THEMES["meluli-light"].swatch} half />}
       </span>
-      <span className="theme-name">{THEMES[id].label}</span>
+      <span className="theme-name" dir="auto">{THEMES[id].label}</span>
     </label>)}
   </div>;
 }

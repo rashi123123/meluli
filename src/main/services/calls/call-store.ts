@@ -1,7 +1,8 @@
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { z } from "zod";
+import * as z from "zod";
 import { CALL_APPS } from "@shared/call-apps";
+import { writeJsonAtomic } from "../system-probes";
 
 const segmentSchema = z.object({ start: z.number(), end: z.number(), text: z.string() });
 const trackProgressSchema = z.object({ done: z.number().int().nonnegative(), segments: z.array(segmentSchema) });
@@ -56,9 +57,7 @@ export class CallStore {
   }
 
   async save(record: CallRecord): Promise<void> {
-    const path = join(this.directory(record.id), "call.json");
-    await writeFile(`${path}.tmp`, JSON.stringify(record), { mode: 0o600 });
-    await rename(`${path}.tmp`, path);
+    await writeJsonAtomic(join(this.directory(record.id), "call.json"), record);
   }
 
   async list(): Promise<CallRecord[]> {

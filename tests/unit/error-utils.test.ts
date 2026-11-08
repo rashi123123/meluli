@@ -14,8 +14,9 @@ describe("error messages across renderer callbacks", () => {
   it("removes Electron transport details from a localized IPC failure", () => {
     expect(getHebrewErrorMessage(new Error(`Error invoking remote method 'recording:send-audio': Error: ${he.audioConversionFailed}`))).toBe(he.audioConversionFailed);
   });
-  it("retains Error localization and uses the fallback for unknown values", () => {
-    expect(getHebrewErrorMessage(new Error("Transcription canceled."))).toBe(he.transcriptionCanceled);
+  it("maps a missing-executable OS error and uses the fallback for other English text and unknown values", () => {
+    expect(getHebrewErrorMessage(new Error("spawn whisper: No such file or directory"))).toBe(he.whisperMissing);
+    expect(getHebrewErrorMessage(new Error("Transcription canceled."), he.recordingFailed)).toBe(he.recordingFailed);
     expect(getHebrewErrorMessage(null, he.recordingFailed)).toBe(he.recordingFailed);
   });
 });

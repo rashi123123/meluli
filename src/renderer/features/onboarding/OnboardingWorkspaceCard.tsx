@@ -1,15 +1,13 @@
 import { useRef, useState } from "react";
-import { DownloadSimple, Warning } from "@/components/icons";
+import { DownloadSimple, Microphone, Warning } from "@/components/icons";
 import { Button } from "@/components/ui/button";
 import { useAppContext } from "@/context/app-context";
 import { getHebrewErrorMessage } from "@shared/error-utils";
 import { he } from "@shared/locale";
-import type { OnboardingPhase, OnboardingStepKey } from "@shared/types";
+import type { OnboardingPhase } from "@shared/types";
 
-export function OnboardingWorkspaceCard({ phase, onResumeSetup }: {
-  phase: OnboardingPhase; activeStep: OnboardingStepKey; onResumeSetup: () => void;
-}) {
-  const { settings, modelProgress, downloadModel, setActiveView } = useAppContext();
+export function OnboardingWorkspaceCard({ phase, onResumeSetup }: { phase: OnboardingPhase; onResumeSetup: () => void }) {
+  const { settings, modelProgress, downloadModel } = useAppContext();
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
   const state = settings?.modelState.downloadState;
@@ -24,21 +22,23 @@ export function OnboardingWorkspaceCard({ phase, onResumeSetup }: {
     lock.current = false; setPending(false);
   };
   const activated = phase === "activated";
-  const title = downloading ? "מורידים את מנוע התמלול" : failed ? "ההורדה נעצרה" : activated ? he.modelMissing : "עוד רגע אפשר להתחיל";
-  const detail = downloading ? "אפשר להסתכל מסביב. נעדכן כאן כשהכול מוכן." : failed
+  // An untested microphone blocks dictation, so it leads; the download keeps its progress bar underneath.
+  const needsMic = phase === "needs_mic";
+  const title = needsMic ? he.onboardingCardMicTitle : downloading ? he.onboardingCardDownloading : failed ? he.onboardingCardFailed : activated ? he.modelMissing : he.onboardingCardAlmost;
+  const detail = needsMic ? he.onboardingCardMicBody : downloading ? he.onboardingCardDownloadingBody : failed
     ? getHebrewErrorMessage(settings?.modelState.lastError, he.modelDownloadFailed)
-    : activated ? he.modelMissingBody
-    : phase === "needs_mic" ? "נבדוק את המיקרופון לפני ההקלטה הראשונה." : "בדיקה קצרה של המיקרופון והורדה חד־פעמית.";
-  return <section className="workspace-setup-status" aria-label="מצב ההגדרה">
-    {failed ? <Warning /> : <DownloadSimple />}
+    : activated ? he.modelMissingBody : he.onboardingCardModelBody;
+  return <section className="workspace-setup-status" aria-label={he.onboardingCardStatus}>
+    {needsMic ? <Microphone /> : failed ? <Warning /> : <DownloadSimple />}
     <div className="workspace-setup-copy"><strong role="status">{title}</strong><p>{detail}</p>
       {downloading && <div className="background-download" role="progressbar" aria-label={he.modelDownloading} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress ?? undefined}>
         <div className="progress-track"><div className="progress-fill" style={{ transform: `scaleX(${(progress ?? 0) / 100})` }} /></div>
         <span dir="ltr">{progress !== null ? `${progress}%` : "…"}</span>
       </div>}
     </div>
-    {downloading ? <Button variant="ghost" size="sm" onClick={() => setActiveView("settings")}>פרטי ההורדה</Button>
+    {needsMic ? <Button variant="secondary" size="sm" onClick={onResumeSetup}>{he.onboardingResumeSetup}</Button>
+      : downloading ? null
       : failed || activated ? <Button variant="secondary" size="sm" aria-disabled={pending} onClick={() => void retry()}>{failed ? he.retry : he.downloadHebrewModel}</Button>
-        : <Button variant="secondary" size="sm" onClick={onResumeSetup}>{he.onboardingResumeSetup}</Button>}
+      : <Button variant="secondary" size="sm" onClick={onResumeSetup}>{he.onboardingResumeSetup}</Button>}
   </section>;
 }

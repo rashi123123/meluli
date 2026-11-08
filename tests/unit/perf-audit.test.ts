@@ -9,7 +9,7 @@ vi.mock("electron", () => ({ app: h.app, contentTracing: { startRecording: h.sta
 
 describe("performance audit switch", () => {
   let profile: string;
-  const start = async () => (await import("@main/perf-audit")).startPerformanceAudit(profile);
+  const start = async () => (await import("@main/diagnostics/perf-audit")).startPerformanceAudit(profile);
 
   beforeEach(() => {
     vi.resetModules();

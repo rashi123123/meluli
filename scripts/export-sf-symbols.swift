@@ -3,9 +3,9 @@
 // The PNGs are build output and stay out of Git: Apple's terms apply to them, not this repository's license.
 import AppKit
 
-let symbols = ["arrow.counterclockwise", "arrow.down", "arrow.left", "arrow.up.right", "chevron.down", "checkmark", "checkmark.circle", "checkmark.circle.fill", "doc.on.doc", "arrow.down.to.line", "doc.text", "keyboard", "link", "magnifyingglass", "mic", "mic.fill", "pause", "pause.fill", "play", "play.fill", "plus", "checkmark.shield", "speaker.wave.3", "square", "square.fill", "square.grid.2x2", "captions.bubble", "exclamationmark.circle", "xmark", "play.rectangle", "folder", "trash", "clock", "ellipsis", "arrow.right", "info.circle", "pencil", "pip", "exclamationmark.triangle", "lock", "arrow.uturn.backward", "accessibility", "phone.fill"]
+let symbols = ["arrow.counterclockwise", "arrow.down", "arrow.up", "arrow.left", "arrow.up.right", "chevron.down", "checkmark", "checkmark.circle", "checkmark.circle.fill", "doc.on.doc", "arrow.down.to.line", "doc.text", "keyboard", "link", "magnifyingglass", "mic", "mic.fill", "pause", "pause.fill", "play", "play.fill", "plus", "checkmark.shield", "speaker.wave.3", "square", "square.fill", "square.grid.2x2", "captions.bubble", "exclamationmark.circle", "xmark", "play.rectangle", "folder", "trash", "clock", "ellipsis", "arrow.right", "info.circle", "pencil", "pip", "exclamationmark.triangle", "lock", "arrow.uturn.backward", "accessibility", "phone.fill", "sparkles", "envelope", "globe", "bubble.left", "terminal", "arrow.triangle.branch", "doc.on.clipboard"]
 // Filled glyphs for the sidebar tiles, larger and on a canvas of their own.
-let tiles = ["house.fill", "clock.fill", "character.book.closed.fill.he", "gearshape.fill"]
+let tiles = ["house.fill", "clock.fill", "character.book.closed.fill.he", "gearshape.fill", "wand.and.stars"]
 let output = URL(fileURLWithPath: "src/renderer/assets/sf-symbols", isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 
