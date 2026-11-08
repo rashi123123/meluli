@@ -30,7 +30,7 @@ Experimental NeMo, MLX, Core ML and Python ASR engines are not included in the P
 
 ## Electron, Node and Chromium
 
-Electron 45.2.1 is MIT licensed; its bundled Node, V8, Chromium and third-party libraries carry their respective notices. The standard Electron `LICENSE` and `LICENSES.chromium.html` must remain in the app distribution. https://github.com/electron/electron
+Electron 45.2.3 is MIT licensed; its bundled Node, V8, Chromium and third-party libraries carry their respective notices. The standard Electron `LICENSE` and `LICENSES.chromium.html` must remain in the app distribution. https://github.com/electron/electron
 
 ## Application libraries
 

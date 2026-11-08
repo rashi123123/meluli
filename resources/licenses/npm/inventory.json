@@ -3,84 +3,84 @@
   "packages": [
     {
       "name": "@babel/runtime",
-      "version": "7.28.6",
+      "version": "8.1.0",
       "license": "MIT",
       "repository": "https://github.com/babel/babel.git",
       "notices": [
         {
-          "path": "babel__runtime@7.28.6/LICENSE",
+          "path": "babel__runtime@8.1.0/LICENSE",
           "sha256": "117da2af0d4ce0fe1c8e19b5cff9dcd806adf973d328d27b11d4448c4ff24f76"
         }
       ]
     },
     {
       "name": "@base-ui/react",
-      "version": "1.3.0",
+      "version": "1.9.0",
       "license": "MIT",
       "repository": "git+https://github.com/mui/base-ui.git",
       "notices": [
         {
-          "path": "base-ui__react@1.3.0/LICENSE",
-          "sha256": "dc65dbc1cb6dc35e18861d341fa1d98a6e40aaa19b43d7d0a40ba67914d47c55"
+          "path": "base-ui__react@1.9.0/LICENSE",
+          "sha256": "07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a"
         }
       ]
     },
     {
       "name": "@base-ui/utils",
-      "version": "0.2.6",
+      "version": "0.5.0",
       "license": "MIT",
       "repository": "git+https://github.com/mui/base-ui.git",
       "notices": [
         {
-          "path": "base-ui__utils@0.2.6/LICENSE",
-          "sha256": "dc65dbc1cb6dc35e18861d341fa1d98a6e40aaa19b43d7d0a40ba67914d47c55"
+          "path": "base-ui__utils@0.5.0/LICENSE",
+          "sha256": "07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a"
         }
       ]
     },
     {
       "name": "@floating-ui/core",
-      "version": "1.7.5",
+      "version": "1.8.0",
       "license": "MIT",
       "repository": "https://github.com/floating-ui/floating-ui.git",
       "notices": [
         {
-          "path": "floating-ui__core@1.7.5/LICENSE",
+          "path": "floating-ui__core@1.8.0/LICENSE",
           "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
         }
       ]
     },
     {
       "name": "@floating-ui/dom",
-      "version": "1.7.6",
+      "version": "1.8.0",
       "license": "MIT",
       "repository": "https://github.com/floating-ui/floating-ui.git",
       "notices": [
         {
-          "path": "floating-ui__dom@1.7.6/LICENSE",
+          "path": "floating-ui__dom@1.8.0/LICENSE",
           "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
         }
       ]
     },
     {
       "name": "@floating-ui/react-dom",
-      "version": "2.1.8",
+      "version": "2.1.9",
       "license": "MIT",
       "repository": "https://github.com/floating-ui/floating-ui.git",
       "notices": [
         {
-          "path": "floating-ui__react-dom@2.1.8/LICENSE",
+          "path": "floating-ui__react-dom@2.1.9/LICENSE",
           "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
         }
       ]
     },
     {
       "name": "@floating-ui/utils",
-      "version": "0.2.11",
+      "version": "0.2.12",
       "license": "MIT",
       "repository": "https://github.com/floating-ui/floating-ui.git",
       "notices": [
         {
-          "path": "floating-ui__utils@0.2.11/LICENSE",
+          "path": "floating-ui__utils@0.2.12/LICENSE",
           "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce"
         }
       ]
@@ -123,96 +123,84 @@
     },
     {
       "name": "react-dom",
-      "version": "19.2.4",
+      "version": "19.3.1",
       "license": "MIT",
-      "repository": "https://github.com/facebook/react.git",
+      "repository": "https://github.com/react/react.git",
       "notices": [
         {
-          "path": "react-dom@19.2.4/LICENSE",
+          "path": "react-dom@19.3.1/LICENSE",
           "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
         }
       ]
     },
     {
       "name": "react",
-      "version": "19.2.4",
+      "version": "19.3.1",
       "license": "MIT",
-      "repository": "https://github.com/facebook/react.git",
+      "repository": "https://github.com/react/react.git",
       "notices": [
         {
-          "path": "react@19.2.4/LICENSE",
+          "path": "react@19.3.1/LICENSE",
           "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
         }
       ]
     },
     {
       "name": "reselect",
-      "version": "5.1.1",
+      "version": "5.3.0",
       "license": "MIT",
       "repository": "https://github.com/reduxjs/reselect.git",
       "notices": [
         {
-          "path": "reselect@5.1.1/LICENSE",
-          "sha256": "0bb5035e49bf9b5661655b402bab3c3efccb8eab2a50e37392100139fe3280f2"
+          "path": "reselect@5.3.0/LICENSE",
+          "sha256": "e98047a5dee068b33f82e8c4b7a63037b5108c93393198efd4097753004af5dd"
         }
       ]
     },
     {
       "name": "scheduler",
-      "version": "0.27.0",
+      "version": "0.28.0",
       "license": "MIT",
-      "repository": "https://github.com/facebook/react.git",
+      "repository": "https://github.com/react/react.git",
       "notices": [
         {
-          "path": "scheduler@0.27.0/LICENSE",
+          "path": "scheduler@0.28.0/LICENSE",
           "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
         }
       ]
     },
     {
       "name": "shadcn",
-      "version": "4.0.8",
+      "version": "4.23.0",
       "license": "MIT",
       "repository": "https://github.com/shadcn-ui/ui.git",
       "notices": [
         {
-          "path": "shadcn@4.0.8/LICENSE.md",
+          "path": "shadcn@4.23.0/LICENSE.md",
           "sha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f"
         }
       ]
     },
     {
-      "name": "tabbable",
-      "version": "6.4.0",
-      "license": "MIT",
-      "repository": "git+https://github.com/focus-trap/tabbable.git",
-      "notices": [
-        {
-          "path": "tabbable@6.4.0/LICENSE",
-          "sha256": "8e714750725e75c8b31172ef84c0805f94873f86e3b5cfca8a948553f0778fa1"
-        }
-      ]
-    },
-    {
       "name": "tailwind-merge",
-      "version": "3.5.0",
+      "version": "3.7.0",
       "license": "MIT",
       "repository": "https://github.com/dcastil/tailwind-merge.git",
       "notices": [
         {
-          "path": "tailwind-merge@3.5.0/LICENSE.md",
+          "path": "tailwind-merge@3.7.0/LICENSE.md",
           "sha256": "d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5"
         }
       ]
     },
     {
       "name": "tailwindcss",
-      "version": "4.2.1",
+      "version": "4.3.4",
       "license": "MIT",
       "repository": "https://github.com/tailwindlabs/tailwindcss.git",
       "notices": [
         {
-          "path": "tailwindcss@4.2.1/LICENSE",
+          "path": "tailwindcss@4.3.4/LICENSE",
           "sha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
         }
       ]
@@ -231,12 +219,12 @@
     },
     {
       "name": "use-sync-external-store",
-      "version": "1.6.0",
+      "version": "1.7.0",
       "license": "MIT",
-      "repository": "https://github.com/facebook/react.git",
+      "repository": "https://github.com/react/react.git",
       "notices": [
         {
-          "path": "use-sync-external-store@1.6.0/LICENSE",
+          "path": "use-sync-external-store@1.7.0/LICENSE",
           "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
         }
       ]
