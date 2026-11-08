@@ -64,13 +64,18 @@ let service: CallService;
 const callState = () => runtime.getState().call as CallState;
 const settle = () => vi.waitFor(() => { expect(callState().processing).toBeNull(); });
 
+/** Every service a test builds, so teardown can stop their timers before the folder goes. */
+const built: CallService[] = [];
+
 function build(overrides: Partial<CallServiceDependencies> = {}) {
-  return new CallService({
+  const created = new CallService({
     audio: audio as never, runtime, root, isAvailable: () => true, isEnabled: () => true, requestMicrophone: async () => true,
     transcribePiece, isCanceled: (error) => error === "canceled",
     saveTranscript: async (_record, _app, segments) => { saved.push(segments); },
     freeBytes: async () => 10 * 1024 ** 3, now: () => clock, cancelRetryMs: 1, ...overrides
   });
+  built.push(created);
+  return created;
 }
 
 async function startCall() {
@@ -93,6 +98,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // A copy left running would tick into the deleted folder after the test ends.
+  await Promise.allSettled(built.splice(0).map(copy => copy.dispose()));
   // A stopped call can still be writing its last file when processing clears.
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
 });
